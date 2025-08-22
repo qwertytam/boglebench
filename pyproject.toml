@@ -7,7 +7,15 @@ readme = "README.md"
 license = "MIT"
 homepage = "https://github.com/qwertytam/boglebench"
 repository = "https://github.com/qwertytam/boglebench"
-keywords = ["portfolio", "finance", "investment", "performance", "analytics", "bogle", "benchmarking"]
+keywords = [
+    "portfolio",
+    "finance",
+    "investment",
+    "performance",
+    "analytics",
+    "bogle",
+    "benchmarking",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Financial and Insurance Industry",
@@ -31,12 +39,14 @@ click = ">=8.1,<9.0"
 # Prefer this over empyrical:
 empyrical-reloaded = ">=0.5.10,<1.0"
 types-pyyaml = "^6.0.12.20250822"
+pandas-stubs = "^2.3.0.250703"
+black = {extras = ["jupyter"], version = "^25.1.0"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0,<9.0"
 pytest-cov = ">=5.0,<6.0"
-black = ">=24.0,<25.0"
-ruff = ">=0.5,<1.0"        # faster, modern replacement for flake8 (optional)
+black = ">=24.0"
+ruff = ">=0.5,<1.0"       # faster, modern replacement for flake8 (optional)
 # flake8 = ">=7.0,<8.0"    # if you prefer flake8, use a recent version
 build = ">=1.2,<2.0"
 # twine = ">=5.0,<6.0"       # only if you still need it; Poetry can publish
@@ -57,8 +67,8 @@ build-backend = "poetry.core.masonry.api"
 
 # Development tools configuration
 [tool.black]
-line-length = 88
-target-version = ['py38']
+line-length = 80
+target-version = ['py313']
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
