@@ -4,14 +4,14 @@ Tests for BogleBenchAnalyzer core functionality.
 
 import tempfile
 from pathlib import Path
+from unittest.mock import Mock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
-from boglebench.core.portfolio import BogleBenchAnalyzer
+from boglebench.core.portfolio import BogleBenchAnalyzer, PerformanceResults
 from boglebench.utils.config import ConfigManager
-
-# from unittest.mock import Mock, patch
 
 
 class TestBogleBenchAnalyzer:
@@ -102,14 +102,14 @@ class TestBogleBenchAnalyzer:
             analyzer.load_transactions(str(csv_path))
 
     def test_clean_transaction_data(self, temp_config):
-        """Test transaction data cleaning."""
+        """Test transaction data cleaning with valid ISO8601 dates."""
         analyzer = BogleBenchAnalyzer()
         analyzer.config = temp_config
 
-        # Test data with various issues to clean
-        dirty_data = pd.DataFrame(
+        # Test data with valid ISO8601 dates and other cleaning needs
+        clean_data = pd.DataFrame(
             {
-                "date": ["2023-01-15", "01/16/2023", "2023-01-17"],
+                "date": ["2023-01-15", "2023-01-16", "2023-01-17"],  # All ISO8601
                 "ticker": [" aapl ", "MSFT", "spy "],
                 "transaction_type": ["buy", "SELL", "BUY"],
                 "shares": [100, 50, 25],
@@ -118,7 +118,7 @@ class TestBogleBenchAnalyzer:
             }
         )
 
-        cleaned = analyzer._clean_transaction_data(dirty_data)
+        cleaned = analyzer._clean_transaction_data(clean_data)
 
         # Check cleaning results
         assert cleaned["ticker"].tolist() == ["AAPL", "MSFT", "SPY"]
@@ -127,6 +127,54 @@ class TestBogleBenchAnalyzer:
         assert cleaned.loc[1, "shares"] == -50  # SELL should be negative
         assert "total_value" in cleaned.columns
         assert pd.api.types.is_datetime64_any_dtype(cleaned["date"])
+
+    def test_clean_transaction_data_invalid_date_format(self, temp_config):
+        """Test that non-ISO8601 date formats raise an error."""
+        analyzer = BogleBenchAnalyzer()
+        analyzer.config = temp_config
+
+        # Test data with invalid date format
+        invalid_date_data = pd.DataFrame(
+            {
+                "date": ["2023-01-15", "01/16/2023", "2023-01-17"],  # Mixed formats
+                "ticker": ["AAPL", "MSFT", "SPY"],
+                "transaction_type": ["BUY", "BUY", "BUY"],
+                "shares": [100, 50, 25],
+                "price_per_share": [150.50, 240.25, 380.00],
+                "account": ["Schwab", "Fidelity", "Personal"],
+            }
+        )
+
+        with pytest.raises(ValueError, match="is not in ISO8601 format"):
+            analyzer._clean_transaction_data(invalid_date_data)
+
+    def test_clean_transaction_data_various_invalid_formats(self, temp_config):
+        """Test various invalid date formats."""
+        analyzer = BogleBenchAnalyzer()
+        analyzer.config = temp_config
+
+        invalid_formats = [
+            ["01/15/2023"],  # MM/DD/YYYY
+            ["15-01-2023"],  # DD-MM-YYYY
+            ["Jan 15, 2023"],  # Month name
+            ["2023/01/15"],  # YYYY/MM/DD
+            ["20230115"],  # YYYYMMDD
+        ]
+
+        for invalid_date in invalid_formats:
+            invalid_data = pd.DataFrame(
+                {
+                    "date": invalid_date,
+                    "ticker": ["AAPL"],
+                    "transaction_type": ["BUY"],
+                    "shares": [100],
+                    "price_per_share": [150.50],
+                    "account": ["Test"],
+                }
+            )
+
+            with pytest.raises(ValueError, match="is not in ISO8601 format"):
+                analyzer._clean_transaction_data(invalid_data)
 
     def test_account_column_backward_compatibility(self, temp_config):
         """Test that missing account column gets added automatically."""
