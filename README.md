@@ -30,7 +30,8 @@ boglebench-init --path ~/my_boglebench_data
 ```
 
 This creates the following structure:
-```
+
+```text
 ~/my_boglebench_data/
 ├── config/config.yaml          # Configuration file
 ├── transactions/               # Your transaction data  
@@ -41,11 +42,13 @@ This creates the following structure:
 ### 2. Add Your Transaction Data
 
 Add your transaction CSV file to `~/my_boglebench_data/transactions/`. Required columns:
+
 - `date`: Transaction date (YYYY-MM-DD)
-- `ticker`: Stock/ETF symbol
+- `ticker`: Stock/ETF symbol  
 - `transaction_type`: BUY or SELL
 - `shares`: Number of shares
 - `price_per_share`: Price per share
+- `account`: Broker account name (optional, defaults to "Default")
 
 ### 3. Run Analysis
 
@@ -65,6 +68,7 @@ print(results.summary())
 ```
 
 Or use the command line:
+
 ```bash
 boglebench-analyze --config ~/my_boglebench_data/config/config.yaml
 ```
@@ -105,7 +109,7 @@ BogleBench embodies John Bogle's investment philosophy:
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.13+
 - pandas
 - numpy
 - yfinance
