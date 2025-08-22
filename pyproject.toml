@@ -57,9 +57,16 @@ jupyter = ">=1.0,<2.0"
 plotly = ">=5.20,<6.0"
 ipywidgets = ">=8.0,<9.0"
 
+[tool.poetry.urls]
+"Homepage" = "https://github.com/yourusername/boglebench"
+"Bug Tracker" = "https://github.com/yourusername/boglebench/issues"
+"Documentation" = "https://github.com/yourusername/boglebench#readme"
+
 [tool.poetry.scripts]
 boglebench-init = "boglebench.cli.commands:init_workspace"
 boglebench-analyze = "boglebench.cli.commands:run_analysis"
+boglebench-holdings = "boglebench.cli.commands:show_holdings"
+boglebench-validate = "boglebench.cli.commands:validate_transactions"
 
 [build-system]
 requires = ["poetry-core"]
