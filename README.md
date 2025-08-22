@@ -43,12 +43,16 @@ This creates the following structure:
 
 Add your transaction CSV file to `~/my_boglebench_data/transactions/`. Required columns:
 
-- `date`: Transaction date (YYYY-MM-DD)
+- `date`: Transaction date in ISO8601 format (YYYY-MM-DD)
 - `ticker`: Stock/ETF symbol  
 - `transaction_type`: BUY or SELL
 - `shares`: Number of shares
 - `price_per_share`: Price per share
 - `account`: Broker account name (optional, defaults to "Default")
+
+**Important:** Dates must be in ISO8601 format `(YYYY-MM-DD)`. Examples of valid dates:
+`2023-01-15`, `2024-12-31`. Invalid formats like `01/15/2023` or `15-01-2023` will
+cause an error.
 
 ### 3. Run Analysis
 
