@@ -87,7 +87,9 @@ class ConfigManager:
                 return config
 
             except Exception as e:
-                print(f"Warning: Error loading config from {self.config_path}: {e}")
+                print(
+                    f"Warning: Error loading config from {self.config_path}: {e}"
+                )
                 print("Using default configuration.")
 
         return self.DEFAULT_CONFIG.copy()
@@ -95,7 +97,11 @@ class ConfigManager:
     def _deep_merge(self, base: Dict, update: Dict) -> None:
         """Deep merge update dict into base dict."""
         for key, value in update.items():
-            if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            if (
+                key in base
+                and isinstance(base[key], dict)
+                and isinstance(value, dict)
+            ):
                 self._deep_merge(base[key], value)
             else:
                 base[key] = value
@@ -158,7 +164,9 @@ class ConfigManager:
 
         # Write default config
         with open(path, "w") as f:
-            yaml.dump(self.DEFAULT_CONFIG, f, default_flow_style=False, indent=2)
+            yaml.dump(
+                self.DEFAULT_CONFIG, f, default_flow_style=False, indent=2
+            )
 
         print(f"Created configuration file: {path}")
         return path
