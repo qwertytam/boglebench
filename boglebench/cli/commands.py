@@ -1,331 +1,252 @@
 """
-Visualization module for BogleBench portfolio analysis.
-
-Create comprehensive charts and visualizations following Bogle's principles
-of simple, clear communication of investment performance.
+Command line interface for BogleBench portfolio analyzer.
 """
 
+import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import seaborn as sns
+import click
 
-from ..core.portfolio import PerformanceResults
+from ..utils.config import ConfigManager
 
 
-class BogleBenchCharts:
-    """Create charts and visualizations for portfolio analysis."""
+@click.command()
+@click.option(
+    "--path",
+    default="~/boglebench_data",
+    help="Path where to create the BogleBench data workspace",
+)
+@click.option("--force", is_flag=True, help="Overwrite existing files")
+def init_workspace(path: str, force: bool):
+    """Initialize a new BogleBench portfolio analysis workspace."""
+    workspace_path = Path(path).expanduser()
 
-    def __init__(self, results: PerformanceResults):
-        """
-        Initialize chart generator with performance results.
+    click.echo(f"Initializing BogleBench workspace at: {workspace_path}")
+    click.echo(
+        "📊 In the spirit of John Bogle: Simple, low-cost, long-term investing analysis"
+    )
 
-        Args:
-            results: PerformanceResults object from analysis
-        """
-        self.results = results
-        self.style_setup()
+    # Create directory structure
+    directories = [
+        "config",
+        "transactions",
+        "market_data",
+        "output",
+        "output/reports",
+    ]
 
-    def style_setup(self):
-        """Set up chart styling in Bogle's spirit: clean and simple."""
-        plt.style.use("seaborn-v0_8")
-        sns.set_palette("husl")
+    for dir_name in directories:
+        dir_path = workspace_path / dir_name
+        dir_path.mkdir(parents=True, exist_ok=True)
+        click.echo(f"Created directory: {dir_path}")
 
-        # Custom color palette inspired by Vanguard's simple approach
-        self.colors = {
-            "portfolio": "#1f77b4",  # Blue
-            "benchmark": "#ff7f0e",  # Orange
-            "positive": "#2ca02c",  # Green
-            "negative": "#d62728",  # Red
-            "neutral": "#7f7f7f",  # Gray
-        }
+    # Create configuration file
+    config_manager = ConfigManager()
+    config_path = workspace_path / "config" / "config.yaml"
 
-    def create_performance_dashboard(
-        self, save_path: Optional[str] = None
-    ) -> plt.Figure:
-        """
-        Create comprehensive performance dashboard.
+    if config_path.exists() and not force:
+        click.echo(f"Configuration file already exists: {config_path}")
+        click.echo("Use --force to overwrite")
+    else:
+        config_manager.create_config_file(str(config_path))
 
-        Args:
-            save_path: Path to save the chart. If None, displays only.
+    # Copy template files
+    _copy_templates(workspace_path, force)
 
-        Returns:
-            matplotlib Figure object
-        """
-        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-        fig.suptitle(
-            "📊 BogleBench Performance Dashboard\n" '"Stay the course" - John C. Bogle',
-            fontsize=16,
-            fontweight="bold",
-        )
+    # Create sample transactions file
+    _create_sample_transactions(
+        workspace_path / "transactions" / "sample_transactions.csv", force
+    )
 
-        # 1. Portfolio Value Growth
-        self._plot_portfolio_growth(axes[0, 0])
+    click.echo(f"\n✅ BogleBench workspace initialized successfully!")
+    click.echo(f"\nNext steps:")
+    click.echo(f"1. Edit your configuration: {config_path}")
+    click.echo(f"2. Add your transaction data to: {workspace_path}/transactions/")
+    click.echo(f"3. Run analysis: boglebench-analyze --config {config_path}")
+    click.echo(
+        f"\n💡 Remember Bogle's wisdom: 'Stay the course' and focus on long-term results!"
+    )
 
-        # 2. Cumulative Returns Comparison
-        self._plot_cumulative_returns(axes[0, 1])
 
-        # 3. Account Allocation
-        self._plot_account_allocation(axes[0, 2])
+def _copy_templates(workspace_path: Path, force: bool):
+    """Copy template files to workspace."""
+    templates_source = Path(__file__).parent.parent / "templates"
 
-        # 4. Asset Allocation
-        self._plot_asset_allocation(axes[1, 0])
+    if not templates_source.exists():
+        click.echo("Warning: Template files not found in package")
+        return
 
-        # 5. Rolling Returns
-        self._plot_rolling_returns(axes[1, 1])
+    for template_file in templates_source.glob("*"):
+        dest_file = workspace_path / "output" / template_file.name
 
-        # 6. Risk-Return Scatter
-        self._plot_risk_return(axes[1, 2])
-
-        plt.tight_layout()
-
-        if save_path:
-            plt.savefig(save_path, dpi=300, bbox_inches="tight")
-            print(f"📊 Dashboard saved to: {save_path}")
-
-        return fig
-
-    def _plot_portfolio_growth(self, ax):
-        """Plot portfolio value over time."""
-        portfolio_history = self.results.portfolio_history
-
-        ax.plot(
-            portfolio_history["date"],
-            portfolio_history["total_value"],
-            color=self.colors["portfolio"],
-            linewidth=2,
-            label="Portfolio Value",
-        )
-
-        ax.set_title("Portfolio Value Growth", fontweight="bold")
-        ax.set_ylabel("Portfolio Value ($)")
-        ax.grid(True, alpha=0.3)
-        ax.legend()
-
-        # Format y-axis as currency
-        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f"${x:,.0f}"))
-
-    def _plot_cumulative_returns(self, ax):
-        """Plot cumulative returns vs benchmark."""
-        portfolio_returns = self.results.get_cumulative_returns()
-
-        ax.plot(
-            portfolio_returns.index,
-            portfolio_returns.values * 100,
-            color=self.colors["portfolio"],
-            linewidth=2,
-            label="Portfolio",
-        )
-
-        # Add benchmark if available
-        if self.results.benchmark_metrics:
-            # Calculate benchmark cumulative returns
-            # This would need benchmark return data
-            pass
-
-        ax.set_title("Cumulative Returns", fontweight="bold")
-        ax.set_ylabel("Cumulative Return (%)")
-        ax.grid(True, alpha=0.3)
-        ax.legend()
-
-    def _plot_account_allocation(self, ax):
-        """Plot allocation by account."""
-        account_summary = self.results.get_account_summary()
-
-        if not account_summary.empty:
-            wedges, texts, autotexts = ax.pie(
-                account_summary["current_value"],
-                labels=account_summary["account"],
-                autopct="%1.1f%%",
-                startangle=90,
-                colors=sns.color_palette("husl", len(account_summary)),
-            )
-
-            ax.set_title("Allocation by Account", fontweight="bold")
+        if dest_file.exists() and not force:
+            click.echo(f"Template already exists: {dest_file}")
         else:
-            ax.text(
-                0.5,
-                0.5,
-                "No account data available",
-                ha="center",
-                va="center",
-                transform=ax.transAxes,
+            shutil.copy2(template_file, dest_file)
+            click.echo(f"Copied template: {dest_file}")
+
+
+def _create_sample_transactions(file_path: Path, force: bool):
+    """Create a sample transactions CSV file."""
+    if file_path.exists() and not force:
+        click.echo(f"Sample transactions file already exists: {file_path}")
+        return
+
+    sample_data = """date,ticker,transaction_type,shares,price_per_share,account
+2023-01-15,AAPL,BUY,100,150.50,Schwab_401k
+2023-01-15,MSFT,BUY,50,240.25,Schwab_401k
+2023-01-15,SPY,BUY,25,380.00,Fidelity_IRA
+2023-02-15,AAPL,BUY,50,155.75,Schwab_401k
+2023-02-15,VTI,BUY,100,200.00,Fidelity_IRA
+2023-03-15,SPY,BUY,25,385.00,Personal_Brokerage
+2023-04-15,AAPL,SELL,25,165.25,Schwab_401k
+2023-05-15,GOOGL,BUY,10,105.50,Personal_Brokerage
+"""
+
+    with open(file_path, "w") as f:
+        f.write(sample_data)
+
+    click.echo(f"Created sample transactions: {file_path}")
+    click.echo("📊 Sample includes transactions across multiple accounts:")
+    click.echo("   - Schwab_401k (401k retirement account)")
+    click.echo("   - Fidelity_IRA (IRA retirement account)")
+    click.echo("   - Personal_Brokerage (taxable brokerage account)")
+
+
+@click.command()
+@click.option("--config", help="Path to configuration file")
+@click.option(
+    "--output-format",
+    default="jupyter",
+    type=click.Choice(["jupyter", "html", "pdf"]),
+    help="Output format for analysis",
+)
+@click.option("--create-charts", is_flag=True, help="Generate performance charts")
+@click.option("--benchmark", help="Override benchmark ticker (e.g., SPY, VTI)")
+def run_analysis(config: str, output_format: str, create_charts: bool, benchmark: str):
+    """Run BogleBench portfolio analysis."""
+    click.echo("🚀 Running BogleBench portfolio analysis...")
+    click.echo("📈 Analyzing your portfolio with Bogle's principles in mind...")
+
+    # This would be implemented in your main analyzer
+    from ..core.portfolio import BogleBenchAnalyzer
+
+    try:
+        analyzer = BogleBenchAnalyzer(config_path=config)
+
+        # Override benchmark if specified
+        if benchmark:
+            analyzer.config.config["settings"]["benchmark_ticker"] = benchmark
+            click.echo(f"📊 Using custom benchmark: {benchmark}")
+
+        click.echo("Loading transaction data...")
+        analyzer.load_transactions()
+
+        click.echo("Fetching market data...")
+        analyzer.fetch_market_data()
+
+        click.echo("Calculating performance metrics...")
+        results = analyzer.calculate_performance()
+
+        # Display results
+        click.echo("\n" + results.summary())
+
+        # Export results
+        output_dir = analyzer.config.get_output_path()
+        results.export_to_csv(str(output_dir))
+
+        # Create charts if requested
+        if create_charts:
+            click.echo("📊 Creating performance charts...")
+            from ..visualization.charts import BogleBenchCharts
+
+            charts = BogleBenchCharts(results)
+
+            # Create dashboard
+            chart_path = output_dir / "performance_dashboard.png"
+            charts.create_performance_dashboard(str(chart_path))
+
+            # Create account comparison if multiple accounts
+            account_summary = results.get_account_summary()
+            if len(account_summary) > 1:
+                account_chart_path = output_dir / "account_comparison.png"
+                charts.create_account_comparison(str(account_chart_path))
+
+        click.echo(f"✅ Analysis complete! Results saved to {output_dir}")
+
+    except Exception as e:
+        click.echo(f"❌ Error running analysis: {e}")
+        raise click.Abort()
+
+
+@click.command()
+@click.option("--config", help="Path to configuration file")
+@click.option("--account", help="Show holdings for specific account only")
+def show_holdings(config: str, account: str):
+    """Show current portfolio holdings."""
+    from ..core.portfolio import BogleBenchAnalyzer
+
+    try:
+        analyzer = BogleBenchAnalyzer(config_path=config)
+        analyzer.load_transactions()
+        analyzer.fetch_market_data()
+        analyzer.build_portfolio_history()
+        results = analyzer.calculate_performance()
+
+        holdings = results.get_account_holdings(account)
+
+        if holdings.empty:
+            click.echo("No holdings found.")
+            return
+
+        click.echo("\n📊 Current Holdings:")
+        click.echo("=" * 80)
+
+        if account:
+            click.echo(f"Account: {account}")
+
+        for _, holding in holdings.iterrows():
+            click.echo(
+                f"{holding['ticker']:6} | "
+                f"{holding['account']:15} | "
+                f"{holding['shares']:>8.2f} shares | "
+                f"${holding['price']:>8.2f} | "
+                f"${holding['value']:>10,.2f} | "
+                f"{holding['weight']:>6.1%}"
             )
-            ax.set_title("Allocation by Account", fontweight="bold")
 
-    def _plot_asset_allocation(self, ax):
-        """Plot allocation by asset."""
-        holdings = self.results.get_account_holdings()
+        total_value = holdings["value"].sum()
+        click.echo("=" * 80)
+        click.echo(f"Total Value: ${total_value:,.2f}")
 
-        if not holdings.empty:
-            # Aggregate by ticker across all accounts
-            asset_allocation = holdings.groupby("ticker")["value"].sum()
+    except Exception as e:
+        click.echo(f"❌ Error: {e}")
 
-            wedges, texts, autotexts = ax.pie(
-                asset_allocation.values,
-                labels=asset_allocation.index,
-                autopct="%1.1f%%",
-                startangle=90,
-                colors=sns.color_palette("husl", len(asset_allocation)),
-            )
 
-            ax.set_title("Asset Allocation", fontweight="bold")
-        else:
-            ax.text(
-                0.5,
-                0.5,
-                "No holdings data available",
-                ha="center",
-                va="center",
-                transform=ax.transAxes,
-            )
-            ax.set_title("Asset Allocation", fontweight="bold")
+@click.command()
+@click.option("--path", required=True, help="Path to CSV file to validate")
+def validate_transactions(path: str):
+    """Validate transaction CSV file format."""
+    from ..core.portfolio import BogleBenchAnalyzer
 
-    def _plot_rolling_returns(self, ax):
-        """Plot rolling 12-month returns."""
-        portfolio_returns = self.results.get_portfolio_returns()
+    try:
+        click.echo(f"🔍 Validating transaction file: {path}")
 
-        if len(portfolio_returns) >= 252:  # Need at least 1 year
-            # Calculate 12-month rolling returns
-            rolling_returns = (
-                portfolio_returns.rolling(252)
-                .apply(lambda x: (1 + x).prod() - 1, raw=False)
-                .dropna()
-            )
+        analyzer = BogleBenchAnalyzer()
+        transactions = analyzer.load_transactions(path)
 
-            ax.plot(
-                rolling_returns.index,
-                rolling_returns.values * 100,
-                color=self.colors["portfolio"],
-                linewidth=2,
-            )
-
-            ax.axhline(y=0, color="black", linestyle="-", alpha=0.3)
-            ax.set_title("Rolling 12-Month Returns", fontweight="bold")
-            ax.set_ylabel("Return (%)")
-            ax.grid(True, alpha=0.3)
-        else:
-            ax.text(
-                0.5,
-                0.5,
-                "Insufficient data for rolling returns",
-                ha="center",
-                va="center",
-                transform=ax.transAxes,
-            )
-            ax.set_title("Rolling 12-Month Returns", fontweight="bold")
-
-    def _plot_risk_return(self, ax):
-        """Plot risk vs return scatter."""
-        portfolio_metrics = self.results.portfolio_metrics
-        benchmark_metrics = self.results.benchmark_metrics
-
-        # Portfolio point
-        if portfolio_metrics:
-            ax.scatter(
-                portfolio_metrics["volatility"] * 100,
-                portfolio_metrics["annualized_return"] * 100,
-                s=200,
-                color=self.colors["portfolio"],
-                label="Portfolio",
-                alpha=0.8,
-            )
-
-        # Benchmark point
-        if benchmark_metrics:
-            ax.scatter(
-                benchmark_metrics["volatility"] * 100,
-                benchmark_metrics["annualized_return"] * 100,
-                s=200,
-                color=self.colors["benchmark"],
-                label="Benchmark",
-                alpha=0.8,
-            )
-
-        ax.set_xlabel("Risk (Volatility %)")
-        ax.set_ylabel("Return (%)")
-        ax.set_title("Risk vs Return", fontweight="bold")
-        ax.grid(True, alpha=0.3)
-        ax.legend()
-
-    def create_account_comparison(self, save_path: Optional[str] = None) -> plt.Figure:
-        """Create detailed account comparison charts."""
-        account_summary = self.results.get_account_summary()
-
-        if account_summary.empty:
-            print("No account data available for comparison")
-            return None
-
-        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
-        fig.suptitle(
-            "🏦 Account Performance Comparison", fontsize=14, fontweight="bold"
+        click.echo("✅ Transaction file is valid!")
+        click.echo(f"   📊 {len(transactions)} transactions")
+        click.echo(f"   🏦 {transactions['account'].nunique()} accounts")
+        click.echo(f"   📈 {transactions['ticker'].nunique()} assets")
+        click.echo(
+            f"   📅 {transactions['date'].min().date()} to {transactions['date'].max().date()}"
         )
 
-        # 1. Account Values
-        axes[0, 0].bar(
-            account_summary["account"],
-            account_summary["current_value"],
-            color=sns.color_palette("husl", len(account_summary)),
-        )
-        axes[0, 0].set_title("Current Account Values")
-        axes[0, 0].set_ylabel("Value ($)")
-        axes[0, 0].tick_params(axis="x", rotation=45)
+    except Exception as e:
+        click.echo(f"❌ Validation failed: {e}")
+        raise click.Abort()
 
-        # 2. Account Returns
-        axes[0, 1].bar(
-            account_summary["account"],
-            account_summary["total_return"] * 100,
-            color=sns.color_palette("husl", len(account_summary)),
-        )
-        axes[0, 1].set_title("Total Returns by Account")
-        axes[0, 1].set_ylabel("Return (%)")
-        axes[0, 1].tick_params(axis="x", rotation=45)
 
-        # 3. Portfolio Weight
-        axes[1, 0].pie(
-            account_summary["current_value"],
-            labels=account_summary["account"],
-            autopct="%1.1f%%",
-            startangle=90,
-        )
-        axes[1, 0].set_title("Portfolio Weight by Account")
-
-        # 4. Performance Metrics Table
-        axes[1, 1].axis("tight")
-        axes[1, 1].axis("off")
-
-        # Create performance table
-        table_data = account_summary[
-            ["account", "current_value", "total_return", "annualized_return"]
-        ].copy()
-        table_data["current_value"] = table_data["current_value"].apply(
-            lambda x: f"${x:,.0f}"
-        )
-        table_data["total_return"] = table_data["total_return"].apply(
-            lambda x: f"{x:.2%}"
-        )
-        table_data["annualized_return"] = table_data["annualized_return"].apply(
-            lambda x: f"{x:.2%}"
-        )
-
-        table = axes[1, 1].table(
-            cellText=table_data.values,
-            colLabels=["Account", "Value", "Total Return", "Annual Return"],
-            cellLoc="center",
-            loc="center",
-        )
-        table.auto_set_font_size(False)
-        table.set_fontsize(9)
-        table.scale(1.2, 1.5)
-        axes[1, 1].set_title("Performance Summary")
-
-        plt.tight_layout()
-
-        if save_path:
-            plt.savefig(save_path, dpi=300, bbox_inches="tight")
-            print(f"📊 Account comparison saved to: {save_path}")
-
-        return fig
+if __name__ == "__main__":
+    init_workspace()
