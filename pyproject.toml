@@ -6,13 +6,9 @@ build-backend = "poetry.core.masonry.api"
 name = "boglebench"
 version = "0.1.0"
 description = "Portfolio performance analysis and benchmarking in the spirit of John Bogle"
-authors = [
-    { name = "Tom Marshall", email = "tom.q.marshall@gmail.com>" }
-    ]
+authors = [{ name = "Tom Marshall", email = "tom.q.marshall@gmail.com>" }]
 readme = "README.md"
 license = { text = "MIT" }
-homepage = "https://github.com/qwertytam/boglebench"
-repository = "https://github.com/qwertytam/boglebench"
 keywords = [
     "portfolio",
     "finance",
@@ -42,7 +38,6 @@ dependencies = [
     "click>=8.1,<9.0",
     "empyrical-reloaded>=0.5.10,<1.0", # Prefer this over empyrical:
     "alpha-vantage>=3.0.0",
-    "black (>=25.1.0,<26.0.0)",
 ]
 
 requires-python = ">= 3.13"
@@ -50,27 +45,27 @@ requires-python = ">= 3.13"
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0,<9.0",
-    "pytest-cov>=5.0,<6.0",
+    "pytest-cov>=5.0",
     "black>=25.1",
-    "ruff>=0.5,<1.0",                                         # faster, modern replacement for flake8 (optional)
+    "ruff>=0.5,<1.0",   # faster, modern replacement for flake8 (optional)
     # "flake8>=7.0,<8.0"    # if you prefer flake8, use a recent version
     "build>=1.2,<2.0",
     # "twine>=5.0,<6.0"       # only if you still need it; Poetry can publish
     "pre-commit>=3.6,<4.0",
     "types-pyyaml>=6.0.12.20250822",
     "pandas-stubs>=2.3.0.250703",
+    "black (>=25.1.0,<26.0.0)",
+    "pytest (>=8.4.1,<9.0.0)",
 ]
 
-jupyter = [
-    "jupyter>=1.0",
-    "plotly>=5.20",
-    "ipywidgets>=8.0",
-]
+jupyter = ["jupyter>=1.0", "plotly>=5.20", "ipywidgets>=8.0"]
 
 [project.urls]
 "Homepage" = "https://github.com/qwertytam/boglebench"
 "Bug Tracker" = "https://github.com/qwertytam/boglebench/issues"
 "Documentation" = "https://github.com/qwertytam/boglebench#readme"
+"Repository" = "https://github.com/qwertytam/boglebench"
+
 
 [project.scripts]
 boglebench-init = "boglebench.cli.commands:init_workspace"
@@ -91,3 +86,6 @@ addopts = "-v --cov=boglebench"
 [tool.isort]
 profile = "black"
 multi_line_output = 3
+
+[tool.poetry.group.dev.dependencies]
+pytest-cov = "^6.2.1"
