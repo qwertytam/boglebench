@@ -38,6 +38,10 @@ class ConfigManager:
                 "information_ratio",
             ],
         },
+        "api": {
+            "alpha_vantage_key": None,  # User must provide
+            "data_provider": "alpha_vantage",
+        },
     }
 
     def __init__(self, config_path: Optional[str] = None):

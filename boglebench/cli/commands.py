@@ -61,7 +61,9 @@ def init_workspace(path: str, force: bool):
     click.echo(f"\n✅ BogleBench workspace initialized successfully!")
     click.echo(f"\nNext steps:")
     click.echo(f"1. Edit your configuration: {config_path}")
-    click.echo(f"2. Add your transaction data to: {workspace_path}/transactions/")
+    click.echo(
+        f"2. Add your transaction data to: {workspace_path}/transactions/"
+    )
     click.echo(f"3. Run analysis: boglebench-analyze --config {config_path}")
     click.echo(
         f"\n💡 Remember Bogle's wisdom: 'Stay the course' and focus on long-term results!"
@@ -121,9 +123,13 @@ def _create_sample_transactions(file_path: Path, force: bool):
     type=click.Choice(["jupyter", "html", "pdf"]),
     help="Output format for analysis",
 )
-@click.option("--create-charts", is_flag=True, help="Generate performance charts")
+@click.option(
+    "--create-charts", is_flag=True, help="Generate performance charts"
+)
 @click.option("--benchmark", help="Override benchmark ticker (e.g., SPY, VTI)")
-def run_analysis(config: str, output_format: str, create_charts: bool, benchmark: str):
+def run_analysis(
+    config: str, output_format: str, create_charts: bool, benchmark: str
+):
     """Run BogleBench portfolio analysis."""
     click.echo("🚀 Running BogleBench portfolio analysis...")
     click.echo("📈 Analyzing your portfolio with Bogle's principles in mind...")

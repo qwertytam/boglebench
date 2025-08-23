@@ -116,7 +116,7 @@ BogleBench embodies John Bogle's investment philosophy:
 - Python 3.13+
 - pandas
 - numpy
-- yfinance
+- alpha-vantage
 - matplotlib
 - seaborn
 - scipy

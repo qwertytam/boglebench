@@ -1,0 +1,3 @@
+api:
+  alpha_vantage_key: YOUR_API_KEY_HERE # Get free key from alphavantage.co
+  data_provider: alpha_vantage

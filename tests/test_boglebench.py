@@ -22,7 +22,12 @@ class TestBogleBenchAnalyzer:
         """Create sample transaction data for testing."""
         return pd.DataFrame(
             {
-                "date": ["2023-01-15", "2023-02-15", "2023-03-15", "2023-04-15"],
+                "date": [
+                    "2023-01-15",
+                    "2023-02-15",
+                    "2023-03-15",
+                    "2023-04-15",
+                ],
                 "ticker": ["AAPL", "MSFT", "AAPL", "SPY"],
                 "transaction_type": ["BUY", "BUY", "BUY", "BUY"],
                 "shares": [100, 50, 50, 25],
@@ -109,7 +114,11 @@ class TestBogleBenchAnalyzer:
         # Test data with valid ISO8601 dates and other cleaning needs
         clean_data = pd.DataFrame(
             {
-                "date": ["2023-01-15", "2023-01-16", "2023-01-17"],  # All ISO8601
+                "date": [
+                    "2023-01-15",
+                    "2023-01-16",
+                    "2023-01-17",
+                ],  # All ISO8601
                 "ticker": [" aapl ", "MSFT", "spy "],
                 "transaction_type": ["buy", "SELL", "BUY"],
                 "shares": [100, 50, 25],
@@ -136,7 +145,11 @@ class TestBogleBenchAnalyzer:
         # Test data with invalid date format
         invalid_date_data = pd.DataFrame(
             {
-                "date": ["2023-01-15", "01/16/2023", "2023-01-17"],  # Mixed formats
+                "date": [
+                    "2023-01-15",
+                    "01/16/2023",
+                    "2023-01-17",
+                ],  # Mixed formats
                 "ticker": ["AAPL", "MSFT", "SPY"],
                 "transaction_type": ["BUY", "BUY", "BUY"],
                 "shares": [100, 50, 25],
