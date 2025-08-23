@@ -95,13 +95,13 @@ def _create_sample_transactions(file_path: Path, force: bool):
         return
 
     sample_data = """date,ticker,transaction_type,shares,price_per_share,account
-2023-01-15,AAPL,BUY,100,150.50,Schwab_401k
-2023-01-15,MSFT,BUY,50,240.25,Schwab_401k
-2023-01-15,SPY,BUY,25,380.00,Fidelity_IRA
+2023-01-17,AAPL,BUY,100,150.50,Schwab_401k
+2023-01-17,MSFT,BUY,50,240.25,Schwab_401k
+2023-01-17,SPY,BUY,25,380.00,Fidelity_IRA
 2023-02-15,AAPL,BUY,50,155.75,Schwab_401k
 2023-02-15,VTI,BUY,100,200.00,Fidelity_IRA
 2023-03-15,SPY,BUY,25,385.00,Personal_Brokerage
-2023-04-15,AAPL,SELL,25,165.25,Schwab_401k
+2023-04-13,AAPL,SELL,25,165.25,Schwab_401k
 2023-05-15,GOOGL,BUY,10,105.50,Personal_Brokerage
 """
 
