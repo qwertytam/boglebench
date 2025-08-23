@@ -38,6 +38,8 @@ dependencies = [
     "click>=8.1,<9.0",
     "empyrical-reloaded>=0.5.10,<1.0", # Prefer this over empyrical:
     "alpha-vantage>=3.0.0",
+    "pyarrow (>=21.0.0,<22.0.0)",
+    "fastparquet (>=2024.11.0,<2025.0.0)",
 ]
 
 requires-python = ">= 3.13"
