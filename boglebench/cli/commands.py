@@ -169,7 +169,7 @@ def run_analysis(
             charts = BogleBenchCharts(results)
 
             # Create dashboard
-            chart_path = output_dir / "performance_dashboard.png"
+            chart_path = Path(output_dir) / "performance_dashboard.png"
             charts.create_performance_dashboard(str(chart_path))
 
             # Create account comparison if multiple accounts
