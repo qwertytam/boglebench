@@ -117,7 +117,6 @@ class BogleBenchAnalyzer:
 
     def _is_iso8601_date(self, date_str: str) -> bool:
         """Check if date string is in ISO8601 format (YYYY-MM-DD)."""
-        import re
 
         # Pattern for YYYY-MM-DD format
         iso_pattern = r"^\d{4}-\d{2}-\d{2}"
@@ -399,10 +398,17 @@ class BogleBenchAnalyzer:
             account: {ticker: 0.0 for ticker in tickers} for account in accounts
         }
 
+        # Get full date range for analysis
+        start_date = self.transactions["date"].min()
+        end_date = max([df["date"].max() for df in self.market_data.values()])
+
+        # Create business day range (stock market days)
+        date_range = pd.bdate_range(start=start_date, end=end_date)
+
         for date in date_range:
             # Process any transactions on this date
             day_transactions = self.transactions[
-                self.transactions["date"].date() == date.date()
+                self.transactions["date"].dt.date == date.date()
             ]
 
             for _, transaction in day_transactions.iterrows():
@@ -889,6 +895,30 @@ class PerformanceResults:
                     )
 
         """Export results to CSV files."""
+        output_dir = self.config.get_output_path()
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        # Export portfolio history
+        history_file = output_path / "portfolio_history.csv"
+        self.portfolio_history.to_csv(history_file, index=False)
+
+        # Export summary metrics
+        metrics_data = []
+        if self.portfolio_metrics:
+            metrics_data.append({**self.portfolio_metrics, "type": "Portfolio"})
+        if self.benchmark_metrics:
+            metrics_data.append({**self.benchmark_metrics, "type": "Benchmark"})
+
+        if metrics_data:
+            metrics_file = output_path / "performance_metrics.csv"
+            pd.DataFrame(metrics_data).to_csv(metrics_file, index=False)
+
+        print(f"📁 Results exported to: {output_path}")
+        return pd.DataFrame(holdings_data)
+
+    def export_to_csv(self, output_dir: Optional[str] = None) -> str:
+        """Export results to CSV files."""
         if output_dir is None:
             output_dir = self.config.get_output_path()
 
@@ -910,5 +940,5 @@ class PerformanceResults:
             metrics_file = output_path / "performance_metrics.csv"
             pd.DataFrame(metrics_data).to_csv(metrics_file, index=False)
 
-        print(f"📁 Results exported to: {output_path}")
-        return pd.DataFrame(holdings_data)
+        print(f"Results exported to: {output_path}")
+        return str(output_path)
