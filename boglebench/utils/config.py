@@ -12,38 +12,6 @@ import yaml
 class ConfigManager:
     """Manages configuration for BogleBench portfolio analysis."""
 
-    DEFAULT_CONFIG = {
-        "data": {
-            "base_path": "~/boglebench_data",
-            "transactions_file": "transactions/transactions.csv",
-            "market_data_cache": "market_data/",
-            "output_path": "output/",
-        },
-        "settings": {
-            "benchmark_ticker": "SPY",
-            "risk_free_rate": 0.02,
-            "default_currency": "USD",
-            "cache_market_data": True,
-        },
-        "analysis": {
-            "default_start_date": None,  # Will use first transaction date
-            "default_end_date": None,  # Will use today
-            "rebalance_frequency": "monthly",
-            "performance_metrics": [
-                "total_return",
-                "annualized_return",
-                "volatility",
-                "sharpe_ratio",
-                "max_drawdown",
-                "information_ratio",
-            ],
-        },
-        "api": {
-            "alpha_vantage_key": None,  # User must provide
-            "data_provider": "alpha_vantage",
-        },
-    }
-
     def __init__(self, config_path: Optional[str] = None):
         """
         Initialize configuration manager.
@@ -78,15 +46,38 @@ class ConfigManager:
         # Return first default if none exist
         return default_locations[0]
 
+    def _load_default_config(self) -> Dict[str, Any]:
+        """Load default configuration from template file."""
+        template_path = self._get_template_path()
+
+        if template_path.exists():
+            try:
+                with open(template_path, "r") as f:
+                    return yaml.safe_load(f)
+            except Exception as e:
+                print(f"Warning: Could not load config template: {e}")
+
+        # Minimal fallback if template missing
+        return {
+            "data": {"base_path": "~/boglebench_data"},
+            "settings": {"benchmark_ticker": "SPY"},
+            "analysis": {"performance_metrics": ["total_return"]},
+        }
+
+    def _get_template_path(self) -> Path:
+        """Get path to config template file."""
+        package_dir = Path(__file__).parent.parent
+        return package_dir / "templates" / "config_template.yaml"
+
     def _load_config(self) -> Dict[str, Any]:
-        """Load configuration from file or use defaults."""
+        """Load configuration from file or use template defaults."""
         if self.config_path.exists():
             try:
                 with open(self.config_path, "r") as f:
                     user_config = yaml.safe_load(f)
 
-                # Merge with defaults
-                config = self.DEFAULT_CONFIG.copy()
+                # Merge with template defaults
+                config = self._load_default_config()
                 self._deep_merge(config, user_config)
                 return config
 
@@ -94,9 +85,9 @@ class ConfigManager:
                 print(
                     f"Warning: Error loading config from {self.config_path}: {e}"
                 )
-                print("Using default configuration.")
+                print("Using template configuration.")
 
-        return self.DEFAULT_CONFIG.copy()
+        return self._load_default_config()
 
     def _deep_merge(self, base: Dict, update: Dict) -> None:
         """Deep merge update dict into base dict."""
@@ -149,30 +140,27 @@ class ConfigManager:
         return self.get_data_path(self.get("data.output_path"))
 
     def create_config_file(self, config_path: Optional[str] = None) -> Path:
-        """
-        Create a default configuration file.
-
-        Args:
-            config_path: Where to create the config file
-
-        Returns:
-            Path to created config file
-        """
+        """Copy template configuration file to user's location."""
         if config_path:
             path = Path(config_path).expanduser()
         else:
             path = self.config_path
 
-        # Create directory if needed
+        template_path = self._get_template_path()
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Write default config
-        with open(path, "w") as f:
-            yaml.dump(
-                self.DEFAULT_CONFIG, f, default_flow_style=False, indent=2
-            )
+        if template_path.exists():
+            import shutil
 
-        print(f"Created configuration file: {path}")
+            shutil.copy2(template_path, path)
+            print(f"Created configuration file: {path}")
+        else:
+            # Fallback: create from loaded defaults
+            config = self._load_default_config()
+            with open(path, "w") as f:
+                yaml.dump(config, f, default_flow_style=False, indent=2)
+            print(f"Created configuration file: {path}")
+
         return path
 
     def validate_paths(self) -> bool:

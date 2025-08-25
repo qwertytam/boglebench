@@ -1,3 +1,102 @@
+# BogleBench Configuration Template
+# Copy this file to your data directory and customize as needed
+
+# Data file locations and paths
+data:
+  base_path: "~/boglebench_data"
+  transactions_file: "transactions/transactions.csv"
+  market_data_cache: "market_data/"
+  output_path: "output/"
+
+# API configuration for market data providers
 api:
-  alpha_vantage_key: YOUR_API_KEY_HERE # Get free key from alphavantage.co
-  data_provider: alpha_vantage
+  # Alpha Vantage API key - get free key from https://www.alphavantage.co/support/#api-key
+  alpha_vantage_key: null
+  data_provider: "alpha_vantage" # Options: alpha_vantage, yahoo_finance
+
+# Analysis settings
+settings:
+  benchmark_ticker: "SPY"
+  risk_free_rate: 0.02 # 2% annual risk-free rate
+  default_currency: "USD"
+  cache_market_data: true
+
+# Portfolio analysis configuration
+analysis:
+  default_start_date: null # If null, uses first transaction date
+  default_end_date: null # If null, uses today
+  rebalance_frequency: "monthly" # Options: daily, weekly, monthly, quarterly
+
+  # Performance metrics to calculate
+  performance_metrics:
+    - "total_return"
+    - "annualized_return"
+    - "volatility"
+    - "sharpe_ratio"
+    - "max_drawdown"
+    - "information_ratio"
+    - "beta"
+    - "jensens_alpha"
+    - "win_rate"
+    - "tracking_error"
+    - "correlation"
+
+  # Risk analysis settings
+  risk_analysis:
+    confidence_level: 0.95 # For VaR calculations
+    rolling_window: 252 # Trading days for rolling metrics (1 year)
+
+# Logging configuration
+logging:
+  level: "INFO" # Options: DEBUG, INFO, WARNING, ERROR
+  log_to_file: true
+  log_file: "logs/boglebench.log"
+
+# Chart and visualization settings
+visualization:
+  default_style: "seaborn"
+  figure_size: [12, 8]
+  dpi: 300
+  save_format: "png" # Options: png, pdf, svg
+
+  # Chart colors (Bogle-inspired simple palette)
+  colors:
+    portfolio: "#1f77b4" # Blue
+    benchmark: "#ff7f0e" # Orange
+    positive: "#2ca02c" # Green
+    negative: "#d62728" # Red
+    neutral: "#7f7f7f" # Gray
+
+# Advanced settings (for power users)
+advanced:
+  # Market data settings
+  market_data:
+    max_cache_age_days: 7
+    retry_attempts: 3
+    request_delay_seconds: 0.5
+
+  # Portfolio calculation settings
+  portfolio:
+    handle_missing_prices: "forward_fill" # Options: forward_fill, interpolate, skip
+    price_adjustment: "split_adjusted" # Options: split_adjusted, total_return
+
+  # Performance calculation settings
+  performance:
+    annualization_factor: 252 # Trading days per year
+    compound_returns: true
+    handle_negative_values: "log_returns" # Options: log_returns, simple_returns
+
+# Transaction validation rules
+validation:
+  # Date format requirements
+  date_format: "ISO8601" # YYYY-MM-DD format required
+
+  # Transaction validation
+  allow_future_dates: false
+  allow_zero_prices: false
+  allow_fractional_shares: true
+
+  # Data quality checks
+  warn_on_weekends: true
+  warn_on_holidays: true
+  warn_on_missing_data: true
