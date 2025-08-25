@@ -8,6 +8,7 @@ from pathlib import Path
 import click
 
 from ..utils.config import ConfigManager
+from ..utils.logging_config import get_logger, setup_logging
 
 
 @click.command()
@@ -18,10 +19,13 @@ from ..utils.config import ConfigManager
 )
 @click.option("--force", is_flag=True, help="Overwrite existing files")
 def init_workspace(path: str, force: bool):
+    setup_logging()
+    logger = get_logger("cli.init")
+
     """Initialize a new BogleBench portfolio analysis workspace."""
     workspace_path = Path(path).expanduser()
 
-    click.echo(f"Initializing BogleBench workspace at: {workspace_path}")
+    logger.info(f"Initializing BogleBench workspace at: {path}")
     click.echo(
         "📊 In the spirit of John Bogle: Simple, low-cost, long-term investing analysis"
     )

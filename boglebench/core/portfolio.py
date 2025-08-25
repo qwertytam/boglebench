@@ -24,6 +24,7 @@ import pandas_market_calendars as mcal
 from alpha_vantage.timeseries import TimeSeries
 
 from ..utils.config import ConfigManager
+from ..utils.logging_config import get_logger
 
 
 class BogleBenchAnalyzer:
@@ -45,6 +46,7 @@ class BogleBenchAnalyzer:
                         If None, uses default locations.
         """
         self.config = ConfigManager(config_path)
+        self.logger = get_logger("core.portfolio")
         self.transactions = None
         self.market_data = {}
         self.portfolio_history = None
@@ -53,6 +55,8 @@ class BogleBenchAnalyzer:
 
         # Suppress warnings for cleaner output
         warnings.filterwarnings("ignore", category=FutureWarning)
+
+        self.logger.info("BogleBench analyzer initialized")
 
     def load_transactions(
         self, file_path: Optional[str] = None
@@ -1004,4 +1008,5 @@ class PerformanceResults:
             pd.DataFrame(metrics_data).to_csv(metrics_file, index=False)
 
         print(f"Results exported to: {output_path}")
+        return str(output_path)
         return str(output_path)
