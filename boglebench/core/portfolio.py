@@ -20,6 +20,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
+import pandas_market_calendars as mcal
 from alpha_vantage.timeseries import TimeSeries
 
 from ..utils.config import ConfigManager
@@ -260,6 +261,7 @@ class BogleBenchAnalyzer:
                     ticker, start_date, end_date
                 )
                 if cached_data is not None and not force_refresh:
+                    print("Using cached market data")
                     market_data[ticker] = cached_data
                     continue
 
@@ -373,6 +375,58 @@ class BogleBenchAnalyzer:
         except Exception as e:
             print(f"⚠️  Warning: Could not cache data for {ticker}: {e}")
 
+    def _get_price_for_date(
+        self, ticker: str, target_date: pd.Timestamp
+    ) -> float:
+        """Get price for ticker on specific date with forward-fill logic."""
+        if ticker not in self.market_data:
+            raise ValueError(f"No market data available for {ticker}")
+
+        ticker_data = self.market_data[ticker]
+
+        # Try exact date match first
+        exact_match = ticker_data[
+            ticker_data["date"].dt.date == target_date.date()
+        ]
+        if not exact_match.empty:
+            return exact_match["Close"].iloc[0]
+
+        # Forward fill: use most recent price before target date
+        available_data = ticker_data[
+            ticker_data["date"].dt.date <= target_date.date()
+        ]
+        if not available_data.empty:
+            days_back = (
+                target_date.date() - available_data["date"].iloc[-1].date()
+            ).days
+            if days_back <= 7:  # Only forward-fill up to 7 days
+                return available_data["Close"].iloc[-1]
+            else:
+                print(
+                    f"Warning: No recent price data for {ticker} near {target_date.date()}"
+                )
+                return available_data["Close"].iloc[
+                    -1
+                ]  # Use it anyway but warn
+
+        # Backward fill: use next available price after target date
+        future_data = ticker_data[
+            ticker_data["date"].dt.date > target_date.date()
+        ]
+        if not future_data.empty:
+            days_forward = (
+                future_data["date"].iloc[0].date() - target_date.date()
+            ).days
+            print(
+                f"Warning: Using future price for {ticker} on {target_date.date()} ({days_forward} days forward)"
+            )
+            return future_data["Close"].iloc[0]
+
+        # If we get here, no data exists at all
+        raise ValueError(
+            f"No price data available for {ticker} around {target_date.date()}"
+        )
+
     def build_portfolio_history(self) -> pd.DataFrame:
         """
         Build portfolio holdings and values over time.
@@ -402,8 +456,32 @@ class BogleBenchAnalyzer:
         start_date = self.transactions["date"].min()
         end_date = max([df["date"].max() for df in self.market_data.values()])
 
-        # Create business day range (stock market days)
-        date_range = pd.bdate_range(start=start_date, end=end_date)
+        # Get actual NYSE trading days (excludes weekends AND holidays)
+        nyse = mcal.get_calendar("NYSE")
+        trading_days = nyse.schedule(start_date=start_date, end_date=end_date)
+        date_range = trading_days.index.date  # Convert to date objects
+
+        # Check if all transaction dates are trading days
+        transaction_dates = set(self.transactions["date"].dt.date)
+        trading_dates = set(date_range)
+
+        non_trading_dates = transaction_dates - trading_dates
+        if non_trading_dates:
+            non_trading_sorted = sorted(non_trading_dates)
+            print(
+                f"⚠️  Warning: {len(non_trading_dates)} transactions on non-trading days:"
+            )
+            for date in non_trading_sorted[:5]:
+                day_name = pd.to_datetime(date).strftime("%A")
+                # Check if it's a weekend or holiday
+                if day_name in ["Saturday", "Sunday"]:
+                    reason = "weekend"
+                else:
+                    reason = "market holiday"
+                print(f"   {date} ({day_name}, {reason})")
+            if len(non_trading_sorted) > 5:
+                print(f"   ... and {len(non_trading_sorted) - 5} more")
+            print("   These transactions will use forward-filled prices.")
 
         for date in date_range:
             # Process any transactions on this date
@@ -437,26 +515,11 @@ class BogleBenchAnalyzer:
                 for ticker in tickers:
                     shares = current_holdings[account][ticker]
 
-                    # Get price for this date
-                    if ticker in self.market_data:
-                        ticker_data = self.market_data[ticker]
-                        price_data = ticker_data[
-                            ticker_data["date"].dt.date == date.date()
-                        ]
-
-                        if not price_data.empty:
-                            price = price_data["Close"].iloc[0]
-                        else:
-                            # Use forward fill if no data for this specific date
-                            available_data = ticker_data[
-                                ticker_data["date"].dt.date <= date.date()
-                            ]
-                            if not available_data.empty:
-                                price = available_data["Close"].iloc[-1]
-                            else:
-                                price = 0.0
-                    else:
-                        price = 0.0
+                    try:
+                        price = self._get_price_for_date(ticker, date)
+                    except ValueError as e:
+                        print(f"Skipping {ticker} on {date.date()}: {e}")
+                        price = 0.0  # Only set to 0 if truly no data exists
 
                     position_value = shares * price
                     account_value += position_value
