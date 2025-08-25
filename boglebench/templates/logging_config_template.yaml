@@ -1,0 +1,63 @@
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  standard:
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+
+  detailed:
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+
+  simple:
+    format: "%(levelname)s - %(message)s"
+
+  analysis:
+    format: "%(message)s"
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: analysis
+    stream: ext://sys.stdout
+
+  file:
+    class: logging.FileHandler
+    level: DEBUG
+    formatter: detailed
+    filename: logs/boglebench.log
+    mode: a
+
+  error_file:
+    class: logging.FileHandler
+    level: ERROR
+    formatter: detailed
+    filename: logs/boglebench_errors.log
+    mode: a
+
+loggers:
+  boglebench.core:
+    level: DEBUG
+    handlers: [console, file]
+    propagate: false
+
+  boglebench.cli:
+    level: INFO
+    handlers: [console, file]
+    propagate: false
+
+  boglebench.utils:
+    level: WARNING
+    handlers: [console, file]
+    propagate: false
+
+  boglebench.visualization:
+    level: INFO
+    handlers: [console, file]
+    propagate: false
+
+root:
+  level: WARNING
+  handlers: [console, error_file]
