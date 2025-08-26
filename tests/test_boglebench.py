@@ -177,16 +177,23 @@ class TestBogleBenchAnalyzer:
         csv_file = test_data_dir / "default_simple_transactions_pytest.csv"
         result = analyzer.load_transactions(str(csv_file))
 
-        assert len(result) == 5
+        assert len(result) == 8
         assert analyzer.transactions is not None
         assert "total_value" in result.columns
         assert "account" in result.columns
+        assert "group1" in result.columns
+        assert "group2" in result.columns
+        assert "group3" in result.columns
+        assert "notes" in result.columns
         assert result["ticker"].tolist() == [
             "AAPL",
             "MSFT",
             "SPY",
+            "AAPL",
+            "VTI",
             "SPY",
-            "SPY",
+            "AAPL",
+            "GOOGL",
         ]
 
 
