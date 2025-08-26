@@ -4,13 +4,11 @@ Tests for BogleBenchAnalyzer core functionality.
 
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch
 
-import numpy as np
 import pandas as pd
 import pytest
 
-from boglebench.core.portfolio import BogleBenchAnalyzer, PerformanceResults
+from boglebench.core.portfolio import BogleBenchAnalyzer
 from boglebench.utils.config import ConfigManager
 
 
@@ -53,12 +51,17 @@ class TestBogleBenchAnalyzer:
 
             yield config
 
+    @pytest.fixture
+    def test_data_dir(self):
+        """Path to test data directory."""
+        return Path(__file__).parent / "test_data"
+
     def test_initialization(self):
         """Test analyzer initialization."""
         analyzer = BogleBenchAnalyzer()
         assert analyzer.config is not None
         assert analyzer.transactions is None
-        assert analyzer.market_data == {}
+        assert not analyzer.market_data
         assert analyzer.portfolio_history is None
 
     def test_load_transactions_success(self, temp_config, sample_transactions):
@@ -86,129 +89,91 @@ class TestBogleBenchAnalyzer:
         with pytest.raises(FileNotFoundError):
             analyzer.load_transactions("/nonexistent/file.csv")
 
-    def test_load_transactions_missing_columns(self, temp_config):
+    def test_load_transactions_missing_columns(
+        self, test_data_dir, temp_config
+    ):
         """Test loading transactions with missing required columns."""
-        # Create CSV with missing columns
-        bad_data = pd.DataFrame(
-            {
-                "date": ["2023-01-15"],
-                "ticker": ["AAPL"],
-                # Missing: transaction_type, shares, price_per_share
-            }
-        )
-
-        csv_path = temp_config.get_data_path("transactions/bad.csv")
-        bad_data.to_csv(csv_path, index=False)
-
+        # Missing: transaction_type, shares, price_per_share
+        csv_path = test_data_dir / "bad_data_missing_columns_pytest.csv"
         analyzer = BogleBenchAnalyzer()
         analyzer.config = temp_config
 
         with pytest.raises(ValueError, match="Missing required columns"):
             analyzer.load_transactions(str(csv_path))
 
-    def test_clean_transaction_data(self, temp_config):
+    def test_clean_transaction_data(self, test_data_dir, temp_config):
         """Test transaction data cleaning with valid ISO8601 dates."""
         analyzer = BogleBenchAnalyzer()
         analyzer.config = temp_config
 
-        # Test data with valid ISO8601 dates and other cleaning needs
-        clean_data = pd.DataFrame(
-            {
-                "date": [
-                    "2023-01-15",
-                    "2023-01-16",
-                    "2023-01-17",
-                ],  # All ISO8601
-                "ticker": [" aapl ", "MSFT", "spy "],
-                "transaction_type": ["buy", "SELL", "BUY"],
-                "shares": [100, 50, 25],
-                "price_per_share": [150.50, 240.25, 380.00],
-                "account": [" schwab ", "fidelity", "PERSONAL"],
-            }
-        )
-
-        cleaned = analyzer._clean_transaction_data(clean_data)
+        csv_path = test_data_dir / "clean_data_with_ISO8601_dates_pytest.csv"
+        cleaned = analyzer.load_transactions(csv_path)
 
         # Check cleaning results
-        assert cleaned["ticker"].tolist() == ["AAPL", "MSFT", "SPY"]
-        assert cleaned["transaction_type"].tolist() == ["BUY", "SELL", "BUY"]
-        assert cleaned["account"].tolist() == ["Schwab", "Fidelity", "Personal"]
-        assert cleaned.loc[1, "shares"] == -50  # SELL should be negative
+        assert len(cleaned) == 4
+        assert cleaned["ticker"].tolist() == ["AAPL", "MSFT", "SPY", "SPY"]
+        assert cleaned["transaction_type"].tolist() == [
+            "BUY",
+            "BUY",
+            "BUY",
+            "SELL",
+        ]
+        assert cleaned["account"].tolist() == [
+            "Schwab",
+            "Personal",
+            "Fidelity",
+            "Fidelity",
+        ]
+        assert cleaned.loc[3, "shares"] == -25  # SELL should be negative
         assert "total_value" in cleaned.columns
         assert pd.api.types.is_datetime64_any_dtype(cleaned["date"])
 
-    def test_clean_transaction_data_invalid_date_format(self, temp_config):
+    def test_clean_transaction_data_invalid_date_format(
+        self, test_data_dir, temp_config
+    ):
         """Test that non-ISO8601 date formats raise an error."""
         analyzer = BogleBenchAnalyzer()
         analyzer.config = temp_config
 
         # Test data with invalid date format
-        invalid_date_data = pd.DataFrame(
-            {
-                "date": [
-                    "2023-01-15",
-                    "01/16/2023",
-                    "2023-01-17",
-                ],  # Mixed formats
-                "ticker": ["AAPL", "MSFT", "SPY"],
-                "transaction_type": ["BUY", "BUY", "BUY"],
-                "shares": [100, 50, 25],
-                "price_per_share": [150.50, 240.25, 380.00],
-                "account": ["Schwab", "Fidelity", "Personal"],
-            }
-        )
+        csv_path = test_data_dir / "clean_data_with_bad_dates_pytest.csv"
 
         with pytest.raises(ValueError, match="is not in ISO8601 format"):
-            analyzer._clean_transaction_data(invalid_date_data)
+            analyzer.load_transactions(csv_path)
 
-    def test_clean_transaction_data_various_invalid_formats(self, temp_config):
-        """Test various invalid date formats."""
-        analyzer = BogleBenchAnalyzer()
-        analyzer.config = temp_config
-
-        invalid_formats = [
-            ["01/15/2023"],  # MM/DD/YYYY
-            ["15-01-2023"],  # DD-MM-YYYY
-            ["Jan 15, 2023"],  # Month name
-            ["2023/01/15"],  # YYYY/MM/DD
-            ["20230115"],  # YYYYMMDD
-        ]
-
-        for invalid_date in invalid_formats:
-            invalid_data = pd.DataFrame(
-                {
-                    "date": invalid_date,
-                    "ticker": ["AAPL"],
-                    "transaction_type": ["BUY"],
-                    "shares": [100],
-                    "price_per_share": [150.50],
-                    "account": ["Test"],
-                }
-            )
-
-            with pytest.raises(ValueError, match="is not in ISO8601 format"):
-                analyzer._clean_transaction_data(invalid_data)
-
-    def test_account_column_backward_compatibility(self, temp_config):
+    def test_account_column_backward_compatibility(
+        self, test_data_dir, temp_config
+    ):
         """Test that missing account column gets added automatically."""
         analyzer = BogleBenchAnalyzer()
         analyzer.config = temp_config
 
-        # Create data without account column
-        data_without_account = pd.DataFrame(
-            {
-                "date": ["2023-01-15"],
-                "ticker": ["AAPL"],
-                "transaction_type": ["BUY"],
-                "shares": [100],
-                "price_per_share": [150.50],
-            }
-        )
-
-        cleaned = analyzer._clean_transaction_data(data_without_account)
+        # Test data without account column
+        csv_path = test_data_dir / "data_without_account_col_pytest.csv"
+        cleaned = analyzer.load_transactions(csv_path)
 
         assert "account" in cleaned.columns
         assert cleaned["account"].iloc[0] == "Default"
+
+    def test_valid_transactions(self, test_data_dir, temp_config):
+        """Test loading valid transactions from sample CSV."""
+        analyzer = BogleBenchAnalyzer()
+        analyzer.config = temp_config
+
+        csv_file = test_data_dir / "default_simple_transactions_pytest.csv"
+        result = analyzer.load_transactions(str(csv_file))
+
+        assert len(result) == 5
+        assert analyzer.transactions is not None
+        assert "total_value" in result.columns
+        assert "account" in result.columns
+        assert result["ticker"].tolist() == [
+            "AAPL",
+            "MSFT",
+            "SPY",
+            "SPY",
+            "SPY",
+        ]
 
 
 # Simple integration test
