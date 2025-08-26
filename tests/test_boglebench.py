@@ -31,6 +31,20 @@ class TestBogleBenchAnalyzer:
                 "shares": [100, 50, 50, 25],
                 "price_per_share": [150.50, 240.25, 155.75, 380.00],
                 "account": ["Schwab", "Fidelity", "Schwab", "Personal"],
+                "group1": ["Tech", "Tech", "Tech", "Index"],
+                "group2": [
+                    "Large Cap",
+                    "Large Cap",
+                    "Large Cap",
+                    "Broad Market",
+                ],
+                "group3": ["US", "US", "US", "US"],
+                "notes": [
+                    "Initial",
+                    "Diversify",
+                    "Add position",
+                    "Core holding",
+                ],
             }
         )
 

@@ -150,8 +150,9 @@ class BogleBenchAnalyzer:
             for i, date_str in enumerate(df["date"]):
                 if not self._is_iso8601_date(str(date_str)):
                     raise ValueError(
-                        f"Date at row {i} ('{date_str}') is not in ISO8601 format "
-                        f"(YYYY-MM-DD). Please use format like '2023-01-15'."
+                        f"Date at row {i} ('{date_str}')"
+                        f" is not in ISO8601 format (YYYY-MM-DD)."
+                        f" Please use format like '2023-01-15'."
                     )
 
             df["date"] = pd.to_datetime(df["date"], format="%Y-%m-%d")
@@ -159,20 +160,58 @@ class BogleBenchAnalyzer:
             if "is not in ISO8601 format" in str(e):
                 raise e  # Re-raise our custom error
             else:
-                raise ValueError(f"Error parsing dates: {e}")
+                raise ValueError(f"Error parsing dates: {e}") from e
         except Exception as e:
-            raise ValueError(f"Error parsing dates: {e}")
+            raise ValueError(f"Error parsing dates: {e}") from e
 
         # Clean ticker symbols (uppercase, strip whitespace)
         df["ticker"] = df["ticker"].str.upper().str.strip()
 
-        # Add account column if not present (for backward compatibility)
-        if "account" not in df.columns:
-            df["account"] = "Default"
-            print("ℹ️  No 'account' column found. Added default account name.")
+        # Validate required columns
+        reqd_columns = [
+            "date",
+            "ticker",
+            "transaction_type",
+            "shares",
+            "price_per_share",
+        ]
+        opt_columns = ["account", "group1", "group2", "group3", "notes"]
+
+        missing_cols = [col for col in reqd_columns if col not in df.columns]
+        if missing_cols:
+            raise ValueError(f"Missing required columns: {missing_cols}")
+
+        # Add optional columns if not present with default values
+        for col in opt_columns:
+            if col not in df.columns:
+                if col == "account":
+                    df[col] = "Default"
+                elif col.startswith("group"):
+                    df[col] = "Unassigned"
+                elif col == "notes":
+                    df[col] = ""
+
+                self.logger.info(
+                    "ℹ️  No '%s' column found. Added default values.", col
+                )
 
         # Clean account names (strip whitespace, title case)
         df["account"] = df["account"].str.strip().str.title()
+
+        # Clean Group columns (strip whitespace, title case)
+        for group_col in ["group1", "group2", "group3"]:
+            if group_col in df.columns:
+                df[group_col] = (
+                    df[group_col]
+                    .fillna("Unassigned")
+                    .astype(str)
+                    .str.strip()
+                    .str.title()
+                )
+
+        # Clean Notes column (strip whitespace only, preserve case)
+        if "notes" in df.columns:
+            df["notes"] = df["notes"].fillna("").astype(str).str.strip()
 
         # Validate transaction types
         valid_types = ["BUY", "SELL"]

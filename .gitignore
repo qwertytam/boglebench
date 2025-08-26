@@ -34,8 +34,9 @@ transactions/
 output/
 *.parquet
 
-# Keep test CSVs
+# Keep test, sample and template CSVs
 !*_pytest.csv
+!sample_transactions.csv
 
 # Development
 .env

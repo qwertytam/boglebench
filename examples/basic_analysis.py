@@ -145,30 +145,30 @@ def create_sample_data():
     """
     import pandas as pd
 
-    sample_transactions = pd.DataFrame(
-        {
-            "date": [
-                "2023-01-15",
-                "2023-01-15",
-                "2023-02-15",
-                "2023-03-15",
-                "2023-04-15",
-                "2023-05-15",
-            ],
-            "ticker": ["AAPL", "SPY", "MSFT", "AAPL", "GOOGL", "VTI"],
-            "transaction_type": ["BUY", "BUY", "BUY", "BUY", "BUY", "BUY"],
-            "shares": [100, 50, 25, 50, 10, 75],
-            "price_per_share": [150.50, 380.00, 240.25, 165.25, 105.50, 200.00],
-            "account": [
-                "Schwab_401k",
-                "Fidelity_IRA",
-                "Schwab_401k",
-                "Personal_Brokerage",
-                "Personal_Brokerage",
-                "Fidelity_IRA",
-            ],
-        }
-    )
+    # Try to read from template first
+    try:
+        template_path = (
+            Path(__file__).parent.parent
+            / "boglebench"
+            / "templates"
+            / "sample_transactions.csv"
+        )
+        if template_path.exists():
+            sample_transactions = pd.read_csv(template_path)
+        else:
+            raise FileNotFoundError("Template not found")
+    except (FileNotFoundError, ImportError):
+        # Fallback to minimal programmatic generation
+        sample_transactions = pd.DataFrame(
+            {
+                "date": ["2023-01-15", "2023-02-15", "2023-03-15"],
+                "ticker": ["AAPL", "SPY", "MSFT"],
+                "transaction_type": ["BUY", "BUY", "BUY"],
+                "shares": [100, 50, 25],
+                "price_per_share": [150.50, 380.00, 240.25],
+                "account": ["Test", "Test", "Test"],
+            }
+        )
 
     # Save to current directory
     output_file = Path("sample_transactions.csv")
