@@ -24,7 +24,8 @@ import pandas_market_calendars as mcal
 from alpha_vantage.timeseries import TimeSeries
 
 from ..utils.config import ConfigManager
-from ..utils.logging_config import get_logger
+from ..utils.logging_config import get_logger, setup_logging
+from ..utils.workspace import WorkspaceContext
 
 
 class BogleBenchAnalyzer:
@@ -45,6 +46,17 @@ class BogleBenchAnalyzer:
             config_path: Path to configuration file.
                         If None, uses default locations.
         """
+
+        # Set workspace context if config provided
+        if config_path:
+            config_file = Path(config_path).expanduser()
+            if config_file.exists():
+                WorkspaceContext.discover_workspace(config_file.parent)
+
+        self.config = ConfigManager(config_path)
+        setup_logging()  # Initialize after workspace context is set
+        self.logger = get_logger("core.portfolio")
+
         self.config = ConfigManager(config_path)
         self.logger = get_logger("core.portfolio")
         self.transactions = None
@@ -55,7 +67,6 @@ class BogleBenchAnalyzer:
 
         # Suppress warnings for cleaner output
         warnings.filterwarnings("ignore", category=FutureWarning)
-
         self.logger.info("BogleBench analyzer initialized")
 
     def load_transactions(

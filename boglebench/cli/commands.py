@@ -9,6 +9,7 @@ import click
 
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
+from ..utils.workspace import WorkspaceContext
 
 
 @click.command()
@@ -19,13 +20,10 @@ from ..utils.logging_config import get_logger, setup_logging
 )
 @click.option("--force", is_flag=True, help="Overwrite existing files")
 def init_workspace(path: str, force: bool):
-    setup_logging()
-    logger = get_logger("cli.init")
-
     """Initialize a new BogleBench portfolio analysis workspace."""
     workspace_path = Path(path).expanduser()
 
-    logger.info(f"Initializing BogleBench workspace at: {path}")
+    click.echo(f"Initializing BogleBench workspace at: {path}")
     click.echo(
         "📊 In the spirit of John Bogle: Simple, low-cost, long-term investing analysis"
     )
@@ -37,12 +35,16 @@ def init_workspace(path: str, force: bool):
         "market_data",
         "output",
         "output/reports",
+        "logs",
     ]
 
     for dir_name in directories:
         dir_path = workspace_path / dir_name
         dir_path.mkdir(parents=True, exist_ok=True)
-        click.echo(f"Created directory: {dir_path}")
+        # print(f"DEBUG: Created directory: {dir_path}")
+
+    setup_logging()
+    logger = get_logger("cli.init")
 
     # Create configuration file
     config_manager = ConfigManager()
@@ -82,14 +84,21 @@ def _copy_templates(workspace_path: Path, force: bool):
         click.echo("Warning: Template files not found in package")
         return
 
-    for template_file in templates_source.glob("*"):
-        dest_file = workspace_path / "output" / template_file.name
-
-        if dest_file.exists() and not force:
-            click.echo(f"Template already exists: {dest_file}")
-        else:
-            shutil.copy2(template_file, dest_file)
+    # Copy notebook template to output directory
+    notebook_template = templates_source / "analysis_template.ipynb"
+    if notebook_template.exists():
+        dest_file = workspace_path / "output" / "analysis_template.ipynb"
+        if not dest_file.exists() or force:
+            shutil.copy2(notebook_template, dest_file)
             click.echo(f"Copied template: {dest_file}")
+
+    # Copy logging config to config directory
+    logging_template = templates_source / "logging_config_template.yaml"
+    if logging_template.exists():
+        dest_file = workspace_path / "config" / "logging.yaml"
+        if not dest_file.exists() or force:
+            shutil.copy2(logging_template, dest_file)
+            click.echo(f"Created logging configuration: {dest_file}")
 
 
 def _create_sample_transactions(file_path: Path, force: bool):
@@ -135,6 +144,17 @@ def run_analysis(
     config: str, output_format: str, create_charts: bool, benchmark: str
 ):
     """Run BogleBench portfolio analysis."""
+
+    # Set workspace context early
+    if config:
+        config_path = Path(config).expanduser()
+        if config_path.exists():
+            workspace = WorkspaceContext.discover_workspace(config_path.parent)
+
+    # Now initialize logging (will use correct workspace)
+    setup_logging()
+    logger = get_logger("cli.analyze")
+
     click.echo("🚀 Running BogleBench portfolio analysis...")
     click.echo("📈 Analyzing your portfolio with Bogle's principles in mind...")
 
@@ -237,6 +257,14 @@ def show_holdings(config: str, account: str):
 @click.option("--path", required=True, help="Path to CSV file to validate")
 def validate_transactions(path: str):
     """Validate transaction CSV file format."""
+
+    # Discover workspace from transaction file path
+    WorkspaceContext.discover_workspace(path)
+
+    # Initialize logging (will now use correct workspace)
+    setup_logging()
+    logger = get_logger("cli.validate")
+
     from ..core.portfolio import BogleBenchAnalyzer
 
     try:

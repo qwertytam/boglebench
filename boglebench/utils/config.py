@@ -27,12 +27,21 @@ class ConfigManager:
         if config_path:
             return Path(config_path).expanduser()
 
-        # Try environment variable first
+        # Check for workspace context first
+        from .workspace import WorkspaceContext
+
+        workspace = WorkspaceContext.get_workspace()
+        if workspace:
+            workspace_config = workspace / "config" / "config.yaml"
+            if workspace_config.exists():
+                return workspace_config
+
+        # Try environment variable
         env_path = os.getenv("BOGLEBENCH_CONFIG_PATH")
         if env_path:
             return Path(env_path).expanduser()
 
-        # Default locations to try
+        # Default locations (fallback)
         default_locations = [
             Path.home() / "boglebench_data" / "config" / "config.yaml",
             Path.home() / ".boglebench" / "config.yaml",
@@ -43,7 +52,6 @@ class ConfigManager:
             if location.exists():
                 return location
 
-        # Return first default if none exist
         return default_locations[0]
 
     def _load_default_config(self) -> Dict[str, Any]:

@@ -7,6 +7,7 @@ for console, file, and debug output.
 
 import logging
 import logging.config
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -38,8 +39,11 @@ class BogleBenchLogger:
         Args:
             config_path: Path to logging config YAML file
         """
+
         if config_path is None:
             config_path = self._get_default_config_path()
+
+        # print(f"DEBUG: Using logging config: {config_path}")
 
         config_file = Path(config_path)
 
@@ -47,20 +51,41 @@ class BogleBenchLogger:
             try:
                 with open(config_file, "r") as f:
                     config = yaml.safe_load(f)
+
+                config = self._update_config_paths(config)
                 logging.config.dictConfig(config)
+                # print(f"DEBUG: Loaded logging config from {config_path}")
+                # print(config)
             except Exception as e:
                 # Fallback to basic config if YAML loading fails
                 self._setup_fallback_logging()
-                logging.error(
-                    f"Failed to load logging config from {config_path}: {e}"
-                )
+                # print(
+                #     f"DEBUG: Error: Failed to load logging config from {config_path}: {e}"
+                # )
         else:
             # Use default config if file doesn't exist
+            # print(
+            #     f"DEBUG: Warning: Logging config file not found at {config_path}"
+            # )
             self._setup_default_logging()
 
     def _get_default_config_path(self) -> str:
         """Get default path for logging configuration."""
-        # Look in user's config directory
+        # Check workspace context first
+        from .workspace import WorkspaceContext
+
+        workspace = WorkspaceContext.get_workspace()
+        if workspace:
+            logging_config = workspace / "config" / "logging.yaml"
+            if logging_config.exists():
+                return str(logging_config)
+
+        # Check environment variable
+        env_path = os.getenv("BOGLEBENCH_WORKSPACE")
+        if env_path:
+            return str(Path(env_path) / "config" / "logging.yaml")
+
+        # Fallback to config manager
         from .config import ConfigManager
 
         config_manager = ConfigManager()
@@ -76,7 +101,7 @@ class BogleBenchLogger:
                 with open(template_path, "r") as f:
                     config = yaml.safe_load(f)
 
-                # Update file paths to be absolute
+                # print("DEBUG: Updating config paths")
                 config = self._update_config_paths(config)
                 logging.config.dictConfig(config)
                 return
@@ -86,6 +111,7 @@ class BogleBenchLogger:
                 )
 
         # Final fallback if template doesn't exist
+        # print("DEBUG: Setting up fallback logging")
         self._setup_fallback_logging()
 
     def _get_template_path(self) -> Path:
@@ -96,16 +122,39 @@ class BogleBenchLogger:
 
     def _update_config_paths(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Update relative paths in config to absolute paths."""
-        log_dir = Path(self._get_log_file_path()).parent
+        from .workspace import WorkspaceContext
+
+        # print("DEBUG: Updating config paths")
+        workspace = WorkspaceContext.get_workspace()
+        if workspace:
+            log_dir = workspace / "logs"
+            # print(f"DEBUG: Using workspace log directory: {log_dir}")
+        else:
+            try:
+                from .config import ConfigManager
+
+                config_manager = ConfigManager()
+                log_dir = config_manager.get_data_path("logs")
+                # print(f"DEBUG: Using config manager log directory: {log_dir}")
+            except Exception:
+                import tempfile
+
+                log_dir = Path(tempfile.gettempdir())
+                # print(f"DEBUG: Using temp log directory: {log_dir}")
+
         log_dir.mkdir(exist_ok=True)
 
         # Update handler file paths
         handlers = config.get("handlers", {})
         for handler_name, handler_config in handlers.items():
             if "filename" in handler_config:
-                filename = handler_config["filename"]
-                if not Path(filename).is_absolute():
-                    handler_config["filename"] = str(log_dir / filename)
+                original_filename = handler_config["filename"]
+                if not Path(original_filename).is_absolute():
+                    new_path = str(log_dir / original_filename)
+                    handler_config["filename"] = new_path
+                    # print(
+                    #    f"DEBUG: Updated {handler_name} log path: {original_filename} -> {new_path}"
+                    # )
 
         return config
 
@@ -117,6 +166,24 @@ class BogleBenchLogger:
 
     def _get_log_file_path(self) -> str:
         """Get path for log file."""
+        # Skip file logging during tests
+        import sys
+
+        if "pytest" in sys.modules:
+            import tempfile
+
+            return str(Path(tempfile.gettempdir()) / "boglebench_test.log")
+
+        # Use workspace context
+        from .workspace import WorkspaceContext
+
+        workspace = WorkspaceContext.get_workspace()
+        if workspace:
+            log_dir = workspace / "logs"
+            log_dir.mkdir(exist_ok=True)
+            return str(log_dir / "boglebench.log")
+
+        # Fallback through config manager
         try:
             from .config import ConfigManager
 
@@ -125,7 +192,6 @@ class BogleBenchLogger:
             log_dir.mkdir(exist_ok=True)
             return str(log_dir / "boglebench.log")
         except Exception:
-            # Fallback to temp directory
             import tempfile
 
             return str(Path(tempfile.gettempdir()) / "boglebench.log")
