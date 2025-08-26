@@ -155,8 +155,10 @@ def run_analysis(
     setup_logging()
     logger = get_logger("cli.analyze")
 
-    click.echo("🚀 Running BogleBench portfolio analysis...")
-    click.echo("📈 Analyzing your portfolio with Bogle's principles in mind...")
+    logger.info("🚀 Running BogleBench portfolio analysis...")
+    logger.info(
+        "📈 Analyzing your portfolio with Bogle's principles in mind..."
+    )
 
     # This would be implemented in your main analyzer
     from ..core.portfolio import BogleBenchAnalyzer
@@ -167,19 +169,19 @@ def run_analysis(
         # Override benchmark if specified
         if benchmark:
             analyzer.config.config["settings"]["benchmark_ticker"] = benchmark
-            click.echo(f"📊 Using custom benchmark: {benchmark}")
+            logger.info(f"📊 Using custom benchmark: {benchmark}")
 
-        click.echo("Loading transaction data...")
+        logger.info("Loading transaction data...")
         analyzer.load_transactions()
 
-        click.echo("Fetching market data...")
+        logger.info("Fetching market data...")
         analyzer.fetch_market_data()
 
-        click.echo("Calculating performance metrics...")
+        logger.info("Calculating performance metrics...")
         results = analyzer.calculate_performance()
 
         # Display results
-        click.echo("\n" + results.summary())
+        logger.info("\n" + results.summary())
 
         # Export results
         output_dir = analyzer.config.get_output_path()
@@ -187,7 +189,7 @@ def run_analysis(
 
         # Create charts if requested
         if create_charts:
-            click.echo("📊 Creating performance charts...")
+            logger.info("📊 Creating performance charts...")
             from ..visualization.charts import BogleBenchCharts
 
             charts = BogleBenchCharts(results)
@@ -202,10 +204,10 @@ def run_analysis(
                 account_chart_path = output_dir / "account_comparison.png"
                 charts.create_account_comparison(str(account_chart_path))
 
-        click.echo(f"✅ Analysis complete! Results saved to {output_dir}")
+        logger.info(f"✅ Analysis complete! Results saved to {output_dir}")
 
     except Exception as e:
-        click.echo(f"❌ Error running analysis: {e}")
+        logger.error(f"❌ Error running analysis: {e}")
         raise click.Abort()
 
 
