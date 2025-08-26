@@ -400,15 +400,19 @@ class BogleBenchAnalyzer:
         ticker_data = self.market_data[ticker]
 
         # Try exact date match first
+        self.logger.debug("Looking for price of %s on %s", ticker, target_date)
         exact_match = ticker_data[
-            ticker_data["date"].dt.date == target_date.date()
+            ticker_data["date"].dt.date == target_date  # .date()
         ]
         if not exact_match.empty:
             return exact_match["Close"].iloc[0]
 
         # Forward fill: use most recent price before target date
+        self.logger.debug(
+            "Forward-filling price for %s on %s", ticker, target_date
+        )
         available_data = ticker_data[
-            ticker_data["date"].dt.date <= target_date.date()
+            ticker_data["date"].dt.date <= target_date  # .date()
         ]
         if not available_data.empty:
             days_back = (
@@ -418,28 +422,31 @@ class BogleBenchAnalyzer:
                 return available_data["Close"].iloc[-1]
             else:
                 print(
-                    f"Warning: No recent price data for {ticker} near {target_date.date()}"
+                    f"Warning: No recent price data for {ticker} near {target_date}"
                 )
                 return available_data["Close"].iloc[
                     -1
                 ]  # Use it anyway but warn
 
         # Backward fill: use next available price after target date
+        self.logger.debug(
+            "Backward-filling price for %s on %s", ticker, target_date
+        )
         future_data = ticker_data[
-            ticker_data["date"].dt.date > target_date.date()
+            ticker_data["date"].dt.date > target_date  # .date()
         ]
         if not future_data.empty:
             days_forward = (
-                future_data["date"].iloc[0].date() - target_date.date()
+                future_data["date"].iloc[0].date() - target_date  # .date()
             ).days
             print(
-                f"Warning: Using future price for {ticker} on {target_date.date()} ({days_forward} days forward)"
+                f"Warning: Using future price for {ticker} on {target_date} ({days_forward} days forward)"
             )
             return future_data["Close"].iloc[0]
 
         # If we get here, no data exists at all
         raise ValueError(
-            f"No price data available for {ticker} around {target_date.date()}"
+            f"No price data available for {ticker} around {target_date}"
         )
 
     def build_portfolio_history(self) -> pd.DataFrame:
@@ -454,7 +461,7 @@ class BogleBenchAnalyzer:
         if not self.market_data:
             raise ValueError("Must fetch market data first")
 
-        print("🏗️  Building portfolio history...")
+        self.logger.info("🏗️  Building portfolio history...")
 
         # Get all unique tickers and accounts
         tickers = self.transactions["ticker"].unique()
@@ -468,6 +475,7 @@ class BogleBenchAnalyzer:
         }
 
         # Get full date range for analysis
+        self.logger.debug("Calculating full date range for portfolio history")
         start_date = self.transactions["date"].min()
         end_date = max([df["date"].max() for df in self.market_data.values()])
 
@@ -480,12 +488,15 @@ class BogleBenchAnalyzer:
         transaction_dates = set(self.transactions["date"].dt.date)
         trading_dates = set(date_range)
 
+        self.logger.debug("Checking for transactions on non-trading days")
         non_trading_dates = transaction_dates - trading_dates
         if non_trading_dates:
             non_trading_sorted = sorted(non_trading_dates)
-            print(
-                f"⚠️  Warning: {len(non_trading_dates)} transactions on non-trading days:"
+            self.logger.warning(
+                "⚠️  Warning: %d transactions on non-trading days:",
+                len(non_trading_dates),
             )
+
             for date in non_trading_sorted[:5]:
                 day_name = pd.to_datetime(date).strftime("%A")
                 # Check if it's a weekend or holiday
@@ -498,10 +509,11 @@ class BogleBenchAnalyzer:
                 print(f"   ... and {len(non_trading_sorted) - 5} more")
             print("   These transactions will use forward-filled prices.")
 
+        self.logger.debug("Processing each trading day for portfolio history")
         for date in date_range:
             # Process any transactions on this date
             day_transactions = self.transactions[
-                self.transactions["date"].dt.date == date.date()
+                self.transactions["date"].dt.date == date  # date.date()
             ]
 
             for _, transaction in day_transactions.iterrows():
@@ -520,10 +532,14 @@ class BogleBenchAnalyzer:
                 current_holdings[account][ticker] += shares
 
             # Get market prices for this date
+            self.logger.debug(
+                "Calculating portfolio value for %s", date
+            )  # date.date())
             day_data = {"date": date}
             total_portfolio_value = 0.0
             account_totals = {}
 
+            self.logger.debug("Calculating account-specific positions")
             for account in accounts:
                 account_value = 0.0
 
@@ -531,11 +547,20 @@ class BogleBenchAnalyzer:
                     shares = current_holdings[account][ticker]
 
                     try:
+                        self.logger.debug(
+                            "Getting price for %s on %s", ticker, date
+                        )
                         price = self._get_price_for_date(ticker, date)
                     except ValueError as e:
-                        print(f"Skipping {ticker} on {date.date()}: {e}")
+                        self.logger.error(f"Skipping {ticker} on {date}: {e}")
                         price = 0.0  # Only set to 0 if truly no data exists
 
+                    self.logger.debug(
+                        "Calculated price for %s on %s: $%.2f",
+                        ticker,
+                        date,
+                        price,
+                    )
                     position_value = shares * price
                     account_value += position_value
 
@@ -551,6 +576,7 @@ class BogleBenchAnalyzer:
             day_data["total_value"] = total_portfolio_value
 
             # Also calculate consolidated positions across all accounts
+            self.logger.debug("Calculating consolidated positions")
             for ticker in tickers:
                 total_shares = sum(
                     current_holdings[account][ticker] for account in accounts
@@ -559,13 +585,13 @@ class BogleBenchAnalyzer:
                 if ticker in self.market_data:
                     ticker_data = self.market_data[ticker]
                     price_data = ticker_data[
-                        ticker_data["date"].dt.date == date.date()
+                        ticker_data["date"].dt.date == date  # date.date()
                     ]
                     if not price_data.empty:
                         price = price_data["Close"].iloc[0]
                     else:
                         available_data = ticker_data[
-                            ticker_data["date"].dt.date <= date.date()
+                            ticker_data["date"].dt.date <= date  # date.date()
                         ]
                         if not available_data.empty:
                             price = available_data["Close"].iloc[-1]
@@ -580,6 +606,7 @@ class BogleBenchAnalyzer:
             portfolio_data.append(day_data)
 
         # Convert to DataFrame
+        self.logger.debug("Converting portfolio data to DataFrame")
         portfolio_df = pd.DataFrame(portfolio_data)
 
         # Calculate weights by account and overall
@@ -617,8 +644,12 @@ class BogleBenchAnalyzer:
 
         self.portfolio_history = portfolio_df
 
-        print(f"✅ Portfolio history built: {len(portfolio_df)} days")
-        print(f"🏦 Tracking {len(accounts)} accounts: {', '.join(accounts)}")
+        self.logger.info(
+            "✅ Portfolio history built: %d days", len(portfolio_df)
+        )
+        self.logger.info(
+            "🏦 Tracking %d accounts: %s", len(accounts), ", ".join(accounts)
+        )
         return portfolio_df
 
     def calculate_performance(self) -> "PerformanceResults":
@@ -679,7 +710,7 @@ class BogleBenchAnalyzer:
         aligned_returns = []
         for date in portfolio_dates:
             benchmark_data_for_date = benchmark_df[
-                benchmark_df["date"].dt.date == date.date()
+                benchmark_df["date"].dt.date == date  # date.date()
             ]
 
             if not benchmark_data_for_date.empty:
