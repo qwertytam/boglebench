@@ -43,7 +43,7 @@ This creates the following structure:
 
 Add your transaction CSV file to `~/my_boglebench_data/transactions/`. Required columns:
 
-### Required columns:
+### Required columns
 
 - `date`: Transaction date in ISO8601 format (YYYY-MM-DD)
 - `ticker`: Stock/ETF symbol
@@ -51,11 +51,11 @@ Add your transaction CSV file to `~/my_boglebench_data/transactions/`. Required 
 - `shares`: Number of shares
 - `price_per_share`: Price per share
 
-### Optional columns:
+### Optional columns
 
 - `account`: Broker account name (defaults to "Default")
 - `group1`: Primary grouping (e.g., sector, asset class)
-- `group2`: Secondary grouping (e.g., market cap, geography) 
+- `group2`: Secondary grouping (e.g., market cap, geography)
 - `group3`: Tertiary grouping (e.g., region, style)
 - `notes`: Free-form notes about the transaction
 
