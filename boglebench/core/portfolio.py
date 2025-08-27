@@ -381,7 +381,10 @@ class BogleBenchAnalyzer:
             default_end_date = self._get_last_closed_market_day()
         else:
             self.logger.info("Market is currently closed")
-            default_end_date = pd.to_datetime(datetime.now())
+            default_end_date = to_tz_mixed(datetime.now())
+
+            if default_end_date is None:
+                raise ValueError("default_end_date is None after to_tz_mixed")
 
         if end_date is None:
             self.logger.warning(
@@ -389,6 +392,12 @@ class BogleBenchAnalyzer:
                 default_end_date.strftime("%Y-%m-%d"),
             )
 
+        # Ensure default_end_date is a scalar Timestamp, not a Series
+        if isinstance(default_end_date, pd.Series):
+            if not default_end_date.empty:
+                default_end_date = default_end_date.iloc[0]
+            else:
+                raise ValueError("default_end_date Series is empty")
         end_date = ensure_timestamp(end_date, default_end_date)
         end_date = min(end_date, default_end_date)
 
@@ -476,12 +485,24 @@ class BogleBenchAnalyzer:
                 hist = hist.reset_index()
 
                 # Filter date range
-                hist["date"] = pd.to_datetime(hist["date"])
+                hist["date"] = to_tz_mixed(hist["date"])
                 self.logger.debug(
                     "Data range for %s: %s to %s before filtering",
                     ticker,
                     hist["date"].min(),
                     hist["date"].max(),
+                )
+
+                self.logger.debug(
+                    "start_date is %s and type %s", start_date, type(start_date)
+                )
+                self.logger.debug(
+                    "end_date is %s and type %s", end_date, type(end_date)
+                )
+                self.logger.debug(
+                    "hist['date'] is %s and type %s",
+                    hist["date"].head(),
+                    type(hist["date"]),
                 )
 
                 hist = hist[

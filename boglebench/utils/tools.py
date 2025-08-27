@@ -5,20 +5,26 @@ Collection of utility functions and classes for Boglebench
 
 from __future__ import annotations
 
+from datetime import datetime as dt
 from datetime import timedelta, tzinfo
 from typing import Any, Iterable, Literal, Optional, Union
 
 import pandas as pd
 from pandas import Timedelta
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
-DateLike = Union[pd.Timestamp, str, None]
+from ..utils.logging_config import get_logger
+
+# Custom type aliases
+DateLike = Union[pd.Timestamp, dt, str, None]
 SeqLike = Union[pd.Series, Iterable[DateLike], pd.Index]
 NonExistentTime = Union[
     Literal["shift_forward", "shift_backward", "NaT", "raise"],
     Timedelta,
     timedelta,
 ]
+
+logger = get_logger()
 
 
 def ensure_timestamp(
@@ -131,10 +137,15 @@ def to_tz_mixed(
         return ts.tz_convert(tz_obj)
 
     if isinstance(x, pd.Series):
+        logger.debug("to_tz_mixed: processing pd.Series input")
         return x.apply(_one)
     if isinstance(x, (list, tuple, pd.Index)):
+        logger.debug("to_tz_mixed: processing list/tuple/pd.Index input")
         return pd.Series(list(x)).apply(_one)
     # Only pass scalars (not sequences) to _one
-    if isinstance(x, (pd.Timestamp, str)) or x is None:
+    if isinstance(x, (pd.Timestamp, dt, str)) or x is None:
+        logger.debug("to_tz_mixed: processing scalar input")
         return _one(x)
+
+    logger.error("to_tz_mixed: unsupported input type %s", type(x))
     raise TypeError(f"Unsupported input type for to_tz_mixed: {type(x)}")
