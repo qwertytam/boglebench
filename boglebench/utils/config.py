@@ -63,7 +63,7 @@ class ConfigManager:
                 with open(template_path, "r") as f:
                     return yaml.safe_load(f)
             except Exception as e:
-                print(f"Warning: Could not load config template: {e}")
+                print(f"WARNING: Could not load config template: {e}")
 
         # Minimal fallback if template missing
         return {
@@ -91,9 +91,9 @@ class ConfigManager:
 
             except Exception as e:
                 print(
-                    f"Warning: Error loading config from {self.config_path}: {e}"
+                    f"!! ERROR !!: loading config from {self.config_path}: {e}"
+                    "\nUsing template configuration."
                 )
-                print("Using template configuration.")
 
         return self._load_default_config()
 
@@ -161,13 +161,13 @@ class ConfigManager:
             import shutil
 
             shutil.copy2(template_path, path)
-            print(f"Created configuration file: {path}")
+            print(f"INFO: Created configuration file: {path}")
         else:
             # Fallback: create from loaded defaults
             config = self._load_default_config()
             with open(path, "w") as f:
                 yaml.dump(config, f, default_flow_style=False, indent=2)
-            print(f"Created configuration file: {path}")
+            print(f"INFO: Created configuration file: {path}")
 
         return path
 
@@ -185,7 +185,7 @@ class ConfigManager:
                 missing_paths.append(path)
 
         if missing_paths:
-            print("Missing required directories:")
+            print("WARNING: Missing required directories:")
             for path in missing_paths:
                 print(f"  - {path}")
             return False

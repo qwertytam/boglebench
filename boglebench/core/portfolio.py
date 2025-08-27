@@ -56,6 +56,8 @@ class BogleBenchAnalyzer:
                 WorkspaceContext.discover_workspace(config_file.parent)
 
         self.config = ConfigManager(config_path)
+        print("DEBUG: Config loaded from:", self.config.config_path)
+        print("DEBUG: BogleBench Setting up logging...")
         setup_logging()  # Initialize after workspace context is set
         self.logger = get_logger("core.portfolio")
 

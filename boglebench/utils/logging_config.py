@@ -5,13 +5,19 @@ Provides structured logging with YAML configuration and multiple handlers
 for console, file, and debug output.
 """
 
+import glob
+import inspect
 import logging
 import logging.config
+import logging.handlers
 import os
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
+
+from .workspace import WorkspaceContext
 
 
 class BogleBenchLogger:
@@ -29,6 +35,7 @@ class BogleBenchLogger:
     def __init__(self):
         """Initialize logger if not already done."""
         if not self._initialized:
+            print("INFO: BogleBenchLogger Initializing logging...")
             self.setup_logging()
             BogleBenchLogger._initialized = True
 
@@ -49,24 +56,40 @@ class BogleBenchLogger:
 
         if config_file.exists():
             try:
-                with open(config_file, "r") as f:
+                with open(config_file, "r", encoding="utf-8") as f:
+                    # print(
+                    #     f"DEBUG: Trying to load logging config from "
+                    #     f"{config_path}"
+                    # )
                     config = yaml.safe_load(f)
 
+                # print("DEBUG: Loaded yaml; setup_log Updating config paths")
                 config = self._update_config_paths(config)
-                logging.config.dictConfig(config)
-                # print(f"DEBUG: Loaded logging config from {config_path}")
-                # print(config)
-            except Exception as e:
+                # print("DEBUG: Applying logging configuration")
+                try:
+                    logging.config.dictConfig(config)
+                    # print(f"DEBUG: Loaded logging config from {config_path}")
+                except Exception as config_error:
+                    print(
+                        f"!! ERROR !!: Specific config error: {config_error}\n"
+                        f"Handler config: {config.get('handlers', {})}"
+                    )
+                    raise
+
+            except (OSError, ValueError) as e:
                 # Fallback to basic config if YAML loading fails
                 self._setup_fallback_logging()
-                # print(
-                #     f"DEBUG: Error: Failed to load logging config from {config_path}: {e}"
-                # )
+                print(
+                    f"!! ERROR !!: Failed to load logging config from "
+                    f"{config_path}: {e}\n"
+                    f"Falling back to basic logging configuration"
+                )
         else:
             # Use default config if file doesn't exist
-            # print(
-            #     f"DEBUG: Warning: Logging config file not found at {config_path}"
-            # )
+            print(
+                f"WARNING: setup_logging Logging config file not found "
+                f"at {config_path}"
+            )
             self._setup_default_logging()
 
     def _get_default_config_path(self) -> str:
@@ -98,20 +121,20 @@ class BogleBenchLogger:
 
         if template_path.exists():
             try:
-                with open(template_path, "r") as f:
+                with open(template_path, "r", encoding="utf-8") as f:
                     config = yaml.safe_load(f)
 
-                # print("DEBUG: Updating config paths")
+                # print("DEBUG: _setup_default_logging Updating config paths")
                 config = self._update_config_paths(config)
                 logging.config.dictConfig(config)
                 return
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 logging.error(
-                    f"Failed to load default config from template: {e}"
+                    "Failed to load default config from template: %s", e
                 )
 
         # Final fallback if template doesn't exist
-        # print("DEBUG: Setting up fallback logging")
+        print("INFO: Setting up fallback logging")
         self._setup_fallback_logging()
 
     def _get_template_path(self) -> Path:
@@ -124,7 +147,7 @@ class BogleBenchLogger:
         """Update relative paths in config to absolute paths."""
         from .workspace import WorkspaceContext
 
-        # print("DEBUG: Updating config paths")
+        # print("DEBUG: _update_config_paths Updating config paths")
         workspace = WorkspaceContext.get_workspace()
         if workspace:
             log_dir = workspace / "logs"
@@ -153,16 +176,11 @@ class BogleBenchLogger:
                     new_path = str(log_dir / original_filename)
                     handler_config["filename"] = new_path
                     # print(
-                    #    f"DEBUG: Updated {handler_name} log path: {original_filename} -> {new_path}"
+                    #     f"DEBUG: Updated {handler_name} log path: "
+                    #     f"{original_filename} -> {new_path}"
                     # )
 
         return config
-
-    def _setup_fallback_logging(self):
-        """Minimal logging setup if all else fails."""
-        logging.basicConfig(
-            level=logging.INFO, format="%(levelname)s - %(message)s"
-        )
 
     def _get_log_file_path(self) -> str:
         """Get path for log file."""
@@ -210,7 +228,8 @@ class BogleBenchLogger:
 
     def create_default_config_file(self, output_path: Optional[str] = None):
         """
-        Copy the default logging configuration template to user's config directory.
+        Copy the default logging configuration template to user's config
+        directory.
 
         Args:
             output_path: Where to create the config file
@@ -227,10 +246,12 @@ class BogleBenchLogger:
             import shutil
 
             shutil.copy2(template_path, output_file)
-            print(f"Created logging configuration: {output_file}")
+            print(f"INFO: Created logging configuration: {output_file}")
         else:
-            print(f"Warning: Template file not found at {template_path}")
-            print("Creating minimal logging configuration instead")
+            print(
+                f"WARNING: Template file not found at {template_path}\n"
+                "Creating minimal logging configuration instead"
+            )
 
             # Minimal fallback config
             minimal_config = {
@@ -249,23 +270,109 @@ class BogleBenchLogger:
                 "root": {"level": "INFO", "handlers": ["console"]},
             }
 
-            with open(output_file, "w") as f:
+            with open(output_file, "w", encoding="utf-8") as f:
                 yaml.dump(minimal_config, f, default_flow_style=False, indent=2)
+
+    def _create_rotating_handler(
+        self, log_file_path: str, level: str = "DEBUG"
+    ) -> logging.Handler:
+        """Create a rotating file handler with configuration
+        from config file."""
+        from .config import ConfigManager
+
+        try:
+            config_manager = ConfigManager()
+            max_size_mb = config_manager.get(
+                "logging.rotation.max_file_size_mb", 10
+            )
+            backup_count = config_manager.get(
+                "logging.rotation.backup_count", 5
+            )
+
+            max_bytes = max_size_mb * 1024 * 1024  # Convert MB to bytes
+
+            handler = logging.handlers.RotatingFileHandler(
+                filename=log_file_path,
+                maxBytes=max_bytes,
+                backupCount=backup_count,
+                mode="a",
+            )
+
+        except (OSError, ValueError):
+            # Fallback to basic rotating handler
+            handler = logging.handlers.RotatingFileHandler(
+                filename=log_file_path,
+                maxBytes=10 * 1024 * 1024,  # 10MB
+                backupCount=5,
+                mode="a",
+            )
+
+        handler.setLevel(getattr(logging, level.upper()))
+        return handler
+
+    def _setup_fallback_logging(self):
+        """Enhanced fallback with rotation."""
+        log_file = self._get_log_file_path()
+
+        # Create rotating handler
+        file_handler = self._create_rotating_handler(log_file)
+
+        # Create formatter
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        file_handler.setFormatter(formatter)
+
+        # Set up root logger
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)
+        root_logger.addHandler(file_handler)
+
+        # Add console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(
+            logging.Formatter("%(levelname)s - %(message)s")
+        )
+        root_logger.addHandler(console_handler)
+
+    def cleanup_old_logs(self, days_to_keep: int = 30):
+        """Clean up log files older than specified days."""
+
+        workspace = WorkspaceContext.get_workspace()
+        if not workspace:
+            return
+
+        log_dir = workspace / "logs"
+        if not log_dir.exists():
+            return
+
+        cutoff_time = time.time() - (days_to_keep * 24 * 60 * 60)
+
+        # Find all log files
+        log_patterns = ["*.log", "*.log.*"]
+
+        for pattern in log_patterns:
+            for log_file in glob.glob(str(log_dir / pattern)):
+                try:
+                    if os.path.getmtime(log_file) < cutoff_time:
+                        os.remove(log_file)
+                        print(f"INFO: Cleaned up old log file: {log_file}")
+                except OSError:
+                    pass  # File might be in use or already deleted
 
 
 # Convenience functions for easy import
 _logger_instance = None
 
 
-def get_logger(name: str = None) -> logging.Logger:
+def get_logger(name: Optional[str] = None) -> logging.Logger:
     """Get a logger instance for the calling module."""
     global _logger_instance
     if _logger_instance is None:
         _logger_instance = BogleBenchLogger()
 
     if name is None:
-        import inspect
-
         frame = inspect.currentframe().f_back
         name = frame.f_globals.get("__name__", "unknown")
         # Remove 'boglebench.' prefix if present

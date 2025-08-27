@@ -52,6 +52,12 @@ logging:
   log_to_file: true
   log_file: "logs/boglebench.log"
 
+  # Log rotation settings
+  rotation:
+    max_file_size_mb: 10 # Rotate when file reaches 10MB
+    backup_count: 5 # Keep 5 rotated files
+    error_log_days: 30 # Keep error logs for 30 days
+
 # Chart and visualization settings
 visualization:
   default_style: "seaborn"
