@@ -14,17 +14,19 @@ and long-term focus.
 
 import re
 import warnings
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, tzinfo
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Optional, Union
 
 import numpy as np
 import pandas as pd
-import pandas_market_calendars as mcal
-from alpha_vantage.timeseries import TimeSeries
+import pandas_market_calendars as mcal  # type: ignore
+from alpha_vantage.timeseries import TimeSeries  # type: ignore
+from zoneinfo import ZoneInfo
 
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
+from ..utils.tools import ensure_timestamp, to_tz_mixed
 from ..utils.workspace import WorkspaceContext
 
 
@@ -58,7 +60,6 @@ class BogleBenchAnalyzer:
         self.logger = get_logger("core.portfolio")
 
         self.config = ConfigManager(config_path)
-        self.logger = get_logger("core.portfolio")
         self.transactions = None
         self.market_data = {}
         self.portfolio_history = None
@@ -139,7 +140,11 @@ class BogleBenchAnalyzer:
 
         return bool(re.match(iso_pattern, date_str))
 
-    def _clean_transaction_data(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _clean_transaction_data(
+        self,
+        df: pd.DataFrame,
+        default_tz: Union[str, tzinfo] = "America/New_York",
+    ) -> pd.DataFrame:
         """Clean and validate transaction data."""
         # Make a copy to avoid modifying original
         df = df.copy()
@@ -155,7 +160,13 @@ class BogleBenchAnalyzer:
                         f" Please use format like '2023-01-15'."
                     )
 
-            df["date"] = pd.to_datetime(df["date"], format="%Y-%m-%d")
+            # df["date"] = pd.to_datetime(df["date"], format="%Y-%m-%d")
+            df["date"] = to_tz_mixed(
+                df["date"], tz=default_tz, format="%Y-%m-%d"
+            )
+            self.logger.debug(
+                "Converted 'date' column to type %s", df["date"].dtype
+            )
         except ValueError as e:
             if "is not in ISO8601 format" in str(e):
                 raise e  # Re-raise our custom error
@@ -241,7 +252,11 @@ class BogleBenchAnalyzer:
 
         # Sort by date
         df = df.sort_values("date").reset_index(drop=True)
-
+        self.logger.debug(
+            "Cleaned transaction data:\n%s \nwith columns of types:\n%s",
+            df.head(),
+            df.dtypes,
+        )
         return df
 
     def _validate_api_key(self):
@@ -257,10 +272,53 @@ class BogleBenchAnalyzer:
                     "Get free key: https://www.alphavantage.co/support/#api-key"
                 )
 
+    def _is_market_currently_open(self) -> bool:
+        """Check if the market is currently open."""
+        nyse = mcal.get_calendar("NYSE")
+        now = datetime.now(tz=ZoneInfo("UTC"))
+        schedule = nyse.schedule(start_date=now.date(), end_date=now.date())
+        if schedule.empty:
+            self.logger.debug("Market is closed today (holiday or weekend)")
+            return False
+
+        market_open = schedule.iloc[0]["market_open"].to_pydatetime()
+        market_close = schedule.iloc[0]["market_close"].to_pydatetime()
+        self.logger.debug(
+            "Market hours today: %s to %s", market_open, market_close
+        )
+        self.logger.debug(
+            "Going to compare market open %s %s, now %s %s, close %s %s",
+            market_open,
+            type(market_open),
+            now,
+            type(now),
+            market_close,
+            type(market_close),
+        )
+        return market_open <= now <= market_close
+
+    def _get_last_closed_market_day(self) -> pd.Timestamp:
+        """Get the most recent market day (last trading day) that closed."""
+        nyse = mcal.get_calendar("NYSE")
+        today = datetime.now(tz=ZoneInfo("America/New_York"))
+        schedule = nyse.schedule(
+            start_date=today - timedelta(days=10), end_date=today
+        )
+        if schedule.empty:
+            raise ValueError("No recent market days found in the last 10 days")
+
+        closed_days = schedule[schedule["market_close"] < today]
+        last_closed_market_day = closed_days["market_close"].max()
+
+        self.logger.debug(
+            "Last closed market day is %s", last_closed_market_day
+        )
+        return pd.to_datetime(last_closed_market_day)
+
     def fetch_market_data(
         self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        start_date: Optional[Union[str, pd.Timestamp]] = None,
+        end_date: Optional[Union[str, pd.Timestamp]] = None,
         force_refresh: bool = False,
     ) -> Dict[str, pd.DataFrame]:
         """
@@ -281,17 +339,56 @@ class BogleBenchAnalyzer:
                 "Must load transactions first using load_transactions()"
             )
 
-        # Determine date range
+        self.logger.debug(
+            "Fetching market data using transaction date:\n%s\n"
+            + "with columns of types:\n%s",
+            self.transactions.head(),
+            self.transactions.dtypes,
+        )
+
+        # Ensure start_dt and end_dt are pd.Timestamp and not None
+        default_start_date = None
         if start_date is None:
-            # Buffer for calculations
-            start_date = self.transactions["date"].min() - timedelta(days=30)
+            self.logger.info(
+                "No start date provided. "
+                + "Defaulting to 30 days before first transaction."
+            )
+            self.logger.debug(
+                "self.transactions['date'].min() is %s and type %s",
+                self.transactions["date"].min(),
+                type(self.transactions["date"].min()),
+            )
+            default_start_date = self.transactions["date"].min() - timedelta(
+                days=30
+            )
+            self.logger.debug(
+                "default_start_date is %s and type %s",
+                default_start_date,
+                type(default_start_date),
+            )
+        start_date = ensure_timestamp(start_date, default_start_date)
+        self.logger.debug(
+            "start_date after ensure_timestamp is %s and type %s",
+            start_date,
+            type(start_date),
+        )
+
+        default_end_date = None
+        if self._is_market_currently_open():
+            self.logger.info("Market is currently open")
+            default_end_date = self._get_last_closed_market_day()
         else:
-            start_date = pd.to_datetime(start_date)
+            self.logger.info("Market is currently closed")
+            default_end_date = pd.to_datetime(datetime.now())
 
         if end_date is None:
-            end_date = datetime.now()
-        else:
-            end_date = pd.to_datetime(end_date)
+            self.logger.warning(
+                "No valid end date provided or found. Defaulting to %s",
+                default_end_date.strftime("%Y-%m-%d"),
+            )
+
+        end_date = ensure_timestamp(end_date, default_end_date)
+        end_date = min(end_date, default_end_date)
 
         # Get list of all tickers (portfolio + benchmark)
         portfolio_tickers = self.transactions["ticker"].unique().tolist()
@@ -299,25 +396,49 @@ class BogleBenchAnalyzer:
         all_tickers = portfolio_tickers + [benchmark_ticker]
         all_tickers = list(set(all_tickers))  # Remove duplicates
 
-        print(f"📊 Fetching market data for {len(all_tickers)} assets...")
-        print(f"📅 Date range: {start_date.date()} to {end_date.date()}")
+        self.logger.info(
+            "📊 Fetching market data for %s assets...", len(all_tickers)
+        )
+
+        self.logger.info(
+            "📅 Date range: %s to %s",
+            start_date.strftime("%Y-%m-%d"),
+            end_date.strftime("%Y-%m-%d"),
+        )
 
         # Fetch data for each ticker
         market_data = {}
         failed_tickers = []
 
+        # Checking if caching is enabled
+        cache_enabled = self.config.get("settings.cache_market_data", True)
+        cache_dir = self.config.get_market_data_path()
+        self.logger.debug("Cache enabled: %s", cache_enabled)
+        self.logger.debug("Cache directory: %s", cache_dir)
+        self.logger.debug("Cache directory exists: %s", cache_dir.exists())
+
         for ticker in all_tickers:
             try:
-                print(f"  Downloading {ticker}...")
+                self.logger.info("  Fetching market data for %s...", ticker)
 
                 # Check cache first (if enabled and not forcing refresh)
                 cached_data = self._get_cached_data(
                     ticker, start_date, end_date
                 )
                 if cached_data is not None and not force_refresh:
-                    print("Using cached market data")
+                    self.logger.debug(
+                        "Cache HIT for %s - using cached data", ticker
+                    )
                     market_data[ticker] = cached_data
                     continue
+                else:
+                    self.logger.debug(
+                        "cached_data is None: %s", cached_data is None
+                    )
+                    self.logger.debug("Force refresh: %s", force_refresh)
+                    self.logger.debug(
+                        "Cache MISS for %s - downloading from API", ticker
+                    )
 
                 # Get Alpha Vantage API key
                 api_key = self.config.get("api.alpha_vantage_key")
@@ -329,48 +450,67 @@ class BogleBenchAnalyzer:
 
                 # Download from Alpha Vantage
                 ts = TimeSeries(key=api_key, output_format="pandas")
-                hist, _ = ts.get_daily_adjusted(
+                # pylint: disable-next=unbalanced-tuple-unpacking
+                hist, _ = ts.get_daily_adjusted(  # type: ignore
                     symbol=ticker, outputsize="full"
                 )
 
-                if hist.empty:
+                if hist.empty:  # pylint: disable=no-member # type: ignore
                     failed_tickers.append(ticker)
                     continue
 
                 # Clean up the data - Alpha Vantage has different column names
-                hist = hist.rename(
+                hist = hist.rename(  # pylint: disable=no-member # type: ignore
                     columns={
-                        "1. open": "Open",
-                        "2. high": "High",
-                        "3. low": "Low",
-                        "4. close": "Close",
-                        "6. volume": "Volume",
+                        "1. open": "open",
+                        "2. high": "high",
+                        "3. low": "low",
+                        "4. close": "close",
+                        "6. volume": "volume",
                     }
                 )
-                hist = hist[["Open", "High", "Low", "Close", "Volume"]]
+                hist = hist[["open", "high", "low", "close", "volume"]]
                 hist.index.name = "date"
                 hist = hist.reset_index()
 
                 # Filter date range
                 hist["date"] = pd.to_datetime(hist["date"])
+                self.logger.debug(
+                    "Data range for %s: %s to %s before filtering",
+                    ticker,
+                    hist["date"].min(),
+                    hist["date"].max(),
+                )
+
                 hist = hist[
                     (hist["date"] >= start_date) & (hist["date"] <= end_date)
                 ]
+                self.logger.debug(
+                    "Data range for %s: %s to %s AFTER filtering against %s to %s",
+                    ticker,
+                    hist["date"].min(),
+                    hist["date"].max(),
+                    start_date.strftime("%Y-%m-%d"),
+                    end_date.strftime("%Y-%m-%d"),
+                )
 
                 # Cache the data
                 self._cache_data(ticker, hist)
 
                 market_data[ticker] = hist
 
-            except Exception as e:
-                print(f"  ❌ Failed to download {ticker}: {e}")
+            except (OSError, ValueError) as e:
+                self.logger.error("  ❌ Failed to download %s: %s", ticker, e)
                 failed_tickers.append(ticker)
 
         if failed_tickers:
-            print(f"⚠️  Failed to download data for: {failed_tickers}")
+            self.logger.error(
+                "⚠️  Failed to download data for: %s", failed_tickers
+            )
             if benchmark_ticker in failed_tickers:
-                print(
-                    f"❌ Warning: Benchmark {benchmark_ticker} data unavailable"
+                self.logger.warning(
+                    "❌ Warning: Benchmark %s data unavailable",
+                    benchmark_ticker,
                 )
 
         # Store market data
@@ -390,7 +530,11 @@ class BogleBenchAnalyzer:
         cache_dir = self.config.get_market_data_path()
         cache_file = cache_dir / f"{ticker}.parquet"
 
+        self.logger.debug("Checking cache for %s at %s", ticker, cache_file)
+        self.logger.debug("Cache file exists: %s", cache_file.exists())
+
         if not cache_file.exists():
+            self.logger.debug("No cache file for %s", ticker)
             return None
 
         try:
@@ -401,22 +545,79 @@ class BogleBenchAnalyzer:
             cached_start = cached_df["date"].min()
             cached_end = cached_df["date"].max()
 
-            if cached_start <= start_date and cached_end >= end_date:
+            self.logger.debug(
+                "Cached data for %s from %s to %s with start %s and end %s",
+                ticker,
+                cached_start,
+                cached_end,
+                start_date,
+                end_date,
+            )
+
+            # Matching dates to trading days only
+            nyse = mcal.get_calendar("NYSE")
+
+            requested_schedule = nyse.schedule(
+                start_date=start_date, end_date=end_date
+            )
+
+            if requested_schedule.empty:
+                self.logger.debug(
+                    "No trading days in requested range %s to %s",
+                    start_date,
+                    end_date,
+                )
+                return None
+            first_trading_day = requested_schedule.index.min()
+            last_trading_day = requested_schedule.index.max()
+
+            if (
+                cached_start <= first_trading_day
+                and cached_end >= last_trading_day
+            ):
                 # Filter to requested date range
-                mask = (cached_df["date"] >= start_date) & (
-                    cached_df["date"] <= end_date
+                mask = cached_df["date"].isin(requested_schedule.index)
+                self.logger.debug(
+                    "Cache valid for %s from %s to %s",
+                    ticker,
+                    cached_start,
+                    cached_end,
+                )
+                self.logger.debug(
+                    "Head and tail of cached data for %s:\n%s\n%s",
+                    ticker,
+                    cached_df.head(n=5),
+                    cached_df.tail(n=5),
                 )
                 return cached_df[mask].copy()
+            else:
+                self.logger.debug(
+                    "Cache for %s is out of range (%s to %s)",
+                    ticker,
+                    cached_start,
+                    cached_end,
+                )
+                return None
 
-        except Exception:
+        except (OSError, ValueError) as e:
             # If there's any issue with cached data, ignore it
-            pass
+            self.logger.warning(
+                (
+                    "⚠️  Invalid cache for %s, with start date %s and "
+                    "end date %s; ignoring error: %s"
+                ),
+                ticker,
+                start_date.strftime("%Y-%m-%d"),
+                end_date.strftime("%Y-%m-%d"),
+                e,
+            )
 
         return None
 
     def _cache_data(self, ticker: str, data: pd.DataFrame) -> None:
         """Cache market data to disk."""
         if not self.config.get("settings.cache_market_data", True):
+            self.logger.debug("Caching disabled, skipping cache for %s", ticker)
             return
 
         cache_dir = self.config.get_market_data_path()
@@ -424,10 +625,16 @@ class BogleBenchAnalyzer:
 
         cache_file = cache_dir / f"{ticker}.parquet"
 
+        self.logger.debug("Caching data for %s at %s", ticker, cache_file)
+        self.logger.debug("Data shape: %s", data.shape)
+
         try:
             data.to_parquet(cache_file, index=False)
+            self.logger.debug("Cache saved for %s", ticker)
         except Exception as e:
-            print(f"⚠️  Warning: Could not cache data for {ticker}: {e}")
+            self.logger.warning(
+                "⚠️  Warning: Could not cache data for %s: %s", ticker, e
+            )
 
     def _get_price_for_date(
         self, ticker: str, target_date: pd.Timestamp
@@ -444,7 +651,7 @@ class BogleBenchAnalyzer:
             ticker_data["date"].dt.date == target_date  # .date()
         ]
         if not exact_match.empty:
-            return exact_match["Close"].iloc[0]
+            return exact_match["close"].iloc[0]
 
         # Forward fill: use most recent price before target date
         self.logger.debug(
@@ -458,12 +665,12 @@ class BogleBenchAnalyzer:
                 target_date.date() - available_data["date"].iloc[-1].date()
             ).days
             if days_back <= 7:  # Only forward-fill up to 7 days
-                return available_data["Close"].iloc[-1]
+                return available_data["close"].iloc[-1]
             else:
                 print(
                     f"Warning: No recent price data for {ticker} near {target_date}"
                 )
-                return available_data["Close"].iloc[
+                return available_data["close"].iloc[
                     -1
                 ]  # Use it anyway but warn
 
@@ -481,7 +688,7 @@ class BogleBenchAnalyzer:
             print(
                 f"Warning: Using future price for {ticker} on {target_date} ({days_forward} days forward)"
             )
-            return future_data["Close"].iloc[0]
+            return future_data["close"].iloc[0]
 
         # If we get here, no data exists at all
         raise ValueError(
@@ -627,13 +834,13 @@ class BogleBenchAnalyzer:
                         ticker_data["date"].dt.date == date  # date.date()
                     ]
                     if not price_data.empty:
-                        price = price_data["Close"].iloc[0]
+                        price = price_data["close"].iloc[0]
                     else:
                         available_data = ticker_data[
                             ticker_data["date"].dt.date <= date  # date.date()
                         ]
                         if not available_data.empty:
-                            price = available_data["Close"].iloc[-1]
+                            price = available_data["close"].iloc[-1]
                         else:
                             price = 0.0
                 else:
@@ -743,7 +950,7 @@ class BogleBenchAnalyzer:
 
         # Convert benchmark data to returns
         benchmark_df = self.benchmark_data.copy()
-        benchmark_df["return"] = benchmark_df["Close"].pct_change()
+        benchmark_df["return"] = benchmark_df["close"].pct_change()
 
         # Align dates
         aligned_returns = []
