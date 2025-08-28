@@ -828,7 +828,6 @@ class BogleBenchAnalyzer:
             total_portfolio_value = 0.0
             account_totals = {}
 
-            self.logger.debug("Calculating account-specific positions")
             for account in accounts:
                 account_value = 0.0
 
@@ -865,7 +864,6 @@ class BogleBenchAnalyzer:
             day_data["total_value"] = total_portfolio_value
 
             # Also calculate consolidated positions across all accounts
-            self.logger.debug("Calculating consolidated positions")
             for ticker in tickers:
                 total_shares = sum(
                     current_holdings[account][ticker] for account in accounts
