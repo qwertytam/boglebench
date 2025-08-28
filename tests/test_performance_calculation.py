@@ -231,12 +231,6 @@ class TestPerformanceCalculation:
         assert "jensens_alpha" in relative_metrics
         assert "correlation" in relative_metrics
 
-        print(
-            f"---- Benchmark Metrics ----\n"
-            f"{json.dumps(benchmark_metrics, cls=NpEncoder, indent=4)}\n"
-            f"---- End Metrics ----\n"
-        )
-
         # Check metrics output
         annual_trading_days = int(
             results.config.get("settings.annual_trading_days", 252)
@@ -295,12 +289,6 @@ class TestPerformanceCalculation:
         assert (
             abs(benchmark_metrics["max_drawdown"] - expected_max_drawdown)
             < accuracy
-        )
-
-        print(
-            f"---- Relative Metrics ----\n"
-            f"{json.dumps(relative_metrics, cls=NpEncoder, indent=4)}\n"
-            f"---- End Metrics ----\n"
         )
 
         expected_asset_daily_returns = np.array(
