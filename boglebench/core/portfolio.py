@@ -22,10 +22,11 @@ import numpy as np
 import pandas as pd
 import pandas_market_calendars as mcal  # type: ignore
 from alpha_vantage.timeseries import TimeSeries  # type: ignore
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
+from ..utils.timing import timed_operation
 from ..utils.tools import ensure_timestamp, to_tz_mixed
 from ..utils.workspace import WorkspaceContext
 
@@ -341,13 +342,6 @@ class BogleBenchAnalyzer:
                 "Must load transactions first using load_transactions()"
             )
 
-        self.logger.debug(
-            "Fetching market data using transaction date:\n%s\n"
-            + "with columns of types:\n%s",
-            self.transactions.head(),
-            self.transactions.dtypes,
-        )
-
         # Ensure start_dt and end_dt are pd.Timestamp and not None
         default_start_date = None
         if start_date is None:
@@ -364,15 +358,13 @@ class BogleBenchAnalyzer:
                 days=30
             )
             self.logger.debug(
-                "default_start_date is %s and type %s",
+                "default_start_date is %s",
                 default_start_date,
-                type(default_start_date),
             )
         start_date = ensure_timestamp(start_date, default_start_date)
         self.logger.debug(
-            "start_date after ensure_timestamp is %s and type %s",
+            "start_date after ensure_timestamp is %s",
             start_date,
-            type(start_date),
         )
 
         default_end_date = None
@@ -430,97 +422,101 @@ class BogleBenchAnalyzer:
 
         for ticker in all_tickers:
             try:
-                self.logger.info("  Fetching market data for %s...", ticker)
+                with timed_operation("Fetching market data", self.logger):
+                    self.logger.info("  Fetching market data for %s...", ticker)
 
-                # Check cache first (if enabled and not forcing refresh)
-                cached_data = self._get_cached_data(
-                    ticker, start_date, end_date
-                )
-                if cached_data is not None and not force_refresh:
+                    # Check cache first (if enabled and not forcing refresh)
+                    cached_data = self._get_cached_data(
+                        ticker, start_date, end_date
+                    )
+                    if cached_data is not None and not force_refresh:
+                        self.logger.debug(
+                            "Cache HIT for %s - using cached data", ticker
+                        )
+                        market_data[ticker] = cached_data
+                        continue
+                    else:
+                        self.logger.debug(
+                            "cached_data is None: %s", cached_data is None
+                        )
+                        self.logger.debug("Force refresh: %s", force_refresh)
+                        self.logger.debug(
+                            "Cache MISS for %s - downloading from API", ticker
+                        )
+
+                    # Get Alpha Vantage API key
+                    api_key = self.config.get("api.alpha_vantage_key")
+                    if not api_key:
+                        raise ValueError(
+                            "Alpha Vantage API key required. "
+                            "Get free key at https://www.alphavantage.co/support/#api-key"
+                        )
+
+                    # Download from Alpha Vantage
+                    ts = TimeSeries(key=api_key, output_format="pandas")
+                    # pylint: disable-next=unbalanced-tuple-unpacking
+                    hist, _ = ts.get_daily_adjusted(  # type: ignore
+                        symbol=ticker, outputsize="full"
+                    )
+
+                    if hist.empty:  # pylint: disable=no-member # type: ignore
+                        failed_tickers.append(ticker)
+                        continue
+
+                    # Clean up the data - Alpha Vantage has different column names
+                    hist = (
+                        hist.rename(  # pylint: disable=no-member # type: ignore
+                            columns={
+                                "1. open": "open",
+                                "2. high": "high",
+                                "3. low": "low",
+                                "4. close": "close",
+                                "6. volume": "volume",
+                            }
+                        )
+                    )
+                    hist = hist[["open", "high", "low", "close", "volume"]]
+                    hist.index.name = "date"
+                    hist = hist.reset_index()
+
+                    # Filter date range
+                    hist["date"] = to_tz_mixed(hist["date"])
                     self.logger.debug(
-                        "Cache HIT for %s - using cached data", ticker
+                        "Data range for %s: %s to %s before filtering",
+                        ticker,
+                        hist["date"].min(),
+                        hist["date"].max(),
                     )
-                    market_data[ticker] = cached_data
-                    continue
-                else:
+
                     self.logger.debug(
-                        "cached_data is None: %s", cached_data is None
+                        "start_date is %s and end_date is %s",
+                        start_date,
+                        end_date,
                     )
-                    self.logger.debug("Force refresh: %s", force_refresh)
                     self.logger.debug(
-                        "Cache MISS for %s - downloading from API", ticker
+                        "hist['date'] is %s and type %s",
+                        hist["date"].head(),
+                        type(hist["date"]),
                     )
 
-                # Get Alpha Vantage API key
-                api_key = self.config.get("api.alpha_vantage_key")
-                if not api_key:
-                    raise ValueError(
-                        "Alpha Vantage API key required. "
-                        "Get free key at https://www.alphavantage.co/support/#api-key"
+                    hist = hist[
+                        (hist["date"] >= start_date)
+                        & (hist["date"] <= end_date)
+                    ]
+                    self.logger.debug(
+                        "Data range for %s: %s to %s "
+                        + "AFTER filtering against %s to %s",
+                        ticker,
+                        hist["date"].min(),
+                        hist["date"].max(),
+                        start_date.strftime("%Y-%m-%d"),
+                        end_date.strftime("%Y-%m-%d"),
                     )
 
-                # Download from Alpha Vantage
-                ts = TimeSeries(key=api_key, output_format="pandas")
-                # pylint: disable-next=unbalanced-tuple-unpacking
-                hist, _ = ts.get_daily_adjusted(  # type: ignore
-                    symbol=ticker, outputsize="full"
-                )
+                    # Cache the data
+                    self._cache_data(ticker, hist)
 
-                if hist.empty:  # pylint: disable=no-member # type: ignore
-                    failed_tickers.append(ticker)
-                    continue
-
-                # Clean up the data - Alpha Vantage has different column names
-                hist = hist.rename(  # pylint: disable=no-member # type: ignore
-                    columns={
-                        "1. open": "open",
-                        "2. high": "high",
-                        "3. low": "low",
-                        "4. close": "close",
-                        "6. volume": "volume",
-                    }
-                )
-                hist = hist[["open", "high", "low", "close", "volume"]]
-                hist.index.name = "date"
-                hist = hist.reset_index()
-
-                # Filter date range
-                hist["date"] = to_tz_mixed(hist["date"])
-                self.logger.debug(
-                    "Data range for %s: %s to %s before filtering",
-                    ticker,
-                    hist["date"].min(),
-                    hist["date"].max(),
-                )
-
-                self.logger.debug(
-                    "start_date is %s and type %s", start_date, type(start_date)
-                )
-                self.logger.debug(
-                    "end_date is %s and type %s", end_date, type(end_date)
-                )
-                self.logger.debug(
-                    "hist['date'] is %s and type %s",
-                    hist["date"].head(),
-                    type(hist["date"]),
-                )
-
-                hist = hist[
-                    (hist["date"] >= start_date) & (hist["date"] <= end_date)
-                ]
-                self.logger.debug(
-                    "Data range for %s: %s to %s AFTER filtering against %s to %s",
-                    ticker,
-                    hist["date"].min(),
-                    hist["date"].max(),
-                    start_date.strftime("%Y-%m-%d"),
-                    end_date.strftime("%Y-%m-%d"),
-                )
-
-                # Cache the data
-                self._cache_data(ticker, hist)
-
-                market_data[ticker] = hist
+                    market_data[ticker] = hist
 
             except (OSError, ValueError) as e:
                 self.logger.error("  ❌ Failed to download %s: %s", ticker, e)
@@ -562,11 +558,11 @@ class BogleBenchAnalyzer:
 
         try:
             cached_df = pd.read_parquet(cache_file)
-            cached_df["date"] = pd.to_datetime(cached_df["date"])
+            cached_df["date"] = to_tz_mixed(cached_df["date"])
 
             # Check if cached data covers our date range
-            cached_start = cached_df["date"].min()
-            cached_end = cached_df["date"].max()
+            cached_start = to_tz_mixed(cached_df["date"].min())
+            cached_end = to_tz_mixed(cached_df["date"].max())
 
             self.logger.debug(
                 "Cached data for %s from %s to %s with start %s and end %s",
@@ -591,13 +587,29 @@ class BogleBenchAnalyzer:
                     end_date,
                 )
                 return None
-            first_trading_day = requested_schedule.index.min()
-            last_trading_day = requested_schedule.index.max()
+            first_trading_day = to_tz_mixed(requested_schedule.index.min())
+            last_trading_day = to_tz_mixed(requested_schedule.index.max())
+
+            self.logger.debug(
+                "Comparing requested trading days from %s %s to %s %s",
+                first_trading_day,
+                type(first_trading_day),
+                last_trading_day,
+                type(last_trading_day),
+            )
+            self.logger.debug(
+                "With cached data from %s %s to %s %s",
+                cached_start,
+                type(cached_start),
+                cached_end,
+                type(cached_end),
+            )
 
             if (
                 cached_start <= first_trading_day
                 and cached_end >= last_trading_day
             ):
+                self.logger.debug("Cache is valid for requested range")
                 # Filter to requested date range
                 mask = cached_df["date"].isin(requested_schedule.index)
                 self.logger.debug(
@@ -669,7 +681,7 @@ class BogleBenchAnalyzer:
         ticker_data = self.market_data[ticker]
 
         # Try exact date match first
-        self.logger.debug("Looking for price of %s on %s", ticker, target_date)
+        # self.logger.debug("Looking for price of %s on %s", ticker, target_date)
         exact_match = ticker_data[
             ticker_data["date"].dt.date == target_date  # .date()
         ]
@@ -816,20 +828,20 @@ class BogleBenchAnalyzer:
                     shares = current_holdings[account][ticker]
 
                     try:
-                        self.logger.debug(
-                            "Getting price for %s on %s", ticker, date
-                        )
+                        # self.logger.debug(
+                        #     "Getting price for %s on %s", ticker, date
+                        # )
                         price = self._get_price_for_date(ticker, date)
                     except ValueError as e:
                         self.logger.error(f"Skipping {ticker} on {date}: {e}")
                         price = 0.0  # Only set to 0 if truly no data exists
 
-                    self.logger.debug(
-                        "Calculated price for %s on %s: $%.2f",
-                        ticker,
-                        date,
-                        price,
-                    )
+                    # self.logger.debug(
+                    #     "Calculated price for %s on %s: $%.2f",
+                    #     ticker,
+                    #     date,
+                    #     price,
+                    # )
                     position_value = shares * price
                     account_value += position_value
 
