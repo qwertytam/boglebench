@@ -920,6 +920,12 @@ class BogleBenchAnalyzer:
         portfolio_df["portfolio_return"] = portfolio_df[
             "total_value"
         ].pct_change()
+        self.logger.debug(
+            "Portfolio returns has %s NaN values",
+            portfolio_df["portfolio_return"].isna().sum(),
+        )
+        denominator_is_zero_mask = portfolio_df["total_value"].shift(1) == 0
+        portfolio_df.loc[denominator_is_zero_mask, "portfolio_return"] = 0.0
 
         # Calculate account-specific returns
         for account in accounts:
