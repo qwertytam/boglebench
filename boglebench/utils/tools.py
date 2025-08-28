@@ -149,3 +149,45 @@ def to_tz_mixed(
 
     logger.error("to_tz_mixed: unsupported input type %s", type(x))
     raise TypeError(f"Unsupported input type for to_tz_mixed: {type(x)}")
+
+
+def CAGR(
+    start_value: float,
+    end_value: float,
+    periods: float,
+) -> Optional[float]:
+    """
+    Calculate the Compound Annual Growth Rate (CAGR).
+
+    Parameters
+    ----------
+    start_value : float
+        The initial value at the start of the period.
+    end_value : float
+        The final value at the end of the period.
+    periods : float
+        The number of periods (typically years).
+
+    Returns
+    -------
+    Optional[float]
+        The CAGR as a decimal (e.g., 0.05 for 5%), or None if inputs are invalid.
+    """
+    if periods <= 0 or start_value <= 0:
+        logger.warning(
+            "CAGR calculation requires positive start_value and periods > 0"
+        )
+        return None
+    try:
+        logger.info(
+            "Calculating CAGR with start_value=%.6f, end_value=%.6f, periods=%.6f",
+            start_value,
+            end_value,
+            periods,
+        )
+        cagr = (end_value / start_value) ** (1 / periods) - 1
+        logger.info("CAGR result: %.6f", cagr)
+        return cagr
+    except Exception as e:
+        logger.error("Error calculating CAGR: %s", e)
+        return None
