@@ -423,7 +423,7 @@ class BogleBenchAnalyzer:
         for ticker in all_tickers:
             try:
                 with timed_operation("Fetching market data", self.logger):
-                    self.logger.info("  Fetching market data for %s...", ticker)
+                    self.logger.info("  Fetching market data for %s", ticker)
 
                     # Check cache first (if enabled and not forcing refresh)
                     cached_data = self._get_cached_data(
@@ -533,6 +533,9 @@ class BogleBenchAnalyzer:
                 )
 
         # Store market data
+        self.logger.debug(
+            "Fetched market data for %s tickers", len(market_data)
+        )
         self.market_data = market_data
 
         # Separate benchmark data for easy access
@@ -611,7 +614,9 @@ class BogleBenchAnalyzer:
             ):
                 self.logger.debug("Cache is valid for requested range")
                 # Filter to requested date range
-                mask = cached_df["date"].isin(requested_schedule.index)
+                mask = cached_df["date"].isin(
+                    to_tz_mixed(requested_schedule.index)
+                )
                 self.logger.debug(
                     "Cache valid for %s from %s to %s",
                     ticker,
@@ -756,16 +761,19 @@ class BogleBenchAnalyzer:
         }
 
         # Get full date range for analysis
-        self.logger.debug("Calculating full date range for portfolio history")
         start_date = self.transactions["date"].min()
         end_date = max([df["date"].max() for df in self.market_data.values()])
 
         # Get actual NYSE trading days (excludes weekends AND holidays)
+        self.logger.debug(
+            "Getting NYSE trading days from %s to %s", start_date, end_date
+        )
         nyse = mcal.get_calendar("NYSE")
         trading_days = nyse.schedule(start_date=start_date, end_date=end_date)
         date_range = trading_days.index.date  # Convert to date objects
 
         # Check if all transaction dates are trading days
+        self.logger.debug("Validating transaction dates against trading days")
         transaction_dates = set(self.transactions["date"].dt.date)
         trading_dates = set(date_range)
 
@@ -1331,5 +1339,4 @@ class PerformanceResults:
             pd.DataFrame(metrics_data).to_csv(metrics_file, index=False)
 
         print(f"Results exported to: {output_path}")
-        return str(output_path)
         return str(output_path)
