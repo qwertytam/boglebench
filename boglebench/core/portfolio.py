@@ -27,7 +27,7 @@ from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
 from ..utils.timing import timed_operation
-from ..utils.tools import ensure_timestamp, to_tz_mixed
+from ..utils.tools import CAGR, ensure_timestamp, to_tz_mixed
 from ..utils.workspace import WorkspaceContext
 
 
@@ -1021,19 +1021,52 @@ class BogleBenchAnalyzer:
             return {}
 
         # Basic statistics
-        total_return = (1 + returns).prod() - 1
-        annualized_return = (
-            1 + returns.mean()
-        ) ** 252 - 1  # Assuming daily returns
-        volatility = returns.std() * np.sqrt(252)  # Annualized volatility
+        total_periods = len(returns)
+        annual_trading_days = int(
+            self.config.get("settings.annual_trading_days", 252)
+        )
+        year_fraction = total_periods / annual_trading_days
+
+        returns = pd.to_numeric(returns, errors="coerce").dropna()
+        total_return = float((1 + returns).prod() - 1)
+        # annualized_return = (1 + total_return) ** (
+        #     annual_trading_days / total_periods
+        # ) - 1  # Assuming daily returns
+        self.logger.debug(
+            "Calculating CAGR with total_return=%.6f, year_fraction=%.6f",
+            total_return,
+            year_fraction,
+        )
+        annualized_return = CAGR(1, 1 + total_return, year_fraction)
+
+        volatility = returns.std()
+        annual_volatility = volatility * np.sqrt(
+            annual_trading_days
+        )  # Annualized volatility
 
         # Risk-adjusted metrics
-        risk_free_rate = self.config.get("settings.risk_free_rate", 0.02)
-        excess_returns = returns - risk_free_rate / 252
+        annual_risk_free_rate = float(
+            self.config.get("settings.risk_free_rate", 0.02)
+        )
+        daily_risk_free_rate = CAGR(
+            1, 1 + annual_risk_free_rate, annual_trading_days
+        )
+        excess_returns = returns - daily_risk_free_rate
+        excess_mean_returns = excess_returns.mean()
         sharpe_ratio = (
-            excess_returns.mean() / returns.std() * np.sqrt(252)
+            excess_mean_returns / volatility * np.sqrt(annual_trading_days)
             if returns.std() > 0
             else 0
+        )
+
+        self.logger.debug(
+            "excess returns:\n%s\ndaily_risk_free_rate=%.6f, "
+            + "excess_mean_returns=%.6f, volatility=%.6f, sharpe_ratio=%.6f",
+            excess_returns,
+            daily_risk_free_rate,
+            excess_mean_returns,
+            volatility,
+            sharpe_ratio,
         )
 
         # Drawdown analysis
@@ -1044,14 +1077,13 @@ class BogleBenchAnalyzer:
 
         # Additional metrics
         positive_periods = (returns > 0).sum()
-        total_periods = len(returns)
         win_rate = positive_periods / total_periods if total_periods > 0 else 0
 
         return {
             "name": name,
             "total_return": total_return,
             "annualized_return": annualized_return,
-            "volatility": volatility,
+            "volatility": annual_volatility,
             "sharpe_ratio": sharpe_ratio,
             "max_drawdown": max_drawdown,
             "win_rate": win_rate,
@@ -1069,6 +1101,10 @@ class BogleBenchAnalyzer:
         if benchmark_returns is None or portfolio_returns.empty:
             return {}
 
+        annual_trading_days = int(
+            self.config.get("settings.annual_trading_days", 252)
+        )
+
         # Align the series
         min_length = min(len(portfolio_returns), len(benchmark_returns))
         portfolio_returns = portfolio_returns.iloc[-min_length:]
@@ -1082,22 +1118,23 @@ class BogleBenchAnalyzer:
 
         # Information ratio (excess return / tracking error)
         information_ratio = (
-            (excess_returns.mean() * 252) / tracking_error
+            (excess_returns.mean() * annual_trading_days) / tracking_error
             if tracking_error > 0
             else 0
         )
 
         # Beta calculation
-        covariance = np.cov(portfolio_returns, benchmark_returns)[0, 1]
-        benchmark_variance = np.var(benchmark_returns)
+        covariance = np.cov(portfolio_returns, benchmark_returns, ddof=1)[0, 1]
+        benchmark_variance = np.var(benchmark_returns, ddof=1)
         beta = covariance / benchmark_variance if benchmark_variance > 0 else 0
 
         # Jensen's Alpha (risk-adjusted excess return)
-        risk_free_rate = self.config.get("settings.risk_free_rate", 0.02) / 252
-        portfolio_excess = portfolio_returns.mean() - risk_free_rate
-        benchmark_excess = benchmark_returns.mean() - risk_free_rate
+        risk_free_rate = self.config.get("settings.risk_free_rate", 0.02)
+        daily_risk_free_rate = CAGR(1, 1 + risk_free_rate, annual_trading_days)
+        portfolio_excess = portfolio_returns.mean() - daily_risk_free_rate
+        benchmark_excess = benchmark_returns.mean() - daily_risk_free_rate
         jensens_alpha = portfolio_excess - (beta * benchmark_excess)
-        jensens_alpha_annualized = jensens_alpha * 252
+        jensens_alpha_annualized = jensens_alpha * annual_trading_days
 
         return {
             "tracking_error": tracking_error,

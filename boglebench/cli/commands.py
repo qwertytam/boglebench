@@ -7,6 +7,7 @@ from pathlib import Path
 
 import click
 
+from ..core.portfolio import BogleBenchAnalyzer
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
 from ..utils.workspace import WorkspaceContext
@@ -173,9 +174,6 @@ def run_analysis(
     logger.info(
         "📈 Analyzing your portfolio with Bogle's principles in mind..."
     )
-
-    # This would be implemented in your main analyzer
-    from ..core.portfolio import BogleBenchAnalyzer
 
     try:
         analyzer = BogleBenchAnalyzer(config_path=config)
