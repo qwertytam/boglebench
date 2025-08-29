@@ -205,7 +205,7 @@ class BogleBenchAnalyzer:
                 elif col == "notes":
                     df[col] = ""
 
-                self.logger.info(
+                self.logger.debug(
                     "ℹ️  No '%s' column found. Added default values.", col
                 )
 
@@ -684,11 +684,12 @@ class BogleBenchAnalyzer:
             raise ValueError(f"No market data available for {ticker}")
 
         ticker_data = self.market_data[ticker]
+        target_date = ensure_timestamp(target_date)
 
         # Try exact date match first
         # self.logger.debug("Looking for price of %s on %s", ticker, target_date)
         exact_match = ticker_data[
-            ticker_data["date"].dt.date == target_date  # .date()
+            ticker_data["date"].dt.date == target_date.date()
         ]
         if not exact_match.empty:
             return exact_match["close"].iloc[0]
@@ -698,7 +699,7 @@ class BogleBenchAnalyzer:
             "Forward-filling price for %s on %s", ticker, target_date
         )
         available_data = ticker_data[
-            ticker_data["date"].dt.date <= target_date  # .date()
+            ticker_data["date"].dt.date <= target_date.date()
         ]
         if not available_data.empty:
             days_back = (
@@ -719,14 +720,17 @@ class BogleBenchAnalyzer:
             "Backward-filling price for %s on %s", ticker, target_date
         )
         future_data = ticker_data[
-            ticker_data["date"].dt.date > target_date  # .date()
+            ticker_data["date"].dt.date > target_date.date()
         ]
         if not future_data.empty:
             days_forward = (
-                future_data["date"].iloc[0].date() - target_date  # .date()
+                future_data["date"].iloc[0].date() - target_date.date()
             ).days
-            print(
-                f"Warning: Using future price for {ticker} on {target_date} ({days_forward} days forward)"
+            self.logger.info(
+                "Using future price for %s on %s (%d days forward)",
+                ticker,
+                target_date,
+                days_forward,
             )
             return future_data["close"].iloc[0]
 
@@ -734,6 +738,101 @@ class BogleBenchAnalyzer:
         raise ValueError(
             f"No price data available for {ticker} around {target_date}"
         )
+
+    def _calculate_modified_dietz_returns(
+        self, portfolio_df: pd.DataFrame
+    ) -> pd.Series:
+        """Calculate portfolio returns using Modified Dietz method."""
+        returns = []
+
+        for i in range(len(portfolio_df)):
+            if i == 0:
+                # First day - no return calculation possible
+                returns.append(0.0)
+                continue
+
+            # Get values
+            beginning_value = portfolio_df.iloc[i - 1]["total_value"]
+            ending_value = portfolio_df.iloc[i]["total_value"]
+            net_cash_flow = portfolio_df.iloc[i]["net_cash_flow"]
+            weighted_cash_flow = portfolio_df.iloc[i]["weighted_cash_flow"]
+
+            # Modified Dietz formula
+            denominator = beginning_value + weighted_cash_flow
+
+            if denominator <= 0:
+                # Handle edge case: no beginning value or negative denominator
+                returns.append(0.0)
+            else:
+                daily_return = (
+                    ending_value - beginning_value - net_cash_flow
+                ) / denominator
+                returns.append(daily_return)
+
+        return pd.Series(returns)
+
+    def _process_daily_transactions(
+        self, date: pd.Timestamp
+    ) -> Dict[str, float]:
+        """Process all transactions for a specific date and return cash
+        flows by account."""
+        if isinstance(date, str):
+            date = pd.to_datetime(date)
+
+        day_transactions = self.transactions[
+            self.transactions["date"].dt.date == date  # .date()
+        ]
+
+        cash_flows = {"total": 0.0}
+
+        # Initialize all accounts
+        for account in self.transactions["account"].unique():
+            cash_flows[account] = 0.0
+
+        # Process each transaction
+        for _, trans in day_transactions.iterrows():
+            account = trans["account"]
+            cash_flow = trans[
+                "total_value"
+            ]  # Already signed correctly (negative for SELL)
+
+            cash_flows[account] += cash_flow
+            cash_flows["total"] += cash_flow
+
+        return cash_flows
+
+    def _calculate_account_modified_dietz_returns(
+        self, portfolio_df: pd.DataFrame, account: str
+    ) -> pd.Series:
+        """Calculate account-level returns using Modified Dietz method."""
+        returns = []
+        account_total_col = f"{account}_total"
+        account_cash_flow_col = f"{account}_cash_flow"
+        account_weighted_cash_flow_col = f"{account}_weighted_cash_flow"
+
+        for i in range(len(portfolio_df)):
+            if i == 0:
+                returns.append(0.0)
+                continue
+
+            beginning_value = portfolio_df.iloc[i - 1][account_total_col]
+            ending_value = portfolio_df.iloc[i][account_total_col]
+            net_cash_flow = portfolio_df.iloc[i][account_cash_flow_col]
+            weighted_cash_flow = portfolio_df.iloc[i][
+                account_weighted_cash_flow_col
+            ]
+
+            denominator = beginning_value + weighted_cash_flow
+
+            if denominator <= 0:
+                returns.append(0.0)
+            else:
+                daily_return = (
+                    ending_value - beginning_value - net_cash_flow
+                ) / denominator
+                returns.append(daily_return)
+
+        return pd.Series(returns)
 
     def build_portfolio_history(self) -> pd.DataFrame:
         """
@@ -895,6 +994,9 @@ class BogleBenchAnalyzer:
         # Convert to DataFrame
         self.logger.debug("Converting portfolio data to DataFrame")
         portfolio_df = pd.DataFrame(portfolio_data)
+        portfolio_df["net_cash_flow"] = 0.0
+        portfolio_df["weighted_cash_flow"] = 0.0
+        portfolio_df["market_value_change"] = 0.0
 
         # Calculate weights by account and overall
         for account in accounts:
@@ -916,24 +1018,67 @@ class BogleBenchAnalyzer:
                 / portfolio_df["total_value"]
             ).fillna(0.0)
 
-        # Calculate daily returns
-        portfolio_df["portfolio_return"] = portfolio_df[
-            "total_value"
-        ].pct_change()
-        self.logger.debug(
-            "Portfolio returns has %s NaN values",
-            portfolio_df["portfolio_return"].isna().sum(),
+        # Calculate daily cash flow adjust returns
+        # Calculate cash flows for each day using helper function
+        for i, row in portfolio_df.iterrows():
+            date = row["date"]
+            if isinstance(date, str):
+                date = pd.to_datetime(date)
+
+            cash_flows = self._process_daily_transactions(date)
+
+            portfolio_df.at[i, "net_cash_flow"] = cash_flows["total"]
+            portfolio_df.at[i, "weighted_cash_flow"] = (
+                cash_flows["total"] * 0.5
+            )  # Mid-day weighting
+
+            # Store ALL account cash flows
+            for account in accounts:
+                portfolio_df.at[i, f"{account}_cash_flow"] = cash_flows.get(
+                    account, 0.0
+                )
+                portfolio_df.at[i, f"{account}_weighted_cash_flow"] = (
+                    cash_flows.get(account, 0.0) * 0.5  # Mid-day weighting
+                )
+
+        # Calculate market value change (pure investment performance)
+        for i in range(1, len(portfolio_df)):
+            prev_value = portfolio_df.iloc[i - 1]["total_value"]
+            current_value = portfolio_df.iloc[i]["total_value"]
+            net_cash_flow = portfolio_df.iloc[i]["net_cash_flow"]
+
+            # Market value change = total change minus cash flow impact
+            market_change = current_value - prev_value - net_cash_flow
+            portfolio_df.iloc[
+                i, portfolio_df.columns.get_loc("market_value_change")
+            ] = market_change
+
+        # For clarity, also store cash flow impact column
+        portfolio_df["cash_flow_impact"] = portfolio_df["net_cash_flow"]
+
+        # Calculate Modified Dietz returns
+        portfolio_df["portfolio_return"] = (
+            self._calculate_modified_dietz_returns(portfolio_df)
         )
+
+        # Handle edge case where previous total_value is zero
         denominator_is_zero_mask = portfolio_df["total_value"].shift(1) == 0
         portfolio_df.loc[denominator_is_zero_mask, "portfolio_return"] = 0.0
+
+        self.logger.debug(
+            "Portfolio returns had %d NaN values; replaced with 0.0",
+            portfolio_df["portfolio_return"].isna().sum(),
+        )
 
         # Calculate account-specific returns
         for account in accounts:
             account_total_col = f"{account}_total"
             if account_total_col in portfolio_df.columns:
-                portfolio_df[f"{account}_return"] = portfolio_df[
-                    account_total_col
-                ].pct_change()
+                portfolio_df[f"{account}_return"] = (
+                    self._calculate_account_modified_dietz_returns(
+                        portfolio_df, account
+                    )
+                )
 
         self.portfolio_history = portfolio_df
 
@@ -1035,15 +1180,26 @@ class BogleBenchAnalyzer:
         )
 
         total_return = float((1 + returns).prod() - 1)
-        # annualized_return = (1 + total_return) ** (
-        #     annual_trading_days / total_periods
-        # ) - 1  # Assuming daily returns
         self.logger.debug(
-            "Calculating CAGR with total_return=%.6f, year_fraction=%.6f",
-            total_return,
+            "Calculating CAGR with total_return=%.6f%%, year_fraction=%.6f",
+            total_return * 100,
             year_fraction,
         )
         annualized_return = cagr(1, 1 + total_return, year_fraction)
+
+        self.logger.debug(
+            "%s: Periods: %d, Years: %.2f",
+            name,
+            total_periods,
+            year_fraction,
+        )
+
+        self.logger.debug(
+            "%s: First date: %s, Last date: %s",
+            name,
+            returns.index[0] if len(returns) > 0 else "N/A",
+            returns.index[-1] if len(returns) > 0 else "N/A",
+        )
 
         self.logger.debug(
             "%s: Total Return: %.2f%%, Annualized Return: %.2f%%",
