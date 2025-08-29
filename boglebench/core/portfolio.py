@@ -30,6 +30,17 @@ from ..utils.timing import timed_operation
 from ..utils.tools import cagr, ensure_timestamp, to_tz_mixed
 from ..utils.workspace import WorkspaceContext
 
+TO_PERCENT = 100
+DEFAULT_TRADING_DAYS = 252
+DEFAULT_VALUE = 0.0
+DEFAULT_RETURN = DEFAULT_VALUE
+DEFAULT_ASSET_VALUE = DEFAULT_VALUE
+DEFAULT_PRICE = DEFAULT_VALUE
+DEFAULT_CASH_FLOW = DEFAULT_VALUE
+DEFAULT_WEIGHT = DEFAULT_VALUE
+DEFAULT_RISK_FREE_RATE = 0.02
+DEFAULT_LOOK_FORWARD_PRICE_DATA = 10  # days
+
 
 class BogleBenchAnalyzer:
     """
@@ -305,10 +316,14 @@ class BogleBenchAnalyzer:
         nyse = mcal.get_calendar("NYSE")
         today = datetime.now(tz=ZoneInfo("America/New_York"))
         schedule = nyse.schedule(
-            start_date=today - timedelta(days=10), end_date=today
+            start_date=today - timedelta(days=DEFAULT_LOOK_FORWARD_PRICE_DATA),
+            end_date=today,
         )
         if schedule.empty:
-            raise ValueError("No recent market days found in the last 10 days")
+            raise ValueError(
+                f"No recent market days found in the last "
+                f"{DEFAULT_LOOK_FORWARD_PRICE_DATA} days"
+            )
 
         closed_days = schedule[schedule["market_close"] < today]
         last_closed_market_day = closed_days["market_close"].max()
@@ -347,7 +362,8 @@ class BogleBenchAnalyzer:
         if start_date is None:
             self.logger.info(
                 "No start date provided. "
-                + "Defaulting to 30 days before first transaction."
+                + "Defaulting to %s days before first transaction.",
+                DEFAULT_LOOK_FORWARD_PRICE_DATA,
             )
             self.logger.debug(
                 "self.transactions['date'].min() is %s and type %s",
@@ -355,7 +371,7 @@ class BogleBenchAnalyzer:
                 type(self.transactions["date"].min()),
             )
             default_start_date = self.transactions["date"].min() - timedelta(
-                days=30
+                days=DEFAULT_LOOK_FORWARD_PRICE_DATA
             )
             self.logger.debug(
                 "default_start_date is %s",
@@ -748,7 +764,7 @@ class BogleBenchAnalyzer:
         for i in range(len(portfolio_df)):
             if i == 0:
                 # First day - no return calculation possible
-                returns.append(0.0)
+                returns.append(DEFAULT_RETURN)
                 continue
 
             # Get values
@@ -762,7 +778,7 @@ class BogleBenchAnalyzer:
 
             if denominator <= 0:
                 # Handle edge case: no beginning value or negative denominator
-                returns.append(0.0)
+                returns.append(DEFAULT_RETURN)
             else:
                 daily_return = (
                     ending_value - beginning_value - net_cash_flow
@@ -783,11 +799,11 @@ class BogleBenchAnalyzer:
             self.transactions["date"].dt.date == date  # .date()
         ]
 
-        cash_flows = {"total": 0.0}
+        cash_flows = {"total": DEFAULT_CASH_FLOW}
 
         # Initialize all accounts
         for account in self.transactions["account"].unique():
-            cash_flows[account] = 0.0
+            cash_flows[account] = DEFAULT_CASH_FLOW
 
         # Process each transaction
         for _, trans in day_transactions.iterrows():
@@ -812,7 +828,7 @@ class BogleBenchAnalyzer:
 
         for i in range(len(portfolio_df)):
             if i == 0:
-                returns.append(0.0)
+                returns.append(DEFAULT_RETURN)
                 continue
 
             beginning_value = portfolio_df.iloc[i - 1][account_total_col]
@@ -825,7 +841,7 @@ class BogleBenchAnalyzer:
             denominator = beginning_value + weighted_cash_flow
 
             if denominator <= 0:
-                returns.append(0.0)
+                returns.append(DEFAULT_RETURN)
             else:
                 daily_return = (
                     ending_value - beginning_value - net_cash_flow
@@ -913,9 +929,11 @@ class BogleBenchAnalyzer:
 
                 # Ensure account and ticker exist in our tracking
                 if account not in current_holdings:
-                    current_holdings[account] = {t: 0.0 for t in tickers}
+                    current_holdings[account] = {
+                        t: DEFAULT_ASSET_VALUE for t in tickers
+                    }
                 if ticker not in current_holdings[account]:
-                    current_holdings[account][ticker] = 0.0
+                    current_holdings[account][ticker] = DEFAULT_ASSET_VALUE
 
                 current_holdings[account][ticker] += shares
 
@@ -924,11 +942,11 @@ class BogleBenchAnalyzer:
                 "Calculating portfolio value for %s", date
             )  # date.date())
             day_data = {"date": date}
-            total_portfolio_value = 0.0
+            total_portfolio_value = DEFAULT_ASSET_VALUE
             account_totals = {}
 
             for account in accounts:
-                account_value = 0.0
+                account_value = DEFAULT_ASSET_VALUE
 
                 for ticker in tickers:
                     shares = current_holdings[account][ticker]
@@ -940,7 +958,7 @@ class BogleBenchAnalyzer:
                         price = self._get_price_for_date(ticker, date)
                     except ValueError as e:
                         self.logger.error(f"Skipping {ticker} on {date}: {e}")
-                        price = 0.0  # Only set to 0 if truly no data exists
+                        price = DEFAULT_PRICE  # Only set to 0 if truly no data exists
 
                     # self.logger.debug(
                     #     "Calculated price for %s on %s: $%.2f",
@@ -982,9 +1000,9 @@ class BogleBenchAnalyzer:
                         if not available_data.empty:
                             price = available_data["close"].iloc[-1]
                         else:
-                            price = 0.0
+                            price = DEFAULT_PRICE
                 else:
-                    price = 0.0
+                    price = DEFAULT_PRICE
 
                 day_data[f"{ticker}_total_shares"] = total_shares
                 day_data[f"{ticker}_total_value"] = total_shares * price
@@ -994,9 +1012,9 @@ class BogleBenchAnalyzer:
         # Convert to DataFrame
         self.logger.debug("Converting portfolio data to DataFrame")
         portfolio_df = pd.DataFrame(portfolio_data)
-        portfolio_df["net_cash_flow"] = 0.0
-        portfolio_df["weighted_cash_flow"] = 0.0
-        portfolio_df["market_value_change"] = 0.0
+        portfolio_df["net_cash_flow"] = DEFAULT_CASH_FLOW
+        portfolio_df["weighted_cash_flow"] = DEFAULT_CASH_FLOW
+        portfolio_df["market_value_change"] = DEFAULT_ASSET_VALUE
 
         # Calculate weights by account and overall
         for account in accounts:
@@ -1009,17 +1027,20 @@ class BogleBenchAnalyzer:
                         portfolio_df[weight_col] = (
                             portfolio_df[value_col]
                             / portfolio_df[account_total_col]
-                        ).fillna(0.0)
+                        ).fillna(DEFAULT_WEIGHT)
 
         # Calculate overall weights
         for ticker in tickers:
             portfolio_df[f"{ticker}_weight"] = (
                 portfolio_df[f"{ticker}_total_value"]
                 / portfolio_df["total_value"]
-            ).fillna(0.0)
+            ).fillna(DEFAULT_WEIGHT)
 
         # Calculate daily cash flow adjust returns
         # Calculate cash flows for each day using helper function
+        period_cash_flow_weight = float(
+            self.config.get("advanced.performance.period_cash_flow_weight", 0.5)
+        )
         for i, row in portfolio_df.iterrows():
             date = row["date"]
             if isinstance(date, str):
@@ -1029,16 +1050,17 @@ class BogleBenchAnalyzer:
 
             portfolio_df.at[i, "net_cash_flow"] = cash_flows["total"]
             portfolio_df.at[i, "weighted_cash_flow"] = (
-                cash_flows["total"] * 0.5
+                cash_flows["total"] * period_cash_flow_weight
             )  # Mid-day weighting
 
             # Store ALL account cash flows
             for account in accounts:
                 portfolio_df.at[i, f"{account}_cash_flow"] = cash_flows.get(
-                    account, 0.0
+                    account, DEFAULT_CASH_FLOW
                 )
                 portfolio_df.at[i, f"{account}_weighted_cash_flow"] = (
-                    cash_flows.get(account, 0.0) * 0.5  # Mid-day weighting
+                    cash_flows.get(account, DEFAULT_CASH_FLOW)
+                    * period_cash_flow_weight
                 )
 
         # Calculate market value change (pure investment performance)
@@ -1063,11 +1085,14 @@ class BogleBenchAnalyzer:
 
         # Handle edge case where previous total_value is zero
         denominator_is_zero_mask = portfolio_df["total_value"].shift(1) == 0
-        portfolio_df.loc[denominator_is_zero_mask, "portfolio_return"] = 0.0
+        portfolio_df.loc[denominator_is_zero_mask, "portfolio_return"] = (
+            DEFAULT_RETURN
+        )
 
         self.logger.debug(
-            "Portfolio returns had %d NaN values; replaced with 0.0",
+            "Portfolio returns had %d NaN values; replaced with %s",
             portfolio_df["portfolio_return"].isna().sum(),
+            DEFAULT_RETURN,
         )
 
         # Calculate account-specific returns
@@ -1169,25 +1194,29 @@ class BogleBenchAnalyzer:
         # Basic statistics
         total_periods = len(returns)
         annual_trading_days = int(
-            self.config.get("settings.annual_trading_days", 252)
+            self.config.get(
+                "settings.annual_trading_days", DEFAULT_TRADING_DAYS
+            )
         )
         year_fraction = total_periods / annual_trading_days
 
         returns = pd.to_numeric(returns, errors="coerce").dropna()
 
         self.logger.debug(
-            "%s: First 10 daily returns:\n%s", name, returns.head(n=10) * 100
+            "%s: First 10 daily returns:\n%s",
+            name,
+            returns.head(n=10) * TO_PERCENT,
         )
 
         total_return = float((1 + returns).prod() - 1)
         self.logger.debug(
             "Calculating CAGR with total_return=%.6f%%, year_fraction=%.6f",
-            total_return * 100,
+            total_return * TO_PERCENT,
             year_fraction,
         )
         annualized_return = cagr(1, 1 + total_return, year_fraction)
 
-        self.logger.debug(
+        self.logger.info(
             "%s: Periods: %d, Years: %.2f",
             name,
             total_periods,
@@ -1201,11 +1230,11 @@ class BogleBenchAnalyzer:
             returns.index[-1] if len(returns) > 0 else "N/A",
         )
 
-        self.logger.debug(
+        self.logger.info(
             "%s: Total Return: %.2f%%, Annualized Return: %.2f%%",
             name,
-            total_return * 100,
-            annualized_return * 100,
+            total_return * TO_PERCENT,
+            annualized_return * TO_PERCENT,
         )
 
         volatility = returns.std(ddof=1)  # Daily volatility, sample stddev
@@ -1213,16 +1242,16 @@ class BogleBenchAnalyzer:
             annual_trading_days
         )  # Annualized volatility
 
-        self.logger.debug(
+        self.logger.info(
             "%s: Volatility: %.2f%% (period) %.2f%% (annualized)",
             name,
-            volatility * 100,
-            annual_volatility * 100,
+            volatility * TO_PERCENT,
+            annual_volatility * TO_PERCENT,
         )
 
         # Risk-adjusted metrics
         annual_risk_free_rate = float(
-            self.config.get("settings.risk_free_rate", 0.02)
+            self.config.get("settings.risk_free_rate", DEFAULT_RISK_FREE_RATE)
         )
         daily_risk_free_rate = cagr(
             1, 1 + annual_risk_free_rate, annual_trading_days
@@ -1235,21 +1264,30 @@ class BogleBenchAnalyzer:
             else 0
         )
 
-        self.logger.debug(
-            "excess returns:\n%s\ndaily_risk_free_rate=%.6f, "
-            + "excess_mean_returns=%.6f, volatility=%.6f, sharpe_ratio=%.6f",
-            excess_returns,
-            daily_risk_free_rate,
-            excess_mean_returns,
-            volatility,
-            sharpe_ratio,
-        )
+        # self.logger.debug(
+        #     "excess returns:\n%s\ndaily_risk_free_rate=%.6f, "
+        #     + "excess_mean_returns=%.6f, volatility=%.6f, sharpe_ratio=%.6f",
+        #     excess_returns,
+        #     daily_risk_free_rate,
+        #     excess_mean_returns,
+        #     volatility,
+        #     sharpe_ratio,
+        # )
 
         # Drawdown analysis
         cumulative_returns = (1 + returns).cumprod()
         running_max = cumulative_returns.expanding().max()
         drawdown = (cumulative_returns - running_max) / running_max
         max_drawdown = drawdown.min()
+
+        # self.logger.info(
+        #     "cumulative returns:\n%s\nrunning max:\n%s\n"
+        #     + "drawdown:\n%s\nmax drawdown:%.6f%%",
+        #     cumulative_returns,
+        #     running_max,
+        #     drawdown,
+        #     max_drawdown * TO_PERCENT,
+        # )
 
         # Additional metrics
         positive_periods = (returns > 0).sum()
@@ -1278,7 +1316,9 @@ class BogleBenchAnalyzer:
             return {}
 
         annual_trading_days = int(
-            self.config.get("settings.annual_trading_days", 252)
+            self.config.get(
+                "settings.annual_trading_days", DEFAULT_TRADING_DAYS
+            )
         )
 
         # Align the series
@@ -1290,7 +1330,7 @@ class BogleBenchAnalyzer:
         excess_returns = portfolio_returns - benchmark_returns
 
         # Tracking error (volatility of excess returns)
-        tracking_error = excess_returns.std() * np.sqrt(252)
+        tracking_error = excess_returns.std() * np.sqrt(annual_trading_days)
 
         # Information ratio (excess return / tracking error)
         information_ratio = (
@@ -1305,7 +1345,9 @@ class BogleBenchAnalyzer:
         beta = covariance / benchmark_variance if benchmark_variance > 0 else 0
 
         # Jensen's Alpha (risk-adjusted excess return)
-        risk_free_rate = self.config.get("settings.risk_free_rate", 0.02)
+        risk_free_rate = self.config.get(
+            "settings.risk_free_rate", DEFAULT_RISK_FREE_RATE
+        )
         daily_risk_free_rate = cagr(1, 1 + risk_free_rate, annual_trading_days)
         portfolio_excess = portfolio_returns.mean() - daily_risk_free_rate
         benchmark_excess = benchmark_returns.mean() - daily_risk_free_rate
@@ -1406,6 +1448,12 @@ class PerformanceResults:
         if self.portfolio_history is None:
             return pd.DataFrame()
 
+        annual_trading_days = int(
+            self.config.get(
+                "settings.annual_trading_days", DEFAULT_TRADING_DAYS
+            )
+        )
+
         # Get the latest date data
         latest_data = self.portfolio_history.iloc[-1]
 
@@ -1434,11 +1482,13 @@ class PerformanceResults:
                     f"{account}_return"
                 ].dropna()
                 if len(account_returns) > 0:
+                    total_periods = len(account_returns)
+                    year_fraction = total_periods / annual_trading_days
                     total_return = (1 + account_returns).prod() - 1
-                    annualized_return = (1 + account_returns.mean()) ** 252 - 1
+                    annualized_return = cagr(1, 1 + total_return, year_fraction)
                 else:
-                    total_return = 0.0
-                    annualized_return = 0.0
+                    total_return = DEFAULT_RETURN
+                    annualized_return = DEFAULT_RETURN
 
                 account_data.append(
                     {
