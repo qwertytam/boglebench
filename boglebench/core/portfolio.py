@@ -27,7 +27,7 @@ from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
 from ..utils.timing import timed_operation
-from ..utils.tools import CAGR, ensure_timestamp, to_tz_mixed
+from ..utils.tools import cagr, ensure_timestamp, to_tz_mixed
 from ..utils.workspace import WorkspaceContext
 
 
@@ -943,6 +943,7 @@ class BogleBenchAnalyzer:
         self.logger.info(
             "🏦 Tracking %d accounts: %s", len(accounts), ", ".join(accounts)
         )
+
         return portfolio_df
 
     def calculate_performance(self) -> "PerformanceResults":
@@ -1028,6 +1029,11 @@ class BogleBenchAnalyzer:
         year_fraction = total_periods / annual_trading_days
 
         returns = pd.to_numeric(returns, errors="coerce").dropna()
+
+        self.logger.debug(
+            "%s: First 10 daily returns:\n%s", name, returns.head(n=10) * 100
+        )
+
         total_return = float((1 + returns).prod() - 1)
         # annualized_return = (1 + total_return) ** (
         #     annual_trading_days / total_periods
@@ -1037,18 +1043,32 @@ class BogleBenchAnalyzer:
             total_return,
             year_fraction,
         )
-        annualized_return = CAGR(1, 1 + total_return, year_fraction)
+        annualized_return = cagr(1, 1 + total_return, year_fraction)
 
-        volatility = returns.std()
+        self.logger.debug(
+            "%s: Total Return: %.2f%%, Annualized Return: %.2f%%",
+            name,
+            total_return * 100,
+            annualized_return * 100,
+        )
+
+        volatility = returns.std(ddof=1)  # Daily volatility, sample stddev
         annual_volatility = volatility * np.sqrt(
             annual_trading_days
         )  # Annualized volatility
+
+        self.logger.debug(
+            "%s: Volatility: %.2f%% (period) %.2f%% (annualized)",
+            name,
+            volatility * 100,
+            annual_volatility * 100,
+        )
 
         # Risk-adjusted metrics
         annual_risk_free_rate = float(
             self.config.get("settings.risk_free_rate", 0.02)
         )
-        daily_risk_free_rate = CAGR(
+        daily_risk_free_rate = cagr(
             1, 1 + annual_risk_free_rate, annual_trading_days
         )
         excess_returns = returns - daily_risk_free_rate
@@ -1130,7 +1150,7 @@ class BogleBenchAnalyzer:
 
         # Jensen's Alpha (risk-adjusted excess return)
         risk_free_rate = self.config.get("settings.risk_free_rate", 0.02)
-        daily_risk_free_rate = CAGR(1, 1 + risk_free_rate, annual_trading_days)
+        daily_risk_free_rate = cagr(1, 1 + risk_free_rate, annual_trading_days)
         portfolio_excess = portfolio_returns.mean() - daily_risk_free_rate
         benchmark_excess = benchmark_returns.mean() - daily_risk_free_rate
         jensens_alpha = portfolio_excess - (beta * benchmark_excess)
