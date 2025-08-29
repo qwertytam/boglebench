@@ -2,6 +2,7 @@
 import tempfile
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -287,9 +288,139 @@ class TestMultiTransactionPerformance:
         results = analyzer.calculate_performance()
         summary = results.summary()
 
-        print("Portfolio Metrics:\n%s\n", results.portfolio_metrics)
-        print("Benchmark Metrics:\n%s\n", results.benchmark_metrics)
-        print("Relative Metrics:\n%s\n", results.relative_metrics)
+        expected_periods = 10
+
+        # dollars; initial AAPL purchase, then buy MSFT, then sell some of both
+        expected_asset_cash_flows = np.array(
+            [
+                18000,
+                0,
+                0,
+                12500,
+                0,
+                -25500,
+                0,
+                0,
+                0,
+                0,
+            ]
+        )
+        expected_asset_end_values = np.array(
+            [
+                18000,
+                18250,
+                18100,
+                31500,
+                31125,
+                6625,
+                6687.5,
+                6750,
+                6812.5,
+                6875,
+            ]
+        )
+
+        expected_asset_beg_values = np.zeros(expected_periods)
+        expected_asset_beg_values[1:] = expected_asset_end_values[:-1]
+
+        cash_flow_weight = temp_config.get(
+            "advanced.performance.period_cash_flow_weight", 0.5
+        )
+        expected_weighted_cfs = expected_asset_cash_flows * cash_flow_weight
+        expected_asset_daily_returns_numerator = (
+            expected_asset_end_values
+            - expected_asset_beg_values
+            - expected_asset_cash_flows
+        )
+
+        # Verify portfolio history was built correctly
+        portfolio_history = results.portfolio_history
+        assert len(portfolio_history) == 10  # 10 trading days
+        assert "total_value" in portfolio_history.columns
+        assert "portfolio_return" in portfolio_history.columns
+
+        # Verify returns
+        accuracy = 0.001 / 100  # 0.001% accuracy
+        expected_asset_daily_returns = (
+            expected_asset_daily_returns_numerator
+            / (expected_asset_beg_values + expected_weighted_cfs)
+        )
+        expected_asset_total_return = float(
+            (1 + expected_asset_daily_returns).prod() - 1
+        )
+        portfolio_metrics = results.portfolio_metrics
+        assert (
+            abs(portfolio_metrics["total_return"] - expected_asset_total_return)
+            < accuracy
+        )
+
+        annual_trading_days = int(
+            results.config.get("settings.annual_trading_days", 252)
+        )
+        # Annualized return
+        return_days = len(portfolio_history)
+        expected_annualized_asset_return = (
+            1 + expected_asset_total_return
+        ) ** (annual_trading_days / return_days) - 1
+        assert (
+            abs(
+                portfolio_metrics["annualized_return"]
+                - expected_annualized_asset_return
+            )
+            < accuracy
+        )
+
+        # Verify Volatility
+        expected_asset_volatility = np.std(
+            expected_asset_daily_returns, ddof=1
+        )  # Sample stddev so ddof=1
+        expected_annual_asset_volatility = expected_asset_volatility * np.sqrt(
+            annual_trading_days
+        )
+
+        assert (
+            abs(
+                portfolio_metrics["volatility"]
+                - expected_annual_asset_volatility
+            )
+            < accuracy
+        )
+
+        # Verify Sharpe Ratio
+        expected_asset_daily_mean_returns = np.mean(
+            expected_asset_daily_returns
+        )
+        risk_free_rate = temp_config.get("settings.risk_free_rate", 0.02)
+        daily_risk_free_rate = (1 + risk_free_rate) ** (
+            1 / annual_trading_days
+        ) - 1
+        expected_asset_sharpe_ratio = (
+            expected_asset_daily_mean_returns - daily_risk_free_rate
+        ) / expected_asset_volatility
+        expected_annual_asset_sharpe_ratio = (
+            expected_asset_sharpe_ratio * np.sqrt(annual_trading_days)
+        )
+        assert abs(
+            portfolio_metrics["sharpe_ratio"]
+            - expected_annual_asset_sharpe_ratio
+        ) < (
+            accuracy * 1
+        )  # Sharpe ratio can be larger, adjust accuracy if required
+
+        # Max drawdown; use dataframe for cummax function
+        cum_asset_wealth = pd.DataFrame(
+            (1 + expected_asset_daily_returns).cumprod()
+        )
+        asset_draw_down = cum_asset_wealth / cum_asset_wealth.cummax() - 1
+        expected_max_asset_drawdown = asset_draw_down.min().values[0]
+        assert (
+            abs(portfolio_metrics["max_drawdown"] - expected_max_asset_drawdown)
+            < accuracy
+        )
+
+        # print("Portfolio Metrics:\n%s\n", results.portfolio_metrics)
+        # print("Benchmark Metrics:\n%s\n", results.benchmark_metrics)
+        # print("Relative Metrics:\n%s\n", results.relative_metrics)
 
         # Verify comprehensive summary content
         assert "BOGLEBENCH PERFORMANCE ANALYSIS" in summary
@@ -303,3 +434,73 @@ class TestMultiTransactionPerformance:
         # Should contain valid percentage values (not inf or nan)
         assert "inf%" not in summary
         assert "nan%" not in summary
+
+        # Check relative metrics
+        relative_metrics = results.relative_metrics
+        assert "tracking_error" in relative_metrics
+        assert "information_ratio" in relative_metrics
+        assert "beta" in relative_metrics
+        assert "jensens_alpha" in relative_metrics
+        assert "correlation" in relative_metrics
+        expected_bm_daily_returns = np.array(
+            [
+                401 / 400 - 1,
+                402 / 401 - 1,
+                403 / 402 - 1,
+                404 / 403 - 1,
+                405 / 404 - 1,
+                406 / 405 - 1,
+                400 / 406 - 1,
+                408 / 400 - 1,
+                409 / 408 - 1,
+            ]
+        )
+
+        # Tracking error
+        expected_excess_returns = (
+            expected_asset_daily_returns[1:] - expected_bm_daily_returns
+        )
+        expected_tracking_error = np.std(expected_excess_returns, ddof=1)
+        expected_annual_tracking_error = expected_tracking_error * np.sqrt(
+            annual_trading_days
+        )
+        assert (
+            abs(
+                relative_metrics["tracking_error"]
+                - expected_annual_tracking_error
+            )
+            < accuracy
+        )
+
+        # Information ratio
+        expected_info_ratio = (
+            np.mean(expected_excess_returns)
+            / expected_tracking_error
+            * np.sqrt(annual_trading_days)
+        )
+        assert (
+            abs(relative_metrics["information_ratio"] - expected_info_ratio)
+            < accuracy
+        )
+
+        # Beta
+        covariance_matrix = np.cov(
+            expected_asset_daily_returns[1:], expected_bm_daily_returns, ddof=1
+        )  # Sample covariance so ddof=1
+        expected_beta = covariance_matrix[0, 1] / covariance_matrix[1, 1]
+        assert abs(relative_metrics["beta"] - expected_beta) < accuracy
+
+        # Jensen's Alpha
+        daily_risk_free_rate = (1 + risk_free_rate) ** (
+            1 / annual_trading_days
+        ) - 1
+        expected_jensens_alpha = (
+            np.mean(expected_asset_daily_returns[1:])
+            - daily_risk_free_rate
+            - expected_beta
+            * (np.mean(expected_bm_daily_returns) - daily_risk_free_rate)
+        ) * annual_trading_days  # Annualize
+        assert (
+            abs(relative_metrics["jensens_alpha"] - expected_jensens_alpha)
+            < accuracy
+        )
