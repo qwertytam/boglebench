@@ -419,6 +419,8 @@ class BogleBenchAnalyzer:
             "📊 Fetching market data for %s assets...", len(all_tickers)
         )
 
+        self.logger.info("Using ticker %s for benchmark", benchmark_ticker)
+
         self.logger.info(
             "📅 Date range: %s to %s",
             start_date.strftime("%Y-%m-%d"),
@@ -1561,29 +1563,21 @@ class PerformanceResults:
 
         """Export results to CSV files."""
         output_dir = self.config.get_output_path()
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
-
-        # Export portfolio history
-        history_file = output_path / "portfolio_history.csv"
-        self.portfolio_history.to_csv(history_file, index=False)
-
-        # Export summary metrics
-        metrics_data = []
-        if self.portfolio_metrics:
-            metrics_data.append({**self.portfolio_metrics, "type": "Portfolio"})
-        if self.benchmark_metrics:
-            metrics_data.append({**self.benchmark_metrics, "type": "Benchmark"})
-
-        if metrics_data:
-            metrics_file = output_path / "performance_metrics.csv"
-            pd.DataFrame(metrics_data).to_csv(metrics_file, index=False)
+        output_path = self._export_history_metrics_to_csv(output_dir)
 
         print(f"📁 Results exported to: {output_path}")
         return pd.DataFrame(holdings_data)
 
     def export_to_csv(self, output_dir: Optional[str] = None) -> str:
         """Export results to CSV files."""
+        output_path = self._export_history_metrics_to_csv(output_dir)
+        print(f"Results exported to: {output_path}")
+        return str(output_path)
+
+    def _export_history_metrics_to_csv(
+        self, output_dir: Optional[str] = None
+    ) -> str:
+        """Export metrics and history to csv file"""
         if output_dir is None:
             output_dir = self.config.get_output_path()
 
@@ -1594,7 +1588,7 @@ class PerformanceResults:
         history_file = output_path / "portfolio_history.csv"
         self.portfolio_history.to_csv(history_file, index=False)
 
-        # Export summary metrics
+        # Export performance metrics
         metrics_data = []
         if self.portfolio_metrics:
             metrics_data.append({**self.portfolio_metrics, "type": "Portfolio"})
@@ -1605,5 +1599,13 @@ class PerformanceResults:
             metrics_file = output_path / "performance_metrics.csv"
             pd.DataFrame(metrics_data).to_csv(metrics_file, index=False)
 
-        print(f"Results exported to: {output_path}")
+        # Export relative metrics
+        relative_data = []
+        if self.relative_metrics:
+            relative_data.append({**self.relative_metrics, "type": "Relative"})
+
+        if relative_data:
+            relative_file = output_path / "relative_metrics.csv"
+            pd.DataFrame(relative_data).to_csv(relative_file, index=False)
+
         return str(output_path)
