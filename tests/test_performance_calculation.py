@@ -1,6 +1,5 @@
 """Tests for performance calculation in BogleBenchAnalyzer."""
 
-import json
 import tempfile
 from pathlib import Path
 
@@ -10,21 +9,6 @@ import pytest
 
 from boglebench.core.portfolio import BogleBenchAnalyzer, PerformanceResults
 from boglebench.utils.config import ConfigManager
-
-
-class NpEncoder(json.JSONEncoder):
-    """Custom JSON encoder to handle NumPy data types."""
-
-    def default(self, o):
-        """Convert NumPy data types to native Python types for JSON
-        serialization."""
-        if isinstance(o, (np.integer,)):
-            return int(o)
-        elif isinstance(o, (np.floating,)):
-            return float(o)
-        elif isinstance(o, (np.ndarray,)):
-            return o.tolist()
-        return super(NpEncoder, self).default(o)
 
 
 class TestPerformanceCalculation:
@@ -102,8 +86,8 @@ class TestPerformanceCalculation:
         assert "win_rate" in portfolio_metrics
 
         # Verify expected calculations for one week
-        # Portfolio: 180 -> 187.50 = 4.17% return
-        expected_total_return = (187.50 - 180.00) / 180.00
+        # Portfolio: 180 -> 200 = 11.11% return
+        expected_total_return = (200 - 180.00) / 180.00
         accuracy = 0.001 / 100  # 0.001% accuracy
         assert (
             abs(portfolio_metrics["total_return"] - expected_total_return)
@@ -112,21 +96,27 @@ class TestPerformanceCalculation:
 
         # Verify portfolio history was built correctly
         portfolio_history = results.portfolio_history
-        assert len(portfolio_history) == 5  # 5 trading days
+        assert len(portfolio_history) == 10  # 10 trading days
         assert "total_value" in portfolio_history.columns
         assert "portfolio_return" in portfolio_history.columns
 
         # Check initial and final portfolio values
         initial_value = portfolio_history["total_value"].iloc[0]
         final_value = portfolio_history["total_value"].iloc[-1]
-        assert abs(initial_value - 18000.00) < accuracy  # 100 shares * $180
-        assert abs(final_value - 18750.00) < accuracy  # 100 shares * $187.50
+
+        initial_expected = 100 * 180.00  # 100 shares at $180
+        final_expected = 100 * 200.00  # 100 shares at $200
+
+        assert abs(initial_value - initial_expected) < accuracy
+        assert abs(final_value - final_expected) < accuracy
 
         # Check metrics output
         annual_trading_days = int(
             results.config.get("settings.annual_trading_days", 252)
         )
         return_days = len(portfolio_history) - 1
+
+        # Annualized return
         expected_annualized_return = (1 + expected_total_return) ** (
             annual_trading_days / return_days
         ) - 1
@@ -143,10 +133,17 @@ class TestPerformanceCalculation:
                 182.5 / 180 - 1,
                 181.0 / 182.5 - 1,
                 185 / 181.0 - 1,
-                187.5 / 185 - 1,
+                180 / 185 - 1,
+                190 / 180 - 1,
+                192.5 / 190 - 1,
+                195 / 192.5 - 1,
+                197.5 / 195 - 1,
+                200 / 197.5 - 1,
             ]
         )
         expected_daily_mean_returns = np.mean(expected_daily_returns)
+
+        # Volatility
         expected_volatility = np.std(
             expected_daily_returns, ddof=1
         )  # Sample stddev so ddof=1
@@ -160,7 +157,9 @@ class TestPerformanceCalculation:
         )
 
         risk_free_rate = temp_config.get("settings.risk_free_rate", 0.02)
-        daily_risk_free_rate = (1 + risk_free_rate) ** (1 / 252) - 1
+        daily_risk_free_rate = (1 + risk_free_rate) ** (
+            1 / annual_trading_days
+        ) - 1
         expected_sharpe_ratio = (
             expected_daily_mean_returns - daily_risk_free_rate
         ) / expected_volatility
@@ -215,8 +214,8 @@ class TestPerformanceCalculation:
         benchmark_metrics = results.benchmark_metrics
         assert "total_return" in benchmark_metrics
 
-        # SPY: 400 -> 404 = 1% return
-        expected_benchmark_return = (404.00 - 400.00) / 400.00
+        # SPY: 400 -> 409 = 2.25% return
+        expected_benchmark_return = (409.00 - 400.00) / 400.00
         accuracy = 0.001 / 100  # 0.001% accuracy
         assert (
             abs(benchmark_metrics["total_return"] - expected_benchmark_return)
@@ -253,6 +252,11 @@ class TestPerformanceCalculation:
                 402 / 401 - 1,
                 403 / 402 - 1,
                 404 / 403 - 1,
+                405 / 404 - 1,
+                406 / 405 - 1,
+                400 / 406 - 1,
+                408 / 400 - 1,
+                409 / 408 - 1,
             ]
         )
         expected_daily_mean_returns = np.mean(expected_bm_daily_returns)
@@ -296,7 +300,12 @@ class TestPerformanceCalculation:
                 182.5 / 180 - 1,
                 181.0 / 182.5 - 1,
                 185 / 181.0 - 1,
-                187.5 / 185 - 1,
+                180 / 185 - 1,
+                190 / 180 - 1,
+                192.5 / 190 - 1,
+                195 / 192.5 - 1,
+                197.5 / 195 - 1,
+                200 / 197.5 - 1,
             ]
         )
 

@@ -5,10 +5,12 @@ Collection of utility functions and classes for Boglebench
 
 from __future__ import annotations
 
+import json
 from datetime import datetime as dt
 from datetime import timedelta, tzinfo
 from typing import Any, Iterable, Literal, Optional, Union
 
+import numpy as np
 import pandas as pd
 from pandas import Timedelta
 from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
@@ -151,7 +153,7 @@ def to_tz_mixed(
     raise TypeError(f"Unsupported input type for to_tz_mixed: {type(x)}")
 
 
-def CAGR(
+def cagr(
     start_value: float,
     end_value: float,
     periods: float,
@@ -171,7 +173,8 @@ def CAGR(
     Returns
     -------
     Optional[float]
-        The CAGR as a decimal (e.g., 0.05 for 5%), or None if inputs are invalid.
+        The CAGR as a decimal (e.g., 0.05 for 5%), or None if inputs are
+        invalid.
     """
     if periods <= 0 or start_value <= 0:
         logger.warning(
@@ -179,15 +182,24 @@ def CAGR(
         )
         return None
     try:
-        logger.info(
-            "Calculating CAGR with start_value=%.6f, end_value=%.6f, periods=%.6f",
-            start_value,
-            end_value,
-            periods,
-        )
         cagr = (end_value / start_value) ** (1 / periods) - 1
-        logger.info("CAGR result: %.6f", cagr)
         return cagr
-    except Exception as e:
+
+    except ValueError as e:
         logger.error("Error calculating CAGR: %s", e)
         return None
+
+
+class NpEncoder(json.JSONEncoder):
+    """Custom JSON encoder to handle NumPy data types."""
+
+    def default(self, o):
+        """Convert NumPy data types to native Python types for JSON
+        serialization."""
+        if isinstance(o, (np.integer,)):
+            return int(o)
+        elif isinstance(o, (np.floating,)):
+            return float(o)
+        elif isinstance(o, (np.ndarray,)):
+            return o.tolist()
+        return super(NpEncoder, self).default(o)
