@@ -497,6 +497,9 @@ class BogleBenchAnalyzer:
                     hist.index.name = "date"
                     hist = hist.reset_index()
 
+                    # Ensure data is sorted date ascending
+                    hist = hist.sort_values("date").reset_index(drop=True)
+
                     # Filter date range
                     hist["date"] = to_tz_mixed(hist["date"])
                     self.logger.debug(
@@ -580,6 +583,9 @@ class BogleBenchAnalyzer:
         try:
             cached_df = pd.read_parquet(cache_file)
             cached_df["date"] = to_tz_mixed(cached_df["date"])
+
+            # Ensure ascending date order
+            cached_df = cached_df.sort_values("date").reset_index(drop=True)
 
             # Check if cached data covers our date range
             cached_start = to_tz_mixed(cached_df["date"].min())
@@ -1014,6 +1020,10 @@ class BogleBenchAnalyzer:
         # Convert to DataFrame
         self.logger.debug("Converting portfolio data to DataFrame")
         portfolio_df = pd.DataFrame(portfolio_data)
+
+        # Ensure ascending date order
+        portfolio_df = portfolio_df.sort_values("date").reset_index(drop=True)
+
         portfolio_df["net_cash_flow"] = DEFAULT_CASH_FLOW
         portfolio_df["weighted_cash_flow"] = DEFAULT_CASH_FLOW
         portfolio_df["market_value_change"] = DEFAULT_ASSET_VALUE
@@ -1170,6 +1180,11 @@ class BogleBenchAnalyzer:
 
         # Convert benchmark data to returns
         benchmark_df = self.benchmark_data.copy()
+
+        # Ensure ascending date order
+        benchmark_df = benchmark_df.sort_values("date").reset_index(drop=True)
+
+        # Calculate period on period returns
         benchmark_df["return"] = benchmark_df["close"].pct_change()
 
         # Align dates
