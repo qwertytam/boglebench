@@ -17,12 +17,12 @@ import warnings
 from datetime import datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Dict, Optional, Union
+from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
 import numpy as np
 import pandas as pd
 import pandas_market_calendars as mcal  # type: ignore
 from alpha_vantage.timeseries import TimeSeries  # type: ignore
-from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
@@ -394,6 +394,10 @@ class BogleBenchAnalyzer:
             if default_end_date is None:
                 raise ValueError("default_end_date is None after to_tz_mixed")
 
+        end_date = pd.Timestamp(
+            self.config.get("analysis.default_end_date", None)
+        )
+        end_date = to_tz_mixed(end_date)
         if end_date is None:
             self.logger.warning(
                 "No valid end date provided or found. Defaulting to %s",
@@ -481,21 +485,39 @@ class BogleBenchAnalyzer:
                         failed_tickers.append(ticker)
                         continue
 
-                    # Clean up the data - Alpha Vantage has different column names
+                    # Rename columns
                     hist = (
-                        hist.rename(  # pylint: disable=no-member # type: ignore
+                        # pylint: disable-next=no-member
+                        hist.rename(  # type: ignore
                             columns={
                                 "1. open": "open",
                                 "2. high": "high",
                                 "3. low": "low",
                                 "4. close": "close",
+                                "5. adjusted close": "adj_close",
                                 "6. volume": "volume",
+                                "7. dividend amount": "dividend",
+                                "8. split coefficient": "split_coefficient",
                             }
                         )
                     )
-                    hist = hist[["open", "high", "low", "close", "volume"]]
+                    hist = hist[
+                        [
+                            "open",
+                            "high",
+                            "low",
+                            "close",
+                            "adj_close",
+                            "volume",
+                            "dividend",
+                            "split_coefficient",
+                        ]
+                    ]
                     hist.index.name = "date"
                     hist = hist.reset_index()
+
+                    # Ensure data is sorted date ascending
+                    hist = hist.sort_values("date").reset_index(drop=True)
 
                     # Filter date range
                     hist["date"] = to_tz_mixed(hist["date"])
@@ -580,6 +602,9 @@ class BogleBenchAnalyzer:
         try:
             cached_df = pd.read_parquet(cache_file)
             cached_df["date"] = to_tz_mixed(cached_df["date"])
+
+            # Ensure ascending date order
+            cached_df = cached_df.sort_values("date").reset_index(drop=True)
 
             # Check if cached data covers our date range
             cached_start = to_tz_mixed(cached_df["date"].min())
@@ -765,12 +790,12 @@ class BogleBenchAnalyzer:
 
         for i in range(len(portfolio_df)):
             if i == 0:
-                # First day - no return calculation possible
-                returns.append(DEFAULT_RETURN)
-                continue
+                # First day - beginning_value is zero
+                beginning_value = np.float64(0.0)  # zero
+            else:
+                beginning_value = portfolio_df.iloc[i - 1]["total_value"]
 
             # Get values
-            beginning_value = portfolio_df.iloc[i - 1]["total_value"]
             ending_value = portfolio_df.iloc[i]["total_value"]
             net_cash_flow = portfolio_df.iloc[i]["net_cash_flow"]
             weighted_cash_flow = portfolio_df.iloc[i]["weighted_cash_flow"]
@@ -1014,9 +1039,14 @@ class BogleBenchAnalyzer:
         # Convert to DataFrame
         self.logger.debug("Converting portfolio data to DataFrame")
         portfolio_df = pd.DataFrame(portfolio_data)
+
+        # Ensure ascending date order
+        portfolio_df = portfolio_df.sort_values("date").reset_index(drop=True)
+
         portfolio_df["net_cash_flow"] = DEFAULT_CASH_FLOW
         portfolio_df["weighted_cash_flow"] = DEFAULT_CASH_FLOW
         portfolio_df["market_value_change"] = DEFAULT_ASSET_VALUE
+        portfolio_df["market_value_return"] = DEFAULT_RETURN
 
         # Calculate weights by account and overall
         for account in accounts:
@@ -1041,7 +1071,9 @@ class BogleBenchAnalyzer:
         # Calculate daily cash flow adjust returns
         # Calculate cash flows for each day using helper function
         period_cash_flow_weight = float(
-            self.config.get("advanced.performance.period_cash_flow_weight", 0.5)
+            self.config.get(
+                "advanced.performance.period_cash_flow_weight", DEFAULT_WEIGHT
+            )
         )
         for i, row in portfolio_df.iterrows():
             date = row["date"]
@@ -1066,16 +1098,30 @@ class BogleBenchAnalyzer:
                 )
 
         # Calculate market value change (pure investment performance)
-        for i in range(1, len(portfolio_df)):
-            prev_value = portfolio_df.iloc[i - 1]["total_value"]
+        for i in range(0, len(portfolio_df)):
+            if i == 0:
+                prev_value = np.float64(0.0)  # zero
+            else:
+                prev_value = portfolio_df.iloc[i - 1]["total_value"]
+
             current_value = portfolio_df.iloc[i]["total_value"]
             net_cash_flow = portfolio_df.iloc[i]["net_cash_flow"]
 
             # Market value change = total change minus cash flow impact
             market_change = current_value - prev_value - net_cash_flow
+
+            if prev_value == 0:
+                market_return = 0
+            else:
+                market_return = market_change / prev_value
+
             portfolio_df.iloc[
                 i, portfolio_df.columns.get_loc("market_value_change")
             ] = market_change
+
+            portfolio_df.iloc[
+                i, portfolio_df.columns.get_loc("market_value_return")
+            ] = market_return
 
         # For clarity, also store cash flow impact column
         portfolio_df["cash_flow_impact"] = portfolio_df["net_cash_flow"]
@@ -1140,14 +1186,15 @@ class BogleBenchAnalyzer:
         if self.benchmark_data is not None:
             # Align benchmark data with portfolio dates
             benchmark_returns = self._align_benchmark_returns()
+            self.portfolio_history["Benchmark_Returns"] = benchmark_returns
             benchmark_metrics = self._calculate_metrics(
-                benchmark_returns, "Benchmark"
+                benchmark_returns[1:], "Benchmark"
             )
 
         # Calculate relative performance metrics
         relative_metrics = self._calculate_relative_metrics(
-            self.portfolio_history["portfolio_return"].dropna(),
-            benchmark_returns if self.benchmark_data is not None else None,
+            self.portfolio_history["portfolio_return"].dropna()[1:],
+            benchmark_returns[1:] if self.benchmark_data is not None else None,
         )
 
         # Create results object
@@ -1170,7 +1217,13 @@ class BogleBenchAnalyzer:
 
         # Convert benchmark data to returns
         benchmark_df = self.benchmark_data.copy()
-        benchmark_df["return"] = benchmark_df["close"].pct_change()
+
+        # Ensure ascending date order
+        benchmark_df = benchmark_df.sort_values("date").reset_index(drop=True)
+
+        # Calculate period on period returns
+        # Use adjusted close prices for benchmark returns
+        benchmark_df["return"] = benchmark_df["adj_close"].pct_change()
 
         # Align dates
         aligned_returns = []
@@ -1185,6 +1238,10 @@ class BogleBenchAnalyzer:
                 )
             else:
                 aligned_returns.append(np.nan)
+
+        # Bechmark returns are based on previous to current close, so the first
+        # return is by definition zero, as there is no previous close
+        aligned_returns[0] = np.float64(0.0)
 
         return pd.Series(aligned_returns).dropna()
 
