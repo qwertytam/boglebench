@@ -1,5 +1,5 @@
 date,ticker,transaction_type,shares,price_per_share,account
 2023-06-05,AAPL,BUY,100,180.00,Test_Account
-2023-06-08,MSFT,BUY,50,250.00,Test_Account
-2023-06-12,AAPL,SELL,100,190.00,Test_Account
-2023-06-12,MSFT,SELL,25,260.00,Test_Account
+2023-06-08,MSFT,BUY,50,325.00,Test_Account
+2023-06-12,AAPL,SELL,100,184.00,Test_Account
+2023-06-12,MSFT,SELL,25,332.00,Test_Account
