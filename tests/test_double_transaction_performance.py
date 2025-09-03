@@ -71,13 +71,28 @@ class TestMultiTransactionPerformance:
         portfolio_history["date"] = pd.to_datetime(portfolio_history["date"])
 
         # June 5: 100 AAPL shares at $180
+        expected_quantity_aapl = 100
+        expected_close_price_aapl = 179.58
+        expected_close_value_aapl = (
+            expected_quantity_aapl * expected_close_price_aapl
+        )
+
         june_5_data = portfolio_history[
             portfolio_history["date"].dt.date
             == pd.Timestamp("2023-06-05").date()
         ]
         assert not june_5_data.empty, "No data found for June 5"
-        assert june_5_data.iloc[0]["Test_Account_AAPL_shares"] == 100
-        assert abs(june_5_data.iloc[0]["Test_Account_AAPL_value"] - 18000) < 1
+        assert (
+            june_5_data.iloc[0]["Test_Account_AAPL_shares"]
+            == expected_quantity_aapl
+        )
+        assert (
+            abs(
+                june_5_data.iloc[0]["Test_Account_AAPL_value"]
+                - expected_close_value_aapl
+            )
+            < 1
+        )
         assert june_5_data.iloc[0]["Test_Account_MSFT_shares"] == 0
 
         # June 8: 100 AAPL + 50 MSFT
@@ -85,11 +100,26 @@ class TestMultiTransactionPerformance:
             portfolio_history["date"].dt.date
             == pd.Timestamp("2023-06-08").date()
         ]
+        expected_quantity_aapl = 100
+        expected_close_price_aapl = 180.57
+
+        expected_quantity_msft = 50
+        expected_close_price_msft = 325.26
+
         assert not june_8_data.empty, "No data found for June 8"
-        assert june_8_data.iloc[0]["Test_Account_AAPL_shares"] == 100
-        assert june_8_data.iloc[0]["Test_Account_MSFT_shares"] == 50
-        # AAPL at $185 + MSFT at $260
-        expected_total = 100 * 185 + 50 * 260
+        assert (
+            june_8_data.iloc[0]["Test_Account_AAPL_shares"]
+            == expected_quantity_aapl
+        )
+        assert (
+            june_8_data.iloc[0]["Test_Account_MSFT_shares"]
+            == expected_quantity_msft
+        )
+
+        expected_total = (
+            expected_quantity_aapl * expected_close_price_aapl
+            + expected_quantity_msft * expected_close_price_msft
+        )
         assert abs(june_8_data.iloc[0]["total_value"] - expected_total) < 1
 
         # June 12: 0 AAPL + 25 MSFT (after sales)
@@ -97,12 +127,28 @@ class TestMultiTransactionPerformance:
             portfolio_history["date"].dt.date
             == pd.Timestamp("2023-06-12").date()
         ]
+
+        expected_quantity_aapl = 0
+        expected_quantity_msft = 25
+        expected_close_price_msft = 331.85
+
         assert not june_12_data.empty, "No data found for June 12"
-        assert june_12_data.iloc[0]["Test_Account_AAPL_shares"] == 0
-        assert june_12_data.iloc[0]["Test_Account_MSFT_shares"] == 25
-        # Only 25 MSFT shares at $265
-        expected_remaining = 25 * 265
-        assert abs(june_12_data.iloc[0]["total_value"] - expected_remaining) < 1
+        assert (
+            june_12_data.iloc[0]["Test_Account_AAPL_shares"]
+            == expected_quantity_aapl
+        )
+        assert (
+            june_12_data.iloc[0]["Test_Account_MSFT_shares"]
+            == expected_quantity_msft
+        )
+        # Only 25 MSFT shares
+        expected_close_value_msft = (
+            expected_quantity_msft * expected_close_price_msft
+        )
+        assert (
+            abs(june_12_data.iloc[0]["total_value"] - expected_close_value_msft)
+            < 1
+        )
 
     def test_realized_gains_calculation(self, temp_config, test_data_dir):
         """Test performance calculation with realized gains from sales."""
@@ -296,9 +342,9 @@ class TestMultiTransactionPerformance:
                 18000,
                 0,
                 0,
-                12500,
+                16250,
                 0,
-                -25500,
+                -26700,
                 0,
                 0,
                 0,
@@ -307,16 +353,16 @@ class TestMultiTransactionPerformance:
         )
         expected_asset_end_values = np.array(
             [
-                18000,
-                18250,
-                18100,
-                31500,
-                31125,
-                6625,
-                6687.5,
-                6750,
-                6812.5,
-                6875,
+                17958,
+                17921,
+                17782,
+                34320,
+                34435.5,
+                8296.25,
+                8357.25,
+                8433.5,
+                8702.5,
+                8558.25,
             ]
         )
 
@@ -444,21 +490,22 @@ class TestMultiTransactionPerformance:
         assert "correlation" in relative_metrics
         expected_bm_daily_returns = np.array(
             [
-                401 / 400 - 1,
-                402 / 401 - 1,
-                403 / 402 - 1,
-                404 / 403 - 1,
-                405 / 404 - 1,
-                406 / 405 - 1,
-                400 / 406 - 1,
-                408 / 400 - 1,
-                409 / 408 - 1,
+                0,
+                415.39 / 414.49 - 1,
+                413.95 / 415.39 - 1,
+                416.46 / 413.95 - 1,
+                417.2 / 416.46 - 1,
+                420.99 / 417.2 - 1,
+                423.76 / 420.99 - 1,
+                424.27 / 423.76 - 1,
+                429.53 / 424.27 - 1,
+                428.07 / 429.53 - 1,
             ]
         )
 
         # Tracking error
         expected_excess_returns = (
-            expected_asset_daily_returns[1:] - expected_bm_daily_returns
+            expected_asset_daily_returns[1:] - expected_bm_daily_returns[1:]
         )
         expected_tracking_error = np.std(expected_excess_returns, ddof=1)
         expected_annual_tracking_error = expected_tracking_error * np.sqrt(
@@ -485,7 +532,9 @@ class TestMultiTransactionPerformance:
 
         # Beta
         covariance_matrix = np.cov(
-            expected_asset_daily_returns[1:], expected_bm_daily_returns, ddof=1
+            expected_asset_daily_returns[1:],
+            expected_bm_daily_returns[1:],
+            ddof=1,
         )  # Sample covariance so ddof=1
         expected_beta = covariance_matrix[0, 1] / covariance_matrix[1, 1]
         assert abs(relative_metrics["beta"] - expected_beta) < accuracy
@@ -494,12 +543,14 @@ class TestMultiTransactionPerformance:
         daily_risk_free_rate = (1 + risk_free_rate) ** (
             1 / annual_trading_days
         ) - 1
+
         expected_jensens_alpha = (
             np.mean(expected_asset_daily_returns[1:])
             - daily_risk_free_rate
             - expected_beta
-            * (np.mean(expected_bm_daily_returns) - daily_risk_free_rate)
+            * (np.mean(expected_bm_daily_returns[1:]) - daily_risk_free_rate)
         ) * annual_trading_days  # Annualize
+
         assert (
             abs(relative_metrics["jensens_alpha"] - expected_jensens_alpha)
             < accuracy

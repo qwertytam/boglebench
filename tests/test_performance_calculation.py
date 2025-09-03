@@ -29,6 +29,11 @@ class TestPerformanceCalculation:
             (config_dir / "market_data").mkdir()
             (config_dir / "output").mkdir()
 
+            # Setting to 1.0 for ease of comparing total returns
+            config.config["advanced"]["performance"][
+                "period_cash_flow_weight"
+            ] = 1.0
+
             yield config
 
     @pytest.fixture
@@ -86,9 +91,30 @@ class TestPerformanceCalculation:
         assert "win_rate" in portfolio_metrics
 
         # Verify expected calculations for one week
-        # Portfolio: 180 -> 200 = 11.11% return
-        expected_total_return = (200 - 180.00) / 180.00
+        # Portfolio: Buy at 180 -> End at 184.92
+        expected_total_return = (184.92 - 180.00) / 180.00
         accuracy = 0.001 / 100  # 0.001% accuracy
+
+        print(
+            analyzer.portfolio_history[
+                [
+                    "AAPL_total_value",
+                    "net_cash_flow",
+                    "weighted_cash_flow",
+                ]
+            ]
+        )
+
+        print(
+            analyzer.portfolio_history[
+                [
+                    "market_value_return",
+                    "cash_flow_impact",
+                    "portfolio_return",
+                ]
+            ]
+        )
+
         assert (
             abs(portfolio_metrics["total_return"] - expected_total_return)
             < accuracy
@@ -105,13 +131,14 @@ class TestPerformanceCalculation:
         final_value = portfolio_history["total_value"].iloc[-1]
 
         purchase_price = 180.00
-        final_price = 200.00
+        start_price = 179.58  # price at close on first trading day
+        final_price = 184.92  # price at close on final trading day
 
         purchase_qty = 100
         final_qty = 100
 
-        initial_expected = purchase_qty * purchase_price  # 100 shares at $180
-        final_expected = final_qty * final_price  # 100 shares at $200
+        initial_expected = purchase_qty * start_price
+        final_expected = final_qty * final_price
 
         assert abs(initial_value - initial_expected) < accuracy
         assert abs(final_value - final_expected) < accuracy
@@ -152,16 +179,16 @@ class TestPerformanceCalculation:
 
         expected_daily_returns = np.array(
             [
-                180 / purchase_price - 1,
-                182.5 / 180 - 1,
-                181.0 / 182.5 - 1,
-                185 / 181.0 - 1,
-                180 / 185 - 1,
-                190 / 180 - 1,
-                192.5 / 190 - 1,
-                195 / 192.5 - 1,
-                197.5 / 195 - 1,
-                final_price / 197.5 - 1,
+                179.58 / purchase_price - 1,
+                179.21 / 179.58 - 1,
+                177.82 / 179.21 - 1,
+                180.57 / 177.82 - 1,
+                180.96 / 180.57 - 1,
+                183.79 / 180.96 - 1,
+                183.31 / 183.79 - 1,
+                183.95 / 183.31 - 1,
+                186.01 / 183.95 - 1,
+                final_price / 186.01 - 1,
             ]
         )
         expected_daily_mean_returns = np.mean(expected_daily_returns)
@@ -237,8 +264,8 @@ class TestPerformanceCalculation:
         benchmark_metrics = results.benchmark_metrics
         assert "total_return" in benchmark_metrics
 
-        # SPY: 400 -> 409 = 2.25% return
-        expected_benchmark_return = (409.00 - 400.00) / 400.00
+        # SPY adj close: 414.49 -> 428.07
+        expected_benchmark_return = (428.07 - 414.49) / 414.49
         accuracy = 0.001 / 100  # 0.001% accuracy
         assert (
             abs(benchmark_metrics["total_return"] - expected_benchmark_return)
@@ -269,22 +296,26 @@ class TestPerformanceCalculation:
             < accuracy
         )
 
+        # First return is zero as benchmark returns are based on market returns
+        # Market returns are period to period change in close prices
+        # So the first holding period is zero
         expected_bm_daily_returns = np.array(
             [
-                401 / 400 - 1,
-                402 / 401 - 1,
-                403 / 402 - 1,
-                404 / 403 - 1,
-                405 / 404 - 1,
-                406 / 405 - 1,
-                400 / 406 - 1,
-                408 / 400 - 1,
-                409 / 408 - 1,
+                0,
+                415.39 / 414.49 - 1,
+                413.95 / 415.39 - 1,
+                416.46 / 413.95 - 1,
+                417.2 / 416.46 - 1,
+                420.99 / 417.2 - 1,
+                423.76 / 420.99 - 1,
+                424.27 / 423.76 - 1,
+                429.53 / 424.27 - 1,
+                428.07 / 429.53 - 1,
             ]
         )
-        expected_daily_mean_returns = np.mean(expected_bm_daily_returns)
+        expected_daily_mean_returns = np.mean(expected_bm_daily_returns[1:])
         expected_volatility = np.std(
-            expected_bm_daily_returns, ddof=1
+            expected_bm_daily_returns[1:], ddof=1
         )  # Sample stddev so ddof=1
         expected_annual_volatility = expected_volatility * np.sqrt(
             annual_trading_days
@@ -310,7 +341,7 @@ class TestPerformanceCalculation:
         )  # Sharpe ratio can be larger, adjust accuracy if required
 
         # Max drawdown; use dataframe for cummax function
-        wealth = pd.DataFrame((1 + expected_bm_daily_returns).cumprod())
+        wealth = pd.DataFrame((1 + expected_bm_daily_returns[1:]).cumprod())
         draw_down = wealth / wealth.cummax() - 1
         expected_max_drawdown = draw_down.min().values[0]
         assert (
@@ -320,21 +351,22 @@ class TestPerformanceCalculation:
 
         expected_asset_daily_returns = np.array(
             [
-                182.5 / 180 - 1,
-                181.0 / 182.5 - 1,
-                185 / 181.0 - 1,
-                180 / 185 - 1,
-                190 / 180 - 1,
-                192.5 / 190 - 1,
-                195 / 192.5 - 1,
-                197.5 / 195 - 1,
-                200 / 197.5 - 1,
+                179.58 / 180 - 1,
+                179.21 / 179.58 - 1,
+                177.82 / 179.21 - 1,
+                180.57 / 177.82 - 1,
+                180.96 / 180.57 - 1,
+                183.79 / 180.96 - 1,
+                183.31 / 183.79 - 1,
+                183.95 / 183.31 - 1,
+                186.01 / 183.95 - 1,
+                184.92 / 186.01 - 1,
             ]
         )
 
         # Tracking error
         expected_excess_returns = (
-            expected_asset_daily_returns - expected_bm_daily_returns
+            expected_asset_daily_returns[1:] - expected_bm_daily_returns[1:]
         )
         expected_tracking_error = np.std(expected_excess_returns, ddof=1)
         expected_annual_tracking_error = expected_tracking_error * np.sqrt(
@@ -361,7 +393,9 @@ class TestPerformanceCalculation:
 
         # Beta
         covariance_matrix = np.cov(
-            expected_asset_daily_returns, expected_bm_daily_returns, ddof=1
+            expected_asset_daily_returns[1:],
+            expected_bm_daily_returns[1:],
+            ddof=1,
         )  # Sample covariance so ddof=1
         expected_beta = covariance_matrix[0, 1] / covariance_matrix[1, 1]
         assert abs(relative_metrics["beta"] - expected_beta) < accuracy
@@ -371,10 +405,10 @@ class TestPerformanceCalculation:
             1 / annual_trading_days
         ) - 1
         expected_jensens_alpha = (
-            np.mean(expected_asset_daily_returns)
+            np.mean(expected_asset_daily_returns[1:])
             - daily_risk_free_rate
             - expected_beta
-            * (np.mean(expected_bm_daily_returns) - daily_risk_free_rate)
+            * (np.mean(expected_bm_daily_returns[1:]) - daily_risk_free_rate)
         ) * annual_trading_days  # Annualize
         assert (
             abs(relative_metrics["jensens_alpha"] - expected_jensens_alpha)
