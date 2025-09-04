@@ -200,7 +200,14 @@ class BogleBenchAnalyzer:
             "shares",
             "price_per_share",
         ]
-        opt_columns = ["account", "group1", "group2", "group3", "notes"]
+        opt_columns = [
+            "amount",
+            "account",
+            "group1",
+            "group2",
+            "group3",
+            "notes",
+        ]
 
         missing_cols = [col for col in reqd_columns if col not in df.columns]
         if missing_cols:
@@ -215,6 +222,8 @@ class BogleBenchAnalyzer:
                     df[col] = "Unassigned"
                 elif col == "notes":
                     df[col] = ""
+                elif col == "amount":
+                    df[col] = DEFAULT_VALUE
 
                 self.logger.debug(
                     "ℹ️  No '%s' column found. Added default values.", col
@@ -239,7 +248,7 @@ class BogleBenchAnalyzer:
             df["notes"] = df["notes"].fillna("").astype(str).str.strip()
 
         # Validate transaction types
-        valid_types = ["BUY", "SELL"]
+        valid_types = ["BUY", "SELL", "DIVIDEND", "SPLIT", "MERGER", "FEE"]
         df["transaction_type"] = df["transaction_type"].str.upper().str.strip()
         invalid_types = df[~df["transaction_type"].isin(valid_types)]
         if not invalid_types.empty:
@@ -249,16 +258,25 @@ class BogleBenchAnalyzer:
             )
 
         # Validate numeric fields
-        numeric_columns = ["shares", "price_per_share"]
+        numeric_columns = ["shares", "price_per_share", "amount"]
         for col in numeric_columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
             if df[col].isna().any():
                 raise ValueError(f"Invalid numeric values in column: {col}")
-            if (df[col] <= 0).any():
-                raise ValueError(f"Non-positive values found in column: {col}")
+            if col in ["shares", "price_per_share"]:
+                if (df[col] <= 0).any():
+                    raise ValueError(
+                        f"Non-positive values found in column: {col}"
+                    )
 
         # Calculate total value for each transaction
         df["total_value"] = df["shares"] * df["price_per_share"]
+
+        # For DIVIDEND and FEE transactions, use 'amount' column
+        df.loc[df["transaction_type"] == "DIVIDEND", "total_value"] = df[
+            "amount"
+        ]
+        df.loc[df["transaction_type"] == "FEE", "total_value"] = -df["amount"]
 
         # For SELL transactions, make shares negative for easier calculations
         df.loc[df["transaction_type"] == "SELL", "shares"] *= -1
@@ -835,9 +853,15 @@ class BogleBenchAnalyzer:
         # Process each transaction
         for _, trans in day_transactions.iterrows():
             account = trans["account"]
-            cash_flow = trans[
-                "total_value"
-            ]  # Already signed correctly (negative for SELL)
+            ttype = trans["transaction_type"]
+
+            if ttype in ["DIVIDEND", "FEE"]:
+                cash_flow = trans["amount"]
+            elif ttype in ["DIVIDEND_REINVEST"]:
+                cash_flow = 0.0
+            else:
+                # Already signed correctly (negative for SELL)
+                cash_flow = trans["total_value"]
 
             cash_flows[account] += cash_flow
             cash_flows["total"] += cash_flow
@@ -950,19 +974,22 @@ class BogleBenchAnalyzer:
             for _, transaction in day_transactions.iterrows():
                 account = transaction["account"]
                 ticker = transaction["ticker"]
-                shares = transaction[
-                    "shares"
-                ]  # Already negative for SELL transactions
+                ttype = transaction["transaction_type"]
 
-                # Ensure account and ticker exist in our tracking
-                if account not in current_holdings:
-                    current_holdings[account] = {
-                        t: DEFAULT_ASSET_VALUE for t in tickers
-                    }
-                if ticker not in current_holdings[account]:
-                    current_holdings[account][ticker] = DEFAULT_ASSET_VALUE
+                if ttype in ["BUY", "SELL", "DIVIDEND_REINVEST"]:
+                    shares = transaction["shares"]
 
-                current_holdings[account][ticker] += shares
+                    # Ensure account and ticker exist in our tracking
+                    if account not in current_holdings:
+                        current_holdings[account] = {
+                            t: DEFAULT_ASSET_VALUE for t in tickers
+                        }
+                    if ticker not in current_holdings[account]:
+                        current_holdings[account][ticker] = DEFAULT_ASSET_VALUE
+
+                    # For DIVIDEND, do not adjust holdings;
+                    # handled in cash flow
+                    current_holdings[account][ticker] += shares
 
             # Get market prices for this date
             self.logger.debug(
