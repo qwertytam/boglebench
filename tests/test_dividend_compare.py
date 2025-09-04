@@ -66,4 +66,4 @@ def test_dividend_and_reinvest_mismatch(analyzer, capsys):
     analyzer.compare_user_dividends_to_alphavantage("VTI")
     captured = capsys.readouterr()
     assert "Dividend mismatch" in captured.out
-    assert "user total=2.23 vs AlphaVantage=1.23" in captured.out
+    assert "user total=2.23 vs market data=1.23" in captured.out
