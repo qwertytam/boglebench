@@ -1211,10 +1211,17 @@ class BogleBenchAnalyzer:
         dividend_df["date"] = pd.to_datetime(dividend_df["date"]).dt.normalize()
         return dividend_df
 
-    def compare_user_dividends_to_alphavantage(self, ticker: str):
-        """Compare user-provided dividend amounts to fetched market data and
-        warn if mismatched."""
-        ERROR_MARGIN = 0.01  # Allowable difference in dollars
+    def compare_user_dividends_to_alphavantage(
+        self, ticker: str, error_margin: float = 0.01
+    ) -> None:
+        """
+        Compare user-provided dividend and dividend reinvestment transactions
+        with market dividend data. Prints a warning if values differ by more
+        than the error margin. Sums amounts for the same date.
+        """
+
+        if self.transactions is None:
+            raise ValueError("No transactions loaded to compare against.")
 
         user_dividends = self.transactions[
             (self.transactions["ticker"] == ticker)
@@ -1226,19 +1233,25 @@ class BogleBenchAnalyzer:
         ][["date", "amount"]].copy()
         user_dividends["date"] = user_dividends["date"].dt.normalize()
 
+        # Group by date and sum amounts in case both cash+reinvest are logged
+        # separately
+        user_divs_grouped = user_dividends.groupby("date", as_index=False)[
+            "amount"
+        ].sum()
+
         market_dividends = self.fetch_dividend_data(ticker)
         market_dividends["date"] = market_dividends["date"].dt.normalize()
 
         merged = pd.merge(
-            user_dividends,
+            user_divs_grouped,
             market_dividends,
             on="date",
             how="left",
-            suffixes=("_user", "_av"),
+            suffixes=("_user", "_mkt"),
         )
         mismatches = merged[
             (merged["dividend"].notnull())
-            & (abs(merged["amount"] - merged["dividend"]) > ERROR_MARGIN)
+            & (abs(merged["amount"] - merged["dividend"]) > error_margin)
         ]
         for _, row in mismatches.iterrows():
             print(
