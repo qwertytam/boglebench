@@ -1191,6 +1191,61 @@ class BogleBenchAnalyzer:
 
         return portfolio_df
 
+    def fetch_dividend_data(self, ticker: str) -> pd.DataFrame:
+        """
+        Extracts dividend data for a given ticker from already-fetched
+        self.market_data.
+        Returns a DataFrame with columns: 'date', 'dividend'
+        """
+        if ticker not in self.market_data:
+            raise ValueError(
+                f"Market data for ticker {ticker} not found. "
+                f"Did you run fetch_market_data()?"
+            )
+
+        df = self.market_data[ticker]
+        # Only consider days where a dividend was paid
+        dividend_df = df[df["dividend"] > 0][["date", "dividend"]].copy()
+
+        # Normalize date for merging
+        dividend_df["date"] = pd.to_datetime(dividend_df["date"]).dt.normalize()
+        return dividend_df
+
+    def compare_user_dividends_to_alphavantage(self, ticker: str):
+        """Compare user-provided dividend amounts to fetched market data and
+        warn if mismatched."""
+        ERROR_MARGIN = 0.01  # Allowable difference in dollars
+
+        user_dividends = self.transactions[
+            (self.transactions["ticker"] == ticker)
+            & (
+                self.transactions["transaction_type"].isin(
+                    ["DIVIDEND", "DIVIDEND_REINVEST"]
+                )
+            )
+        ][["date", "amount"]].copy()
+        user_dividends["date"] = user_dividends["date"].dt.normalize()
+
+        market_dividends = self.fetch_dividend_data(ticker)
+        market_dividends["date"] = market_dividends["date"].dt.normalize()
+
+        merged = pd.merge(
+            user_dividends,
+            market_dividends,
+            on="date",
+            how="left",
+            suffixes=("_user", "_av"),
+        )
+        mismatches = merged[
+            (merged["dividend"].notnull())
+            & (abs(merged["amount"] - merged["dividend"]) > ERROR_MARGIN)
+        ]
+        for _, row in mismatches.iterrows():
+            print(
+                f"⚠️  Dividend mismatch for {ticker} on {row['date'].date()}: "
+                f"user={row['amount']} vs AlphaVantage={row['dividend']}"
+            )
+
     def calculate_performance(self) -> "PerformanceResults":
         """
         Calculate comprehensive performance metrics for the portfolio and benchmark.
