@@ -1256,7 +1256,7 @@ class BogleBenchAnalyzer:
         for _, row in mismatches.iterrows():
             print(
                 f"⚠️  Dividend mismatch for {ticker} on {row['date'].date()}: "
-                f"user={row['amount']} vs AlphaVantage={row['dividend']}"
+                f"user total={row['amount']} vs market data={row['dividend']}"
             )
 
     def calculate_performance(self) -> "PerformanceResults":
