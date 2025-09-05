@@ -59,9 +59,32 @@ Add your transaction CSV file to `~/my_boglebench_data/transactions/`. Required 
 - `group3`: Tertiary grouping (e.g., region, style)
 - `notes`: Free-form notes about the transaction
 
+### Supported Columns for Dividend Transactions
+
+When entering dividend transactions (`DIVIDEND` or `DIVIDEND_REINVEST`), you may optionally provide:
+
+- `amount`: The total amount for the dividend transaction
+- `dividend_per_share`: The per-share amount paid by the security (cash or equivalent).
+- `dividend_type`: The type of dividend (e.g., CASH, REINVEST, SPECIAL).
+- `dividend_pay_date`: The pay date of the dividend (defaults to `date` if not provided).
+- `dividend_ex_date`: The ex-dividend date (optional, for auditing).
+- `dividend_record_date`: The record date (optional, for auditing).
+
+### How BogleBench Uses Dividend Data
+
+- BogleBench will compare your provided dividends to the official data from AlphaVantage.
+- It will sum all `amount` values for the same pay date/ticker and compare to AlphaVantage.
+- If `dividend_per_share` is provided, it will also compare this value.
+- If `dividend_type` is provided, it will check for mismatches.
+- If you provide `dividend_ex_date` or `dividend_record_date`, they will be included in audit reports and output for your review.
+
 **Important:** Dates must be in ISO8601 format `(YYYY-MM-DD)`. Examples of valid dates:
 `2023-01-15`, `2024-12-31`. Invalid formats like `01/15/2023` or `15-01-2023` will
 cause an error.
+
+### Example Usage
+
+See the included template in `templates/transactions_example.csv`.
 
 ### 3. Run Analysis
 

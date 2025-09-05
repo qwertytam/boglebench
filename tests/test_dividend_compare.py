@@ -40,30 +40,36 @@ def make_transactions_div_and_reinvest(match=True):
         amount_reinvest = 2.00
     df = pd.DataFrame(
         {
-            "date": pd.to_datetime(["2023-01-02", "2023-01-02"]),
-            "ticker": ["VTI", "VTI"],
-            "transaction_type": ["DIVIDEND", "DIVIDEND_REINVEST"],
-            "shares": [0, 0.01],
-            "price_per_share": [0, 100],
-            "amount": [amount_div, amount_reinvest],
-            "account": ["Test", "Test"],
+            "date": pd.to_datetime(["2023-01-01", "2023-01-02", "2023-01-02"]),
+            "ticker": ["VTI", "VTI", "VTI"],
+            "transaction_type": ["BUY", "DIVIDEND", "DIVIDEND_REINVEST"],
+            "shares": [1, 0, 0.01],
+            "price_per_share": [100, 0, 100],
+            "amount": [0, amount_div, amount_reinvest],
+            "account": ["Test", "Test", "Test"],
         }
     )
     return df
 
 
-def test_dividend_and_reinvest_match(analyzer, capsys):
+def test_dividend_and_reinvest_match(analyzer):
     analyzer.market_data = make_market_data()
     analyzer.transactions = make_transactions_div_and_reinvest(match=True)
-    analyzer.compare_user_dividends_to_alphavantage("VTI")
-    captured = capsys.readouterr()
-    assert "Dividend mismatch" not in captured.out
+    messages = analyzer.compare_user_dividends_to_market("VTI")
+    messages_str = "\n".join(messages)
+    print("Compare messages:")
+    print(messages_str)
+    assert "No user dividends" not in messages_str
+    assert "Cannot calculate" not in messages_str
+    assert "Dividend mismatch" not in messages_str
 
 
-def test_dividend_and_reinvest_mismatch(analyzer, capsys):
+def test_dividend_and_reinvest_mismatch(analyzer):
     analyzer.market_data = make_market_data()
     analyzer.transactions = make_transactions_div_and_reinvest(match=False)
-    analyzer.compare_user_dividends_to_alphavantage("VTI")
-    captured = capsys.readouterr()
-    assert "Dividend mismatch" in captured.out
-    assert "user total=2.23 vs market data=1.23" in captured.out
+    messages = analyzer.compare_user_dividends_to_market("VTI")
+    messages_str = "\n".join(messages)
+    print("Compare messages:")
+    print(messages_str)
+    assert "Dividend mismatch" in messages_str
+    assert "user: $2.2300, market: $1.2300" in messages_str

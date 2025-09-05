@@ -81,6 +81,13 @@ advanced:
     retry_attempts: 3
     request_delay_seconds: 0.5
 
+  dividend:
+    auto_validate: true # Automatically validate during portfolio building
+    auto_calculate_div_per_share: true # Calculate missing div_per_share from holdings
+    warn_missing_dividends: true # Warn about market dividends not in user data
+    default_div_type: "CASH" # Default dividend type
+    comparison_error_margin: 0.01 # Acceptable difference for matching
+
   # Portfolio calculation settings
   portfolio:
     handle_missing_prices: "forward_fill" # Options: forward_fill, interpolate, skip
