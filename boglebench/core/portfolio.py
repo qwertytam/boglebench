@@ -2005,8 +2005,8 @@ class BogleBenchAnalyzer:
         # Align the series by index. This is crucial for non-continuous date
         # ranges.
         self.logger.info("Aligning portfolio and benchmark returns...")
-        self.logger.info("Portfolio returns:\n%s", portfolio_returns.head(10))
-        self.logger.info("Benchmark returns:\n%s", benchmark_returns.head(10))
+        self.logger.debug("Portfolio returns:\n%s", portfolio_returns.head(10))
+        self.logger.debug("Benchmark returns:\n%s", benchmark_returns.head(10))
 
         aligned_portfolio, aligned_benchmark = portfolio_returns.align(
             benchmark_returns, join="inner"
