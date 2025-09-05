@@ -9,11 +9,11 @@ import json
 from datetime import datetime as dt
 from datetime import timedelta, tzinfo
 from typing import Any, Iterable, Literal, Optional, Union
+from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
 import numpy as np
 import pandas as pd
 from pandas import Timedelta
-from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
 from ..utils.logging_config import get_logger
 
@@ -157,9 +157,13 @@ def cagr(
     start_value: float,
     end_value: float,
     periods: float,
-) -> Optional[float]:
+) -> float:
     """
     Calculate the Compound Annual Growth Rate (CAGR).
+
+    Uses the formula to handle negative start values:
+        numerator = end_value - start_value + abs(start_value)
+        CAGR = (numerator / abs(start_value))^(1 / periods) - 1
 
     Parameters
     ----------
@@ -172,22 +176,20 @@ def cagr(
 
     Returns
     -------
-    Optional[float]
-        The CAGR as a decimal (e.g., 0.05 for 5%), or None if inputs are
-        invalid.
-    """
-    if periods <= 0 or start_value <= 0:
-        logger.warning(
-            "CAGR calculation requires positive start_value and periods > 0"
-        )
-        return None
-    try:
-        cagr = (end_value / start_value) ** (1 / periods) - 1
-        return cagr
+    float
+        The CAGR as a decimal (e.g., 0.05 for 5%)
 
-    except ValueError as e:
-        logger.error("Error calculating CAGR: %s", e)
-        return None
+    Raises
+    ------
+    ValueError
+        If `periods` <= 0.
+    """
+    if periods <= 0:
+        raise ValueError("CAGR calculation requires periods > 0")
+
+    numerator = end_value - start_value + abs(start_value)
+    result = (numerator / abs(start_value)) ** (1 / periods) - 1
+    return result
 
 
 class NpEncoder(json.JSONEncoder):
