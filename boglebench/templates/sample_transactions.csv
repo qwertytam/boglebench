@@ -2,10 +2,57 @@ date,ticker,transaction_type,shares,price_per_share,account,group1,group2,group3
 2023-01-17,AAPL,BUY,100,134,Schwab_401k,Tech,Large Cap,US,Initial purchase
 2023-01-17,MSFT,BUY,50,240.25,Schwab_401k,Tech,Large Cap,US,Diversification
 2023-01-17,SPY,BUY,25,385,Fidelity_IRA,Index,Broad Market,US,Core holding
+2023-02-10,AAPL,DIVIDEND,0,0.23,Schwab_401k,Tech,Large Cap,US,
 2023-02-15,AAPL,BUY,50,155.75,Schwab_401k,Tech,Large Cap,US,Adding to position
 2023-02-15,VTI,BUY,100,201,Fidelity_IRA,Index,Total Market,US,Long-term hold
+2023-02-15,MSFT,DIVIDEND,0,0.68,Schwab_401k,Tech,Large Cap,US,
 2023-03-15,SPY,BUY,25,385,Personal_Brokerage,Index,Broad Market,US,Taxable account
+2023-03-17,SPY,DIVIDEND,0,1.506,Personal_Brokerage,Index,Broad Market,US,
+2023-03-23,VTI,DIVIDEND,0,0.786,Fidelity_IRA,Index,Total Market,US,
 2023-04-20,AAPL,SELL,25,165.25,Schwab_401k,Tech,Large Cap,US,Profit taking
+2023-05-12,AAPL,DIVIDEND,0,0.24,Schwab_401k,Tech,Large Cap,US,
 2023-05-15,GOOGL,BUY,10,116,Personal_Brokerage,Tech,Large Cap,US,New position
+2023-05-17,MSFT,DIVIDEND,0,0.68,Schwab_401k,Tech,Large Cap,US,
+2023-06-16,SPY,DIVIDEND,0,1.638,Personal_Brokerage,Index,Broad Market,US,
+2023-06-23,VTI,DIVIDEND,0,0.827,Fidelity_IRA,Index,Total Market,US,
+2023-08-11,AAPL,DIVIDEND,0,0.24,Schwab_401k,Tech,Large Cap,US,
+2023-08-16,MSFT,DIVIDEND,0,0.68,Schwab_401k,Tech,Large Cap,US,
+2023-09-15,SPY,DIVIDEND,0,1.583,Personal_Brokerage,Index,Broad Market,US,
+2023-09-21,VTI,DIVIDEND,0,0.798,Fidelity_IRA,Index,Total Market,US,
+2023-11-10,AAPL,DIVIDEND,0,0.24,Schwab_401k,Tech,Large Cap,US,
 2023-11-15,AAPL,SELL,200,186,Personal_Brokerage,Tech,Large Cap,US,Net short
+2023-11-15,MSFT,DIVIDEND,0,0.75,Schwab_401k,Tech,Large Cap,US,
+2023-12-15,SPY,DIVIDEND,0,1.906,Personal_Brokerage,Index,Broad Market,US,
+2023-12-21,VTI,DIVIDEND,0,1.002,Fidelity_IRA,Index,Total Market,US,
+2024-02-09,AAPL,DIVIDEND,0,0.24,Schwab_401k,Tech,Large Cap,US,
+2024-02-14,MSFT,DIVIDEND,0,0.75,Schwab_401k,Tech,Large Cap,US,
 2024-03-15,AAPL,BUY,75,171,Personal_Brokerage,Tech,Large Cap,US,Close out short
+2024-03-15,SPY,DIVIDEND,0,1.595,Personal_Brokerage,Index,Broad Market,US,
+2024-03-22,VTI,DIVIDEND,0,0.911,Fidelity_IRA,Index,Total Market,US,
+2024-05-10,AAPL,DIVIDEND,0,0.25,Schwab_401k,Tech,Large Cap,US,
+2024-05-15,MSFT,DIVIDEND,0,0.75,Schwab_401k,Tech,Large Cap,US,
+2024-06-10,GOOGL,DIVIDEND,0,0.2,Personal_Brokerage,Tech,Large Cap,US,
+2024-06-21,SPY,DIVIDEND,0,1.759,Personal_Brokerage,Index,Broad Market,US,
+2024-06-28,VTI,DIVIDEND,0,0.952,Fidelity_IRA,Index,Total Market,US,
+2024-08-12,AAPL,DIVIDEND,0,0.25,Schwab_401k,Tech,Large Cap,US,
+2024-08-15,MSFT,DIVIDEND,0,0.75,Schwab_401k,Tech,Large Cap,US,
+2024-09-09,GOOGL,DIVIDEND,0,0.2,Personal_Brokerage,Tech,Large Cap,US,
+2024-09-20,SPY,DIVIDEND,0,1.746,Personal_Brokerage,Index,Broad Market,US,
+2024-09-27,VTI,DIVIDEND,0,0.871,Fidelity_IRA,Index,Total Market,US,
+2024-11-08,AAPL,DIVIDEND,0,0.25,Personal_Brokerage,Tech,Large Cap,US,
+2024-11-21,MSFT,DIVIDEND,0,0.83,Schwab_401k,Tech,Large Cap,US,
+2024-12-09,GOOGL,DIVIDEND,0,0.2,Personal_Brokerage,Tech,Large Cap,US,
+2024-12-20,SPY,DIVIDEND,0,1.966,Personal_Brokerage,Index,Broad Market,US,
+2024-12-23,VTI,DIVIDEND,0,0.941,Fidelity_IRA,Index,Total Market,US,
+2025-02-10,AAPL,DIVIDEND,0,0.25,Personal_Brokerage,Tech,Large Cap,US,
+2025-02-20,MSFT,DIVIDEND,0,0.83,Schwab_401k,Tech,Large Cap,US,
+2025-03-10,GOOGL,DIVIDEND,0,0.2,Personal_Brokerage,Tech,Large Cap,US,
+2025-03-21,SPY,DIVIDEND,0,1.696,Personal_Brokerage,Index,Broad Market,US,
+2025-03-27,VTI,DIVIDEND,0,0.985,Fidelity_IRA,Index,Total Market,US,
+2025-05-12,AAPL,DIVIDEND,0,0.26,Personal_Brokerage,Tech,Large Cap,US,
+2025-05-15,MSFT,DIVIDEND,0,0.83,Schwab_401k,Tech,Large Cap,US,
+2025-06-09,GOOGL,DIVIDEND,0,0.21,Personal_Brokerage,Tech,Large Cap,US,
+2025-06-20,SPY,DIVIDEND,0,1.761,Personal_Brokerage,Index,Broad Market,US,
+2025-06-30,VTI,DIVIDEND,0,0.913,Fidelity_IRA,Index,Total Market,US,
+2025-08-11,AAPL,DIVIDEND,0,0.26,Personal_Brokerage,Tech,Large Cap,US,
+2025-08-21,MSFT,DIVIDEND,0,0.83,Schwab_401k,Tech,Large Cap,US,
