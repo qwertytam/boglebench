@@ -853,9 +853,15 @@ class BogleBenchAnalyzer:
             else:
                 beginning_value = portfolio_df.iloc[i - 1]["total_value"]
 
+            # Dividends are considered internal cash flows and do not directly
+            # affect the Modified Dietz calculation. Instead, the method
+            # focuses on external cash flows, which are movements of value
+            # into or out of the portfolio that are not related to investment
+            # income.
+            # Value change = total change minus external cash flow impact
             # Get values
             ending_value = portfolio_df.iloc[i]["total_value"]
-            net_cash_flow = portfolio_df.iloc[i]["net_cash_flow"]
+            external_cash_flow = portfolio_df.iloc[i]["investment_cash_flow"]
             weighted_cash_flow = portfolio_df.iloc[i]["weighted_cash_flow"]
 
             # Modified Dietz formula
@@ -866,7 +872,7 @@ class BogleBenchAnalyzer:
                 returns.append(DEFAULT_RETURN)
             else:
                 daily_return = (
-                    ending_value - beginning_value - net_cash_flow
+                    ending_value - beginning_value - external_cash_flow
                 ) / denominator
                 returns.append(daily_return)
 
@@ -981,24 +987,32 @@ class BogleBenchAnalyzer:
 
             for ticker in tickers:
                 try:
+                    auto_calc_div_per_share = self.config.get(
+                        "dividend.auto_calculate_div_per_share", True
+                    )
+                    if not isinstance(auto_calc_div_per_share, bool):
+                        auto_calc_div_per_share = True
+
+                    warn_missing_dividends = self.config.get(
+                        "dividend.warn_missing_dividends", True
+                    )
+                    if not isinstance(warn_missing_dividends, bool):
+                        warn_missing_dividends = True
+
                     messages = self.compare_user_dividends_to_market(
                         ticker,
-                        auto_calculate_div_per_share=self.config.get(
-                            "dividend.auto_calculate_div_per_share", True
-                        ),
-                        warn_missing_dividends=self.config.get(
-                            "dividend.warn_missing_dividends", True
-                        ),
+                        auto_calculate_div_per_share=auto_calc_div_per_share,
+                        warn_missing_dividends=warn_missing_dividends,
                     )
                     for msg in messages:
                         if "mismatch" in msg:
-                            self.logger.warning(f"⚠️  {msg}")
+                            self.logger.warning("⚠️  %s", msg)
                         else:
-                            self.logger.info(f"ℹ️  {msg}")
+                            self.logger.info("ℹ️  %s", msg)
 
-                except Exception as e:
-                    self.logger.warning(
-                        f"Could not validate dividends for {ticker}: {e}"
+                except ValueError as e:
+                    self.logger.error(
+                        "Could not validate dividends for %s: %s", ticker, e
                     )
 
         # Initialize portfolio tracking by account and ticker
@@ -1268,6 +1282,8 @@ class BogleBenchAnalyzer:
             inv_cf, inc_cf = self._process_daily_transactions(date)
             total_cf = inv_cf["total"] + inc_cf["total"]
 
+            portfolio_df.at[i, "investment_cash_flow"] = inv_cf["total"]
+            portfolio_df.at[i, "income_cash_flow"] = inc_cf["total"]
             portfolio_df.at[i, "net_cash_flow"] = total_cf
             portfolio_df.at[i, "weighted_cash_flow"] = (
                 total_cf * period_cash_flow_weight
@@ -1292,10 +1308,15 @@ class BogleBenchAnalyzer:
                 prev_value = portfolio_df.iloc[i - 1]["total_value"]
 
             current_value = portfolio_df.iloc[i]["total_value"]
-            net_cash_flow = portfolio_df.iloc[i]["net_cash_flow"]
+            external_cash_flow = portfolio_df.iloc[i]["investment_cash_flow"]
 
-            # Market value change = total change minus cash flow impact
-            market_change = current_value - prev_value - net_cash_flow
+            # Dividends are considered internal cash flows and do not directly
+            # affect the Modified Dietz calculation. Instead, the method
+            # focuses on external cash flows, which are movements of value
+            # into or out of the portfolio that are not related to investment
+            # income.
+            # Market value change = total change minus external cash flow impact
+            market_change = current_value - prev_value - external_cash_flow
 
             if prev_value == 0:
                 market_return = 0
@@ -1365,8 +1386,8 @@ class BogleBenchAnalyzer:
 
         df = self.market_data[ticker]
         # Only consider days where a dividend was paid
+        self.logger.debug("Extracting dividend data for %s", ticker)
         dividend_df = df[df["dividend"] > 0][["date", "dividend"]].copy()
-
         dividend_df["div_per_share"] = dividend_df["dividend"]
         dividend_df["div_type"] = DEFAULT_DIV_TYPE
 
@@ -1458,24 +1479,35 @@ class BogleBenchAnalyzer:
         """Perform the actual dividend comparison with flexible matching."""
 
         messages = []
+        if user_dividends.empty:
+            return messages
 
         # Group by date and sum amounts in case both cash+reinvest are logged
         # separately
+        self.logger.debug("Grouping user dividends for %s by pay date", ticker)
         user_divs_grouped = user_dividends.groupby(
             "div_pay_date", as_index=False
         ).agg(
             {
                 "amount": "sum",
-                "div_per_share": "sum",
+                "div_per_share": "mean",
                 "div_type": lambda x: ",".join(sorted(set(x.dropna()))),
             }
         )
 
+        self.logger.debug(
+            "User dividends grouped by pay date:\n%s", user_divs_grouped
+        )
         user_divs_grouped["div_pay_date"] = user_divs_grouped[
             "div_pay_date"
         ].dt.normalize()
 
+        self.logger.debug("Fetching market dividends for %s", ticker)
         market_dividends = self.fetch_dividend_data(ticker)
+
+        self.logger.debug(
+            "Market dividends fetched for %s:\n%s", ticker, market_dividends
+        )
         market_dividends["div_pay_date"] = market_dividends[
             "div_pay_date"
         ].dt.normalize()
@@ -1640,22 +1672,51 @@ class BogleBenchAnalyzer:
             )
             return ["No user dividends found to compare."]
 
-        # Validate and enhance dividend data using the parameters
-        user_dividends, validation_messages = (
-            self._validate_and_enhance_dividend_data(
-                user_dividends,
-                ticker,
-                auto_calculate_div_per_share=auto_calculate_div_per_share,
-                default_div_type=default_div_type,
-            )
+        if "div_type" not in user_dividends.columns:
+            user_dividends["div_type"] = DEFAULT_DIV_TYPE
+
+        if "div_pay_date" not in user_dividends.columns:
+            user_dividends["div_pay_date"] = user_dividends["date"]
+
+        if "div_per_share" not in user_dividends.columns:
+            user_dividends["div_per_share"] = DEFAULT_ZERO
+
+        # Process dividends per account first ---
+        all_enhanced_dividends = []
+        all_validation_messages = []
+
+        # Group by account AND date to handle each dividend event individually
+        grouped_by_account_and_date = user_dividends.groupby(
+            ["account", "date"]
         )
 
-        self.logger.debug("Validated user dividends for %s", ticker)
-        self.logger.debug(validation_messages)
+        for (account, date), group in grouped_by_account_and_date:
+            self.logger.debug(
+                "Validating dividend for %s in account %s on %s",
+                ticker,
+                account,
+                date.date(),
+            )
+            enhanced_group, validation_messages = (
+                self._validate_and_enhance_dividend_data(
+                    group,
+                    ticker,
+                    account,
+                    auto_calculate_div_per_share,
+                    default_div_type,
+                )
+            )
+            all_enhanced_dividends.append(enhanced_group)
+            all_validation_messages.extend(validation_messages)
+
+        if not all_enhanced_dividends:
+            return all_validation_messages
+
+        final_user_dividends = pd.concat(all_enhanced_dividends)
 
         # Perform the comparison
         comparison_messages = self._perform_dividend_comparison(
-            ticker, user_dividends, error_margin, warn_missing_dividends
+            ticker, final_user_dividends, error_margin, warn_missing_dividends
         )
 
         self.logger.info("Completed dividend comparison for %s", ticker)
@@ -1665,120 +1726,61 @@ class BogleBenchAnalyzer:
 
     def _validate_and_enhance_dividend_data(
         self,
-        user_dividends: pd.DataFrame,
+        dividend_group: pd.DataFrame,
         ticker: str,
+        account: str,
         auto_calculate_div_per_share: bool = True,
         default_div_type: str = DEFAULT_DIV_TYPE,
     ) -> Tuple[pd.DataFrame, List[str]]:
         """
-        Validate and enhance user dividend data with calculated values.
-
-        Args:
-            user_dividends: DataFrame containing user dividend transactions
-            ticker: Stock ticker symbol
-            auto_calculate_div_per_share: Whether to calculate missing
-                div_per_share
-            default_div_type: Default dividend type for missing values
-
-        Returns:
-            A tuple containing:
-            - Enhanced DataFrame with calculated/default values
-            - A list of informational messages
+        Validate and enhance a specific group of user dividend transactions
+        (for a single account and date).
         """
-
-        enhanced_dividends = user_dividends.copy()
+        enhanced_group = dividend_group.copy()
         messages = []
-        calculated_count = 0
-        default_type_count = 0
-        error_messages = []
 
-        # Ensure required columns exist with defaults
-        if "div_per_share" not in enhanced_dividends.columns:
-            self.logger.debug("Adding missing div_per_share column")
-            enhanced_dividends["div_per_share"] = DEFAULT_ZERO
+        # Consolidate the group first (e.g., partial reinvest)
+        total_amount = enhanced_group["amount"].sum()
+        div_date = enhanced_group["date"].iloc[0]
+        pay_date = (
+            enhanced_group["div_pay_date"].dropna().iloc[0]
+            if not enhanced_group["div_pay_date"].dropna().empty
+            else div_date
+        )
 
-        if "div_type" not in enhanced_dividends.columns:
-            self.logger.debug("Adding missing div_type column")
-            enhanced_dividends["div_type"] = default_div_type
+        # Calculate div_per_share if needed
+        # Use the first non-zero div_per_share provided, otherwise calculate
+        provided_dps = enhanced_group[enhanced_group["div_per_share"] > 0][
+            "div_per_share"
+        ]
+        final_dps = 0.0
 
-        if "div_pay_date" not in enhanced_dividends.columns:
-            self.logger.debug("Adding missing div_pay_date column; using date")
-            enhanced_dividends["div_pay_date"] = enhanced_dividends["date"]
-
-        for idx, row in enhanced_dividends.iterrows():
-            if row["div_pay_date"] is pd.NaT or pd.isna(row["div_pay_date"]):
-                enhanced_dividends.at[idx, "div_pay_date"] = row["date"]
-                row["div_pay_date"] = row["date"]
-
-            # Handle missing div_per_share
-            if auto_calculate_div_per_share:
-                self.logger.debug(
-                    "Processing row %d for div_per_share calculation:\n%s",
-                    idx,
-                    row,
+        if not provided_dps.empty:
+            final_dps = provided_dps.iloc[0]
+        elif auto_calculate_div_per_share:
+            shares_held = self._get_shares_held_on_date(
+                ticker, account, pay_date
+            )
+            if shares_held > 0 and total_amount > 0:
+                final_dps = total_amount / shares_held
+                messages.append(
+                    f"Calculated div/share for {ticker} in {account} "
+                    f"on {pay_date.date()} "
+                    f"as ${final_dps:.4f} (${total_amount:.2f} / "
+                    f"{shares_held:.4f} shares)"
                 )
-                if pd.isna(row["div_per_share"]) or row["div_per_share"] == 0:
-                    div_date = pd.to_datetime(
-                        row.get("div_pay_date", row["date"])
-                    )
+            else:
+                messages.append(
+                    f"⚠️ Could not calculate div/share for {ticker} in "
+                    f"{account} on {pay_date.date()} "
+                    f"(shares={shares_held}, amount={total_amount})"
+                )
 
-                    shares_held = self._get_shares_held_on_date(
-                        ticker, row["account"], div_date
-                    )
+        # Apply the final calculated/validated DPS to all rows in the group
+        enhanced_group["div_per_share"] = final_dps
+        enhanced_group["div_pay_date"] = pd.to_datetime(pay_date)
 
-                    self.logger.debug(
-                        "Calculating div_per_share for row %d: "
-                        + "shares_held=%d, amount=%.4f",
-                        idx,
-                        shares_held,
-                        row["amount"],
-                    )
-
-                    if shares_held > 0 and row["amount"] > 0:
-                        calculated_div_per_share = row["amount"] / shares_held
-                        self.logger.debug(
-                            "Calculated div_per_share for row %d: $%.4f",
-                            idx,
-                            calculated_div_per_share,
-                        )
-                        enhanced_dividends.at[idx, "div_per_share"] = (
-                            calculated_div_per_share
-                        )
-                        calculated_count += 1
-                    else:
-                        error_messages.append(
-                            f"Row {idx}: Cannot calculate div_per_share "
-                            f"(shares={shares_held}, amount={row['amount']})"
-                        )
-
-            # Handle missing div_type
-            if pd.isna(row["div_type"]) or row["div_type"] == "":
-                enhanced_dividends.at[idx, "div_type"] = default_div_type
-                default_type_count += 1
-
-        # Ensure div_pay_date is properly set for comparison
-        enhanced_dividends["div_pay_date"] = pd.to_datetime(
-            enhanced_dividends["div_pay_date"].fillna(
-                enhanced_dividends["date"]
-            )
-        ).dt.normalize()
-
-        # Create summary messages
-        if calculated_count > 0:
-            messages.append(
-                f"Calculated div_per_share for {calculated_count} dividend entries"
-            )
-
-        if default_type_count > 0:
-            messages.append(
-                f"Set default div_type for {default_type_count} dividend entries"
-            )
-
-        if error_messages:
-            messages.append("Validation issues:")
-            messages.extend([f"     {error}" for error in error_messages])
-
-        return enhanced_dividends, messages
+        return enhanced_group, messages
 
     def calculate_performance(self) -> "PerformanceResults":
         """
