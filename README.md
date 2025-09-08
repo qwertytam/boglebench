@@ -186,6 +186,7 @@ R = \frac{V_{E} - V_{B} - \sum{CF}}{V_{B} + \sum{\left(W_i \times CF_i\right)}}
 $$
 
 Where:  
+
 - $V_{B}$ = beginning portfolio value  
 - $V_{E}$ = ending portfolio value  
 - $CF_i$ = each cash flow during the period (including dividends)  
@@ -221,20 +222,20 @@ This illustrates that including internal cash flows as external flows *reduces* 
 
 TWR breaks the performance measurement into **subperiods** whenever there is a cash flow, then geometrically links the returns across periods. This eliminates the effect of cash flow timing.
 
-**Setup**
+#### Setup
 
 - Beginning Value: **10,000**  
 - Dividend: **+100** at midpoint  
 - Ending Value: **10,200**
 
-**Step 1: Split into Subperiods**
+#### Step 1: Split into Subperiods
 
 | Period | Start Value | Cash Flow | End Value | Subperiod Return |
 |-------|-------------|-----------|-----------|-----------------|
 | 1 (before dividend) | 10,000 | +0 | 10,050 | $ r_1 = \frac{10{,}050 - 10{,}000}{10{,}000} = 0.0050 $ (0.50%) |
 | 2 (after dividend) | 10,150 *(10,050 + 100)* | +0 | 10,200 | $ r_2 = \frac{10{,}200 - 10{,}150}{10{,}150} = 0.0049 $ (0.49%) |
 
-**Step 2: Geometrically Link Returns**
+#### Step 2: Geometrically Link Returns
 
 $$
 R_{TWR} = (1 + r_1) \times (1 + r_2) - 1
