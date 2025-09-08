@@ -110,7 +110,7 @@ class TestPerformanceCalculation:
                 [
                     "market_value_return",
                     "cash_flow_impact",
-                    "portfolio_return",
+                    "portfolio_mod_dietz_return",
                 ]
             ]
         )
@@ -124,7 +124,7 @@ class TestPerformanceCalculation:
         portfolio_history = results.portfolio_history
         assert len(portfolio_history) == 10  # 10 trading days
         assert "total_value" in portfolio_history.columns
-        assert "portfolio_return" in portfolio_history.columns
+        assert "portfolio_mod_dietz_return" in portfolio_history.columns
 
         # Check initial and final portfolio values
         initial_value = portfolio_history["total_value"].iloc[0]

@@ -314,9 +314,9 @@ class BogleBenchAnalyzer:
             "amount"
         ]
         df.loc[df["transaction_type"] == "FEE", "total_value"] = -df["amount"]
-        df.loc[df["transaction_type"] == "DIVIDEND_REINVEST", "total_value"] = (
-            df["amount"]
-        )
+        df.loc[
+            df["transaction_type"] == "DIVIDEND_REINVEST", "total_value"
+        ] = df["amount"]
 
         # For SELL transactions, make shares negative for easier calculations
         df.loc[df["transaction_type"] == "SELL", "shares"] *= -1
@@ -758,7 +758,9 @@ class BogleBenchAnalyzer:
     def _cache_data(self, ticker: str, data: pd.DataFrame) -> None:
         """Cache market data to disk."""
         if not self.config.get("settings.cache_market_data", True):
-            self.logger.debug("Caching disabled, skipping cache for %s", ticker)
+            self.logger.debug(
+                "Caching disabled, skipping cache for %s", ticker
+            )
             return
 
         cache_dir = self.config.get_market_data_path()
@@ -861,7 +863,10 @@ class BogleBenchAnalyzer:
             # Value change = total change minus external cash flow impact
             # Get values
             ending_value = portfolio_df.iloc[i]["total_value"]
-            external_cash_flow = portfolio_df.iloc[i]["investment_cash_flow"]
+            external_cash_flow = (
+                portfolio_df.iloc[i]["investment_cash_flow"]
+                + portfolio_df.iloc[i]["income_cash_flow"]
+            )
             weighted_cash_flow = portfolio_df.iloc[i]["weighted_cash_flow"]
 
             # Modified Dietz formula
@@ -1020,7 +1025,8 @@ class BogleBenchAnalyzer:
 
         # Track holdings by account and ticker: {account: {ticker: shares}}
         current_holdings = {
-            account: {ticker: 0.0 for ticker in tickers} for account in accounts
+            account: {ticker: 0.0 for ticker in tickers}
+            for account in accounts
         }
 
         # Get full date range for analysis
@@ -1161,7 +1167,9 @@ class BogleBenchAnalyzer:
                         # )
                         price = self._get_price_for_date(ticker, date)
                     except ValueError as e:
-                        self.logger.error(f"Skipping {ticker} on {date}: {e}")
+                        self.logger.error(
+                            "Skipping %s on %s: %s", ticker, date, e
+                        )
                         price = DEFAULT_PRICE  # Only set to 0 if truly no data exists
 
                     self.logger.debug(
@@ -1335,19 +1343,19 @@ class BogleBenchAnalyzer:
         portfolio_df["cash_flow_impact"] = portfolio_df["net_cash_flow"]
 
         # Calculate Modified Dietz returns
-        portfolio_df["portfolio_return"] = (
+        portfolio_df["portfolio_mod_dietz_return"] = (
             self._calculate_modified_dietz_returns(portfolio_df)
         )
 
         # Handle edge case where previous total_value is zero
         denominator_is_zero_mask = portfolio_df["total_value"].shift(1) == 0
-        portfolio_df.loc[denominator_is_zero_mask, "portfolio_return"] = (
-            DEFAULT_RETURN
-        )
+        portfolio_df.loc[
+            denominator_is_zero_mask, "portfolio_mod_dietz_return"
+        ] = DEFAULT_RETURN
 
         self.logger.debug(
-            "Portfolio returns had %d NaN values; replaced with %s",
-            portfolio_df["portfolio_return"].isna().sum(),
+            "Portfolio modified Dietz returns had %d NaN values; replaced with %s",
+            portfolio_df["portfolio_mod_dietz_return"].isna().sum(),
             DEFAULT_RETURN,
         )
 
@@ -1355,7 +1363,7 @@ class BogleBenchAnalyzer:
         for account in accounts:
             account_total_col = f"{account}_total"
             if account_total_col in portfolio_df.columns:
-                portfolio_df[f"{account}_return"] = (
+                portfolio_df[f"{account}_mod_dietz_return"] = (
                     self._calculate_account_modified_dietz_returns(
                         portfolio_df, account
                     )
@@ -1392,7 +1400,9 @@ class BogleBenchAnalyzer:
         dividend_df["div_type"] = DEFAULT_DIV_TYPE
 
         # Normalize date for merging
-        dividend_df["date"] = pd.to_datetime(dividend_df["date"]).dt.normalize()
+        dividend_df["date"] = pd.to_datetime(
+            dividend_df["date"]
+        ).dt.normalize()
         dividend_df = dividend_df.rename(columns={"date": "div_pay_date"})
 
         dividend_df["div_ex_date"] = pd.NaT
@@ -1443,7 +1453,10 @@ class BogleBenchAnalyzer:
         ].copy()
 
         relevant_transactions = pd.concat(
-            [relevant_transactions_buy_sell, relevant_transactions_div_reinvest]
+            [
+                relevant_transactions_buy_sell,
+                relevant_transactions_div_reinvest,
+            ]
         )
 
         if relevant_transactions.empty:
@@ -1797,7 +1810,8 @@ class BogleBenchAnalyzer:
 
         # Calculate portfolio performance metrics
         portfolio_metrics = self._calculate_metrics(
-            self.portfolio_history["portfolio_return"].dropna(), "Portfolio"
+            self.portfolio_history["portfolio_mod_dietz_return"].dropna(),
+            "Portfolio",
         )
 
         # Calculate benchmark performance metrics
@@ -1811,7 +1825,9 @@ class BogleBenchAnalyzer:
             )
 
         # Calculate relative performance metrics
-        portfolio_returns = self.portfolio_history["portfolio_return"].copy()
+        portfolio_returns = self.portfolio_history[
+            "portfolio_mod_dietz_return"
+        ].copy()
         portfolio_returns.index = pd.to_datetime(
             self.portfolio_history["date"]
         ).dt.date
@@ -1837,7 +1853,9 @@ class BogleBenchAnalyzer:
 
     def _align_benchmark_returns(self) -> pd.Series:
         """Align benchmark returns with portfolio dates."""
-        portfolio_dates = pd.to_datetime(self.portfolio_history["date"]).dt.date
+        portfolio_dates = pd.to_datetime(
+            self.portfolio_history["date"]
+        ).dt.date
 
         # Convert benchmark data to returns
         benchmark_df = self.benchmark_data.copy()
@@ -2043,7 +2061,9 @@ class BogleBenchAnalyzer:
             "settings.risk_free_rate", DEFAULT_RISK_FREE_RATE
         )
         if isinstance(risk_free_rate, Dict):
-            risk_free_rate = risk_free_rate.get("value", DEFAULT_RISK_FREE_RATE)
+            risk_free_rate = risk_free_rate.get(
+                "value", DEFAULT_RISK_FREE_RATE
+            )
         if risk_free_rate is None:
             risk_free_rate = DEFAULT_RISK_FREE_RATE
 
@@ -2094,7 +2114,9 @@ class PerformanceResults:
             p = self.portfolio_metrics
             lines.append("\n📊 PORTFOLIO PERFORMANCE")
             lines.append(f"  Total Return:        {p['total_return']:.2%}")
-            lines.append(f"  Annualized Return:   {p['annualized_return']:.2%}")
+            lines.append(
+                f"  Annualized Return:   {p['annualized_return']:.2%}"
+            )
             lines.append(f"  Volatility:          {p['volatility']:.2%}")
             lines.append(f"  Sharpe Ratio:        {p['sharpe_ratio']:.3f}")
             lines.append(f"  Max Drawdown:        {p['max_drawdown']:.2%}")
@@ -2108,7 +2130,9 @@ class PerformanceResults:
             )
             lines.append(f"\n📈 {benchmark_name} PERFORMANCE")
             lines.append(f"  Total Return:        {b['total_return']:.2%}")
-            lines.append(f"  Annualized Return:   {b['annualized_return']:.2%}")
+            lines.append(
+                f"  Annualized Return:   {b['annualized_return']:.2%}"
+            )
             lines.append(f"  Volatility:          {b['volatility']:.2%}")
             lines.append(f"  Sharpe Ratio:        {b['sharpe_ratio']:.3f}")
             lines.append(f"  Max Drawdown:        {b['max_drawdown']:.2%}")
@@ -2117,7 +2141,9 @@ class PerformanceResults:
         if self.relative_metrics:
             r = self.relative_metrics
             lines.append("\n🎯 RELATIVE PERFORMANCE")
-            lines.append(f"  Information Ratio:   {r['information_ratio']:.3f}")
+            lines.append(
+                f"  Information Ratio:   {r['information_ratio']:.3f}"
+            )
             lines.append(f"  Tracking Error:      {r['tracking_error']:.2%}")
             lines.append(f"  Beta:                {r['beta']:.3f}")
             lines.append(f"  Jensen's Alpha:      {r['jensens_alpha']:.2%}")
@@ -2135,7 +2161,7 @@ class PerformanceResults:
 
     def get_portfolio_returns(self) -> pd.Series:
         """Get portfolio return series."""
-        return self.portfolio_history["portfolio_return"].dropna()
+        return self.portfolio_history["portfolio_mod_dietz_return"].dropna()
 
     def get_cumulative_returns(self) -> pd.Series:
         """Get cumulative portfolio returns."""
@@ -2184,7 +2210,9 @@ class PerformanceResults:
                     total_periods = len(account_returns)
                     year_fraction = total_periods / annual_trading_days
                     total_return = (1 + account_returns).prod() - 1
-                    annualized_return = cagr(1, 1 + total_return, year_fraction)
+                    annualized_return = cagr(
+                        1, 1 + total_return, year_fraction
+                    )
                 else:
                     total_return = DEFAULT_RETURN
                     annualized_return = DEFAULT_RETURN
@@ -2288,9 +2316,13 @@ class PerformanceResults:
         # Export performance metrics
         metrics_data = []
         if self.portfolio_metrics:
-            metrics_data.append({**self.portfolio_metrics, "type": "Portfolio"})
+            metrics_data.append(
+                {**self.portfolio_metrics, "type": "Portfolio"}
+            )
         if self.benchmark_metrics:
-            metrics_data.append({**self.benchmark_metrics, "type": "Benchmark"})
+            metrics_data.append(
+                {**self.benchmark_metrics, "type": "Benchmark"}
+            )
 
         if metrics_data:
             metrics_file = output_path / "performance_metrics.csv"

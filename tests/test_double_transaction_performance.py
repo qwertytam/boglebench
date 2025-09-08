@@ -146,7 +146,9 @@ class TestMultiTransactionPerformance:
             expected_quantity_msft * expected_close_price_msft
         )
         assert (
-            abs(june_12_data.iloc[0]["total_value"] - expected_close_value_msft)
+            abs(
+                june_12_data.iloc[0]["total_value"] - expected_close_value_msft
+            )
             < 1
         )
 
@@ -203,7 +205,7 @@ class TestMultiTransactionPerformance:
         june_12_returns = portfolio_history[
             portfolio_history["date"].dt.date
             == pd.Timestamp("2023-06-12").date()
-        ]["portfolio_return"]
+        ]["portfolio_mod_dietz_return"]
 
         if not june_12_returns.empty:
             # Should see portfolio composition change on sale date
@@ -383,7 +385,7 @@ class TestMultiTransactionPerformance:
         portfolio_history = results.portfolio_history
         assert len(portfolio_history) == 10  # 10 trading days
         assert "total_value" in portfolio_history.columns
-        assert "portfolio_return" in portfolio_history.columns
+        assert "portfolio_mod_dietz_return" in portfolio_history.columns
 
         # Verify returns
         accuracy = 0.001 / 100  # 0.001% accuracy
@@ -396,7 +398,9 @@ class TestMultiTransactionPerformance:
         )
         portfolio_metrics = results.portfolio_metrics
         assert (
-            abs(portfolio_metrics["total_return"] - expected_asset_total_return)
+            abs(
+                portfolio_metrics["total_return"] - expected_asset_total_return
+            )
             < accuracy
         )
 
@@ -460,7 +464,9 @@ class TestMultiTransactionPerformance:
         asset_draw_down = cum_asset_wealth / cum_asset_wealth.cummax() - 1
         expected_max_asset_drawdown = asset_draw_down.min().values[0]
         assert (
-            abs(portfolio_metrics["max_drawdown"] - expected_max_asset_drawdown)
+            abs(
+                portfolio_metrics["max_drawdown"] - expected_max_asset_drawdown
+            )
             < accuracy
         )
 

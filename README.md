@@ -160,3 +160,101 @@ MIT License
 ## Contributing
 
 Contributions welcome! Please feel free to submit a Pull Request.
+
+## Notes on Calculations
+
+This is intended for the anlaysis of personal portfolios, not for professional use.
+As such there are a few areas where the calculation methodologies differ from what
+may be found in the realm of professional fund management.
+
+### Returns
+
+Portfolio returns can be calculated using several industry-standard methods, such as **Modified Dietz**, **Time-Weighted Return (TWR)**, and **Internal Rate of Return (IRR)** (also called **money-weighted return**).
+
+The key distinction between these methods lies in their treatment of **external vs. internal cash flows**. In professional fund management, **external cash flows** refer to contributions and withdrawals of capital between the investor and the portfolio (e.g., deposits, redemptions). These flows are included in performance calculations for Modified Dietz, TWR, and IRR because they represent changes in the amount of capital at work that are outside the manager’s control.
+
+By contrast, **internal cash flows** (e.g., dividends, interest, or proceeds from asset sales that remain in the portfolio) are not treated as external and are typically reflected in the change in portfolio value.
+
+This package assumes that the publicly listed assets being analyzed represent only a portion of the total portfolio. Therefore, internally generated cash flows (such as dividends) are treated as if they were immediately reinvested or withdrawn — effectively converting them into external flows for return calculation purposes. In other words, all internally generated cash flows are considered portfolio contributions or distributions, ensuring they are fully captured in the reported return.
+
+---
+
+### Example (Modified Dietz with Internal Flows)
+
+$$
+R = \frac{V_{E} - V_{B} - \sum{CF}}{V_{B} + \sum{\left(W_i \times CF_i\right)}}
+$$
+
+Where:  
+- $V_{B}$ = beginning portfolio value  
+- $V_{E}$ = ending portfolio value  
+- $CF_i$ = each cash flow during the period (including dividends)  
+- $W_i$ = weight for each cash flow, based on timing within the period  
+- $R$ = portfolio return  
+
+---
+
+### Numerical Example – Modified Dietz
+
+- Beginning Value ($V_{B}$): **10,000**  
+- Ending Value ($V_{E}$): **10,200**  
+- Dividend ($CF_1$): **+100** (received halfway through period, so $W_1 = 0.5$)
+
+$$
+R = \frac{10{,}200 - 10{,}000 - 100}{10{,}000 + (0.5 \times 100)}
+= \frac{100}{10{,}050}
+= 0.00995 \quad (0.995\%)
+$$
+
+If the dividend were excluded as an external flow, the return would instead be:
+
+$$
+R = \frac{10{,}200 - 10{,}000}{10{,}000}
+= 0.02 \quad (2.0\%)
+$$
+
+This illustrates that including internal cash flows as external flows *reduces* the reported return, because the dividend is treated as a distribution that leaves the portfolio rather than simply increasing ending value.
+
+---
+
+### Example (Time-Weighted Return)
+
+TWR breaks the performance measurement into **subperiods** whenever there is a cash flow, then geometrically links the returns across periods. This eliminates the effect of cash flow timing.
+
+**Setup**
+
+- Beginning Value: **10,000**  
+- Dividend: **+100** at midpoint  
+- Ending Value: **10,200**
+
+**Step 1: Split into Subperiods**
+
+| Period | Start Value | Cash Flow | End Value | Subperiod Return |
+|-------|-------------|-----------|-----------|-----------------|
+| 1 (before dividend) | 10,000 | +0 | 10,050 | $ r_1 = \frac{10{,}050 - 10{,}000}{10{,}000} = 0.0050 $ (0.50%) |
+| 2 (after dividend) | 10,150 *(10,050 + 100)* | +0 | 10,200 | $ r_2 = \frac{10{,}200 - 10{,}150}{10{,}150} = 0.0049 $ (0.49%) |
+
+**Step 2: Geometrically Link Returns**
+
+$$
+R_{TWR} = (1 + r_1) \times (1 + r_2) - 1
+= (1.0050 \times 1.0049) - 1
+= 0.00995 \quad (0.995\%)
+$$
+
+The TWR result matches the Modified Dietz calculation when flows are small and evenly spaced, but is unaffected by the size or timing of the cash flow — making it the preferred measure for comparing manager skill across accounts with different cash flow patterns.
+
+---
+
+### Note on IRR (Money-Weighted Return)
+
+IRR (or money-weighted return) is the discount rate that sets the **net present value of all cash flows (including beginning and ending value)** to zero. It is useful when the investor controls the timing and size of cash flows — for example, in **private equity**, **venture capital**, or **portfolios with large irregular contributions/withdrawals** — because it reflects the actual dollar-weighted experience of the investor. However, IRR is not ideal for comparing performance across managers, since results are heavily influenced by cash flow timing decisions.
+
+---
+
+### Summary
+
+- **Modified Dietz**: Approximates IRR; easier to calculate; sensitive to flow timing.  
+- **TWR**: Breaks into subperiods; removes impact of external flows; preferred for manager evaluation.  
+- **IRR**: True money-weighted return; reflects investor experience; best for portfolios with irregular flows or where timing decisions matter.  
+- **This package**: Treats internal flows as external, ensuring that dividends and interest are explicitly included in return calculations.
