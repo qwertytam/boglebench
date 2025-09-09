@@ -2163,6 +2163,9 @@ class PerformanceResults:
         self.portfolio_history = portfolio_history
         self.config = config
 
+        setup_logging()  # Initialize after workspace context is set
+        self.logger = get_logger("core.portfolio")
+
     def summary(self) -> str:
         """Generate a summary report of the performance analysis."""
         lines = []
@@ -2358,7 +2361,7 @@ class PerformanceResults:
     def export_to_csv(self, output_dir: Optional[str] = None) -> str:
         """Export results to CSV files."""
         output_path = self._export_history_metrics_to_csv(output_dir)
-        self.logger.info(f"Results exported to: {output_path}")
+        self.logger.info(f"📁 Results exported to: {output_path}")
         return str(output_path)
 
     def _export_history_metrics_to_csv(
