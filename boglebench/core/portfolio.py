@@ -27,7 +27,12 @@ from alpha_vantage.timeseries import TimeSeries  # type: ignore
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
 from ..utils.timing import timed_operation
-from ..utils.tools import cagr, ensure_timestamp, to_tz_mixed
+from ..utils.tools import (
+    aggregate_dividends,
+    cagr,
+    ensure_timestamp,
+    to_tz_mixed,
+)
 from ..utils.workspace import WorkspaceContext
 
 TO_PERCENT = 100
@@ -70,13 +75,13 @@ class BogleBenchAnalyzer:
                 WorkspaceContext.discover_workspace(config_file.parent)
 
         self.config = ConfigManager(config_path)
-        print("DEBUG: Config loaded from:", self.config.config_path)
-        print("DEBUG: BogleBench Setting up logging...")
+        # print("DEBUG: Config loaded from:", self.config.config_path)
+        # print("DEBUG: BogleBench Setting up logging...")
         setup_logging()  # Initialize after workspace context is set
         self.logger = get_logger("core.portfolio")
 
-        self.transactions = None
-        self.market_data = {}
+        self.transactions = pd.DataFrame()
+        self.market_data: Dict[str, pd.DataFrame] = {}
         self.portfolio_history = None
         self.benchmark_data = None
         self.performance_results = None
@@ -102,33 +107,18 @@ class BogleBenchAnalyzer:
             ValueError: If required columns are missing or data is invalid
         """
         if file_path is None:
-            file_path = self.config.get_transactions_path()
+            file_path = str(self.config.get_transactions_path())
 
         if not Path(file_path).exists():
             raise FileNotFoundError(f"Transaction file not found: {file_path}")
 
-        print(f"📄 Loading transactions from: {file_path}")
+        self.logger.info(f"📄 Loading transactions from: {file_path}")
 
         # Load CSV with flexible parsing
         try:
             df = pd.read_csv(file_path)
-        except Exception as e:
-            raise ValueError(f"Error reading CSV file: {e}")
-
-        # Validate required columns
-        required_columns = [
-            "date",
-            "ticker",
-            "transaction_type",
-            "shares",
-            "price_per_share",
-        ]
-
-        missing_columns = [
-            col for col in required_columns if col not in df.columns
-        ]
-        if missing_columns:
-            raise ValueError(f"Missing required columns: {missing_columns}")
+        except ValueError as e:
+            raise ValueError(f"Error reading CSV file: {e}") from e
 
         # Clean and validate data
         df = self._clean_transaction_data(df)
@@ -136,14 +126,16 @@ class BogleBenchAnalyzer:
         # Store processed transactions
         self.transactions = df
 
-        print(
+        self.logger.info(
             f"✅ Loaded {len(df)} transactions for "
             f"{df['ticker'].nunique()} unique assets"
         )
-        print(f"📅 Date range: {df['date'].min()} to {df['date'].max()}")
-        print(f"🏦 Accounts: {', '.join(df['account'].unique())}")
+        self.logger.info(
+            f"📅 Date range: {df['date'].min()} to {df['date'].max()}"
+        )
+        self.logger.info(f"🏦 Accounts: {', '.join(df['account'].unique())}")
         total_invested = df[df["total_value"] > 0]["total_value"].sum()
-        print(f"💰 Total invested: ${total_invested:,.2f}")
+        self.logger.info(f"💰 Total invested: ${total_invested:,.2f}")
 
         return df
 
@@ -163,6 +155,22 @@ class BogleBenchAnalyzer:
         """Clean and validate transaction data."""
         # Make a copy to avoid modifying original
         df = df.copy()
+
+        # Validate required columns
+        reqd_columns = [
+            "date",
+            "ticker",
+            "transaction_type",
+            "quantity",
+            "value_per_share",
+            "total_value",
+        ]
+
+        missing_columns = [
+            col for col in reqd_columns if col not in df.columns
+        ]
+        if missing_columns:
+            raise ValueError(f"Missing required columns: {missing_columns}")
 
         # Convert date column - enforce ISO8601 format
         try:
@@ -193,21 +201,11 @@ class BogleBenchAnalyzer:
         # Clean ticker symbols (uppercase, strip whitespace)
         df["ticker"] = df["ticker"].str.upper().str.strip()
 
-        # Validate required columns
-        reqd_columns = [
-            "date",
-            "ticker",
-            "transaction_type",
-            "shares",
-            "price_per_share",
-        ]
         opt_columns = [
             "account",
             "group1",
             "group2",
             "group3",
-            "amount",
-            "div_per_share",
             "div_type",
             "div_pay_date",
             "div_record_date",
@@ -229,13 +227,11 @@ class BogleBenchAnalyzer:
                     df[col] = "Unassigned"
                 elif col == "notes":
                     df[col] = ""
-                elif col == "amount":
-                    df[col] = DEFAULT_ZERO
-                elif col == "div_per_share":
-                    df[col] = DEFAULT_ZERO
                 elif col == "div_type":
                     df[col] = DEFAULT_DIV_TYPE
-                elif col in ["div_pay_date", "div_record_date", "div_ex_date"]:
+                elif col == "div_pay_date":
+                    df[col] = df["date"]
+                elif col in ["div_record_date", "div_ex_date"]:
                     df[col] = pd.NaT
                 elif col == "split_ratio":
                     df[col] = DEFAULT_ZERO
@@ -243,6 +239,11 @@ class BogleBenchAnalyzer:
                 self.logger.debug(
                     "ℹ️  No '%s' column found. Added default values.", col
                 )
+
+        # Convert optional date columns
+        for date_col in ["div_pay_date", "div_ex_date", "div_record_date"]:
+            if date_col in df.columns:
+                df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
 
         # Clean account names (strip whitespace, title case)
         df["account"] = df["account"].str.strip().str.title()
@@ -281,12 +282,12 @@ class BogleBenchAnalyzer:
             )
 
         # Validate numeric fields
-        numeric_columns = ["shares", "price_per_share", "amount"]
+        numeric_columns = ["quantity", "value_per_share", "total_value"]
         for col in numeric_columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
             if df[col].isna().any():
                 raise ValueError(f"Invalid numeric values in column: {col}")
-            if col in ["shares", "price_per_share"]:
+            if col in ["quantity", "value_per_share"]:
                 is_dividend_or_fee = df["transaction_type"].isin(
                     ["DIVIDEND", "FEE"]
                 )
@@ -298,29 +299,60 @@ class BogleBenchAnalyzer:
                         f"for non-dividend/fee transactions"
                     )
 
-        df["div_per_share"] = pd.to_numeric(
-            df["div_per_share"], errors="coerce"
-        ).fillna(DEFAULT_ZERO)
+        # Check total value for each transaction
+        # Ensure positive for checking - will be adjusted for SELL later
+        df["total_value"] = np.abs(df["total_value"])
 
-        for date_col in ["div_pay_date", "div_ex_date", "div_record_date"]:
-            if date_col in df.columns:
-                df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
-
-        # Calculate total value for each transaction
-        df["total_value"] = df["shares"] * df["price_per_share"]
-
-        # For DIVIDEND and FEE transactions, use 'amount' column
-        df.loc[df["transaction_type"] == "DIVIDEND", "total_value"] = df[
-            "amount"
-        ]
-        df.loc[df["transaction_type"] == "FEE", "total_value"] = -df["amount"]
+        error_limit = 0.01  # In dollars; allow small rounding errors
+        exclude_ttype = ["DIVIDEND", "DIVIDEND_REINVEST", "FEE"]
         df.loc[
-            df["transaction_type"] == "DIVIDEND_REINVEST", "total_value"
-        ] = df["amount"]
+            ~df["transaction_type"].isin(exclude_ttype),
+            "total_value_check",
+        ] = (
+            df.loc[
+                ~df["transaction_type"].isin(exclude_ttype),
+                "quantity",
+            ]
+            * df.loc[
+                ~df["transaction_type"].isin(exclude_ttype),
+                "value_per_share",
+            ]
+        )
+        value_mismatch = (
+            np.abs(df["total_value"] - df["total_value_check"]) > error_limit
+        )
+        if value_mismatch.any():
+            mismatch_rows = df[value_mismatch]
+            self.logger.warning(
+                "⚠️  Total value mismatch in %s transactions. "
+                "Using quantity * value_per_share.",
+                len(mismatch_rows),
+            )
+            self.logger.debug(
+                "Original data with mismatches:\n%s",
+                mismatch_rows[
+                    [
+                        "date",
+                        "ticker",
+                        "transaction_type",
+                        "quantity",
+                        "value_per_share",
+                        "total_value",
+                        "total_value_check",
+                    ]
+                ],
+            )
+            df.loc[value_mismatch, "total_value"] = df.loc[
+                value_mismatch, "total_value_check"
+            ]
 
         # For SELL transactions, make shares negative for easier calculations
-        df.loc[df["transaction_type"] == "SELL", "shares"] *= -1
+        df.loc[df["transaction_type"] == "SELL", "quantity"] *= -1
         df.loc[df["transaction_type"] == "SELL", "total_value"] *= -1
+
+        # For DIVIDEND transactions, make quantity zero and total value negative
+        df.loc[df["transaction_type"] == "DIVIDEND", "quantity"] = 0
+        df.loc[df["transaction_type"] == "DIVIDEND", "total_value"] *= -1
 
         # Sort by date
         df = df.sort_values("date").reset_index(drop=True)
@@ -410,7 +442,7 @@ class BogleBenchAnalyzer:
         Returns:
             Dictionary mapping ticker symbols to price DataFrames
         """
-        if self.transactions is None:
+        if self.transactions.empty:
             raise ValueError(
                 "Must load transactions first using load_transactions()"
             )
@@ -458,7 +490,7 @@ class BogleBenchAnalyzer:
         end_date = to_tz_mixed(end_date)
         if end_date is None:
             self.logger.warning(
-                "No valid end date provided or found. Defaulting to %s",
+                "⚠️  No valid end date provided or found. Defaulting to %s",
                 default_end_date.strftime("%Y-%m-%d"),
             )
 
@@ -640,7 +672,9 @@ class BogleBenchAnalyzer:
         if benchmark_ticker in market_data:
             self.benchmark_data = market_data[benchmark_ticker].copy()
 
-        print(f"✅ Successfully downloaded data for {len(market_data)} assets")
+        self.logger.info(
+            f"✅ Successfully downloaded data for {len(market_data)} assets"
+        )
         return market_data
 
     def _get_cached_data(
@@ -811,7 +845,7 @@ class BogleBenchAnalyzer:
             if days_back <= 7:  # Only forward-fill up to 7 days
                 return available_data["close"].iloc[-1]
             else:
-                print(
+                self.logger.warning(
                     f"Warning: No recent price data for {ticker} near {target_date}"
                 )
                 return available_data["close"].iloc[
@@ -917,6 +951,17 @@ class BogleBenchAnalyzer:
         for _, trans in day_transactions.iterrows():
             account = trans["account"]
             ttype = trans["transaction_type"]
+            self.logger.debug(
+                "  Processing %s of value $%.2f for %s in account %s",
+                ttype,
+                trans["total_value"],
+                trans["ticker"],
+                account,
+            )
+
+            self.logger.debug(
+                "  Is ttype %s in DIVIDEND? %s", ttype, ttype in ["DIVIDEND"]
+            )
 
             if ttype in ["BUY", "SELL"]:
                 cf = trans["total_value"]  # +ve for BUY, -ve for SELL
@@ -924,7 +969,14 @@ class BogleBenchAnalyzer:
                 inv_cf["total"] += cf
 
             elif ttype in ["DIVIDEND", "DIVIDEND_REINVEST", "FEE"]:
-                cf = trans["amount"]
+                cf = trans["total_value"]
+                self.logger.debug(
+                    "  Processing %s of cash flow $%.2f for %s in account %s",
+                    ttype,
+                    cf,
+                    trans["ticker"],
+                    account,
+                )
                 inc_cf[account] += cf
                 inc_cf["total"] += cf
 
@@ -973,7 +1025,7 @@ class BogleBenchAnalyzer:
         Returns:
             DataFrame with daily portfolio holdings, values, and weights
         """
-        if self.transactions is None:
+        if self.transactions.empty:
             raise ValueError("Must load transactions first")
         if not self.market_data:
             raise ValueError("Must fetch market data first")
@@ -1009,8 +1061,12 @@ class BogleBenchAnalyzer:
                         auto_calculate_div_per_share=auto_calc_div_per_share,
                         warn_missing_dividends=warn_missing_dividends,
                     )
+
                     for msg in messages:
-                        if "mismatch" in msg:
+                        if (
+                            "mismatch" in msg.lower()
+                            or "warning" in msg.lower()
+                        ):
                             self.logger.warning("⚠️  %s", msg)
                         else:
                             self.logger.info("ℹ️  %s", msg)
@@ -1059,31 +1115,10 @@ class BogleBenchAnalyzer:
 
         if non_trading_transaction_dates:
             self.logger.warning(
-                "⚠️  Warning: %d transactions on non-trading days:",
+                "⚠️  Warning: %d transactions on non-trading days:\n%s",
                 len(non_trading_transaction_dates),
+                "\n".join(str(date) for date in non_trading_transaction_dates),
             )
-
-        # 4. Combine all trading days with non-trading transaction dates
-        # self.logger.info("trading_dates is type %s", type(trading_dates))
-        # self.logger.info(
-        #     "First head of trading_dates: %s", list(trading_dates)[:5]
-        # )
-        # self.logger.info(
-        #     "Each trading date is type %s", type(next(iter(trading_dates)))
-        # )
-
-        # self.logger.info(
-        #     "non_trading_transaction_dates is type %s",
-        #     type(non_trading_transaction_dates),
-        # )
-        # self.logger.info(
-        #     "First head of non_trading_transaction_dates: %s",
-        #     list(non_trading_transaction_dates)[:5],
-        # )
-        # self.logger.info(
-        #     "Each non_trading_transaction_dates is type %s",
-        #     type(next(iter(non_trading_transaction_dates))),
-        # )
 
         all_dates_to_process = sorted(
             list(trading_dates.union(non_trading_transaction_dates))
@@ -1133,7 +1168,7 @@ class BogleBenchAnalyzer:
                 ttype = transaction["transaction_type"]
 
                 if ttype in ["BUY", "SELL", "DIVIDEND_REINVEST"]:
-                    shares = transaction["shares"]
+                    shares = transaction["quantity"]
 
                     self.logger.debug("Have %s shares for %s", shares, ttype)
 
@@ -1396,7 +1431,7 @@ class BogleBenchAnalyzer:
         # Only consider days where a dividend was paid
         self.logger.debug("Extracting dividend data for %s", ticker)
         dividend_df = df[df["dividend"] > 0][["date", "dividend"]].copy()
-        dividend_df["div_per_share"] = dividend_df["dividend"]
+        dividend_df["value_per_share"] = dividend_df["dividend"]
         dividend_df["div_type"] = DEFAULT_DIV_TYPE
 
         # Normalize date for merging
@@ -1410,7 +1445,7 @@ class BogleBenchAnalyzer:
 
         return_columns = [
             "div_pay_date",
-            "div_per_share",
+            "value_per_share",
             "div_type",
             "div_ex_date",
             "div_record_date",
@@ -1427,7 +1462,7 @@ class BogleBenchAnalyzer:
         Note: DIVIDEND_REINVEST increases shares held only up to one day before
         the dividend pay date.
         """
-        if self.transactions is None:
+        if self.transactions.empty:
             raise ValueError("Must load transactions first")
         if ticker not in self.transactions["ticker"].values:
             raise ValueError(f"No transactions found for ticker {ticker}")
@@ -1461,7 +1496,7 @@ class BogleBenchAnalyzer:
 
         if relevant_transactions.empty:
             self.logger.warning(
-                "No transactions found for %s in %s before %s",
+                "⚠️  No transactions found for %s in %s before %s",
                 ticker,
                 account,
                 target_date.date(),
@@ -1469,7 +1504,7 @@ class BogleBenchAnalyzer:
             return DEFAULT_ZERO
 
         # Sum all share changes (SELL transactions already have negative shares)
-        total_shares = relevant_transactions["shares"].sum()
+        total_shares = relevant_transactions["quantity"].sum()
         # Ensure non-negative
         result = max(0.0, total_shares)
 
@@ -1491,29 +1526,29 @@ class BogleBenchAnalyzer:
     ) -> List[str]:
         """Perform the actual dividend comparison with flexible matching."""
 
-        messages = []
+        messages: list[str] = []
         if user_dividends.empty:
             return messages
 
         # Group by date and sum amounts in case both cash+reinvest are logged
         # separately
         self.logger.debug("Grouping user dividends for %s by pay date", ticker)
+        self.logger.debug(
+            "User dividends before grouping:\n%s", user_dividends
+        )
+        self.logger.debug(
+            "User dividends columns: %s", user_dividends.columns.tolist()
+        )
         user_divs_grouped = user_dividends.groupby(
             "div_pay_date", as_index=False
-        ).agg(
-            {
-                "amount": "sum",
-                "div_per_share": "mean",
-                "div_type": lambda x: ",".join(sorted(set(x.dropna()))),
-            }
-        )
+        ).apply(aggregate_dividends)
 
         self.logger.debug(
             "User dividends grouped by pay date:\n%s", user_divs_grouped
         )
         user_divs_grouped["div_pay_date"] = user_divs_grouped[
             "div_pay_date"
-        ].dt.normalize()
+        ].dt.tz_localize(None)
 
         self.logger.debug("Fetching market dividends for %s", ticker)
         market_dividends = self.fetch_dividend_data(ticker)
@@ -1523,7 +1558,7 @@ class BogleBenchAnalyzer:
         )
         market_dividends["div_pay_date"] = market_dividends[
             "div_pay_date"
-        ].dt.normalize()
+        ].dt.tz_localize(None)
 
         self.logger.debug(
             "Comparing %d user dividends to %d market dividends for %s",
@@ -1536,7 +1571,13 @@ class BogleBenchAnalyzer:
 
         # Use outer join to catch missing dividends if warn_missing_dividends is True
         how_merge = "outer" if warn_missing_dividends else "left"
-
+        self.logger.debug(
+            "Merging user and market dividends for %s with '%s' join with date columns %s and %s",
+            ticker,
+            how_merge,
+            user_divs_grouped["div_pay_date"].head(),
+            market_dividends["div_pay_date"].head(),
+        )
         merged = pd.merge(
             user_divs_grouped,
             market_dividends,
@@ -1548,21 +1589,22 @@ class BogleBenchAnalyzer:
         # Check for missing user dividends
         if warn_missing_dividends:
             missing_user_divs = merged[
-                (merged["amount"].isna())
-                & (merged["div_per_share_mkt"].notna())
+                (merged["total_value"].isna())
+                & (merged["value_per_share_mkt"].notna())
             ]
 
             for _, row in missing_user_divs.iterrows():
                 msg = (
-                    f"ℹ️  Missing user dividend for {ticker} "
+                    f"Missing user dividend for {ticker} "
                     f"on {row['div_pay_date'].date()}: "
-                    f"Market shows ${row['div_per_share_mkt']:.4f} per share"
+                    f"Market shows ${row['value_per_share_mkt']:.4f} per share"
                 )
                 messages.append(msg)
 
         # Check for mismatches in recorded dividends
         recorded_dividends = merged[
-            (merged["amount"].notna()) & (merged["div_per_share_mkt"].notna())
+            (merged["total_value"].notna())
+            & (merged["value_per_share_mkt"].notna())
         ]
 
         for _, row in recorded_dividends.iterrows():
@@ -1570,17 +1612,22 @@ class BogleBenchAnalyzer:
 
             # Compare per-share amounts if user div_per_share is available
             if (
-                pd.notna(row["div_per_share_user"])
-                and row["div_per_share_user"] > 0
+                pd.notna(row["value_per_share_user"])
+                and row["value_per_share_user"] > 0
             ):
+                self.logger.debug("Found valid dividend row to compare")
+                self.logger.debug("Row data: %s", row.to_dict())
                 if (
-                    abs(row["div_per_share_user"] - row["div_per_share_mkt"])
+                    abs(
+                        row["value_per_share_user"]
+                        - row["value_per_share_mkt"]
+                    )
                     > error_margin
                 ):
                     issues.append(
                         f"per-share mismatch (user: "
-                        f"${row['div_per_share_user']:.4f}, "
-                        f"market: ${row['div_per_share_mkt']:.4f})"
+                        f"${row['value_per_share_user']:.4f}, "
+                        f"market: ${row['value_per_share_mkt']:.4f})"
                     )
 
             # Compare div_type if provided
@@ -1594,7 +1641,7 @@ class BogleBenchAnalyzer:
             if issues:
                 messages.append(
                     f"Dividend mismatch for {ticker} on {row['div_pay_date'].date()}: {'; '.join(issues)} "
-                    f"(user total: ${row['amount']:.2f})"
+                    f"(user total: ${row['total_value']:.2f})"
                 )
 
         return messages
@@ -1613,7 +1660,7 @@ class BogleBenchAnalyzer:
             auto_calculate_div_per_share: Whether to auto-calculate missing div_per_share
             warn_missing_dividends: Whether to warn about missing dividend entries
         """
-        if self.transactions is None:
+        if self.transactions.empty:
             raise ValueError("Must load transactions first")
 
         if tickers is None:
@@ -1663,7 +1710,7 @@ class BogleBenchAnalyzer:
             mismatch or calculation.
         """
 
-        if self.transactions is None:
+        if self.transactions.empty:
             raise ValueError("No transactions loaded to compare against.")
 
         user_dividends = self.transactions[
@@ -1691,8 +1738,8 @@ class BogleBenchAnalyzer:
         if "div_pay_date" not in user_dividends.columns:
             user_dividends["div_pay_date"] = user_dividends["date"]
 
-        if "div_per_share" not in user_dividends.columns:
-            user_dividends["div_per_share"] = DEFAULT_ZERO
+        if "value_per_share" not in user_dividends.columns:
+            user_dividends["value_per_share"] = DEFAULT_ZERO
 
         # Process dividends per account first ---
         all_enhanced_dividends = []
@@ -1726,13 +1773,20 @@ class BogleBenchAnalyzer:
             return all_validation_messages
 
         final_user_dividends = pd.concat(all_enhanced_dividends)
+        final_user_dividends["div_pay_date"] = pd.to_datetime(
+            final_user_dividends["div_pay_date"], utc=True
+        ).dt.tz_localize(None)
+
+        self.logger.debug(
+            "final_user_dividends:\n%s", final_user_dividends.head()
+        )
 
         # Perform the comparison
         comparison_messages = self._perform_dividend_comparison(
             ticker, final_user_dividends, error_margin, warn_missing_dividends
         )
 
-        self.logger.info("Completed dividend comparison for %s", ticker)
+        self.logger.debug("Completed dividend comparison for %s", ticker)
         self.logger.debug(comparison_messages)
 
         return validation_messages + comparison_messages
@@ -1750,10 +1804,10 @@ class BogleBenchAnalyzer:
         (for a single account and date).
         """
         enhanced_group = dividend_group.copy()
-        messages = []
+        info_messages = []
 
         # Consolidate the group first (e.g., partial reinvest)
-        total_amount = enhanced_group["amount"].sum()
+        total_amount = enhanced_group["total_value"].sum()
         div_date = enhanced_group["date"].iloc[0]
         pay_date = (
             enhanced_group["div_pay_date"].dropna().iloc[0]
@@ -1763,10 +1817,18 @@ class BogleBenchAnalyzer:
 
         # Calculate div_per_share if needed
         # Use the first non-zero div_per_share provided, otherwise calculate
-        provided_dps = enhanced_group[enhanced_group["div_per_share"] > 0][
-            "div_per_share"
+        provided_dps = enhanced_group[enhanced_group["value_per_share"] > 0][
+            "value_per_share"
         ]
         final_dps = 0.0
+
+        self.logger.debug(
+            "Validating dividend for %s in %s on %s and auto calculate %s",
+            ticker,
+            account,
+            pay_date.date(),
+            auto_calculate_div_per_share,
+        )
 
         if not provided_dps.empty:
             final_dps = provided_dps.iloc[0]
@@ -1774,26 +1836,26 @@ class BogleBenchAnalyzer:
             shares_held = self._get_shares_held_on_date(
                 ticker, account, pay_date
             )
-            if shares_held > 0 and total_amount > 0:
+            if shares_held > 0 and total_amount != 0:
                 final_dps = total_amount / shares_held
-                messages.append(
+                info_messages.append(
                     f"Calculated div/share for {ticker} in {account} "
                     f"on {pay_date.date()} "
                     f"as ${final_dps:.4f} (${total_amount:.2f} / "
                     f"{shares_held:.4f} shares)"
                 )
             else:
-                messages.append(
-                    f"⚠️ Could not calculate div/share for {ticker} in "
+                info_messages.append(
+                    f"Warning: Could not calculate div/share for {ticker} in "
                     f"{account} on {pay_date.date()} "
-                    f"(shares={shares_held}, amount={total_amount})"
+                    f"(shares={shares_held}, amount=${total_amount})"
                 )
 
-        # Apply the final calculated/validated DPS to all rows in the group
-        enhanced_group["div_per_share"] = final_dps
-        enhanced_group["div_pay_date"] = pd.to_datetime(pay_date)
+            # Apply the final calculated/validated DPS to all rows in the group
+            enhanced_group["value_per_share"] = final_dps
+            enhanced_group["div_pay_date"] = pd.to_datetime(pay_date)
 
-        return enhanced_group, messages
+        return enhanced_group, info_messages
 
     def calculate_performance(self) -> "PerformanceResults":
         """
@@ -1806,7 +1868,7 @@ class BogleBenchAnalyzer:
         if self.portfolio_history is None:
             self.build_portfolio_history()
 
-        print("📊 Calculating performance metrics...")
+        self.logger.info("📊 Calculating performance metrics...")
 
         # Calculate portfolio performance metrics
         portfolio_metrics = self._calculate_metrics(
@@ -1848,7 +1910,7 @@ class BogleBenchAnalyzer:
 
         self.performance_results = results
 
-        print("✅ Performance analysis complete!")
+        self.logger.info("✅ Performance analysis complete!")
         return results
 
     def _align_benchmark_returns(self) -> pd.Series:
@@ -2007,7 +2069,7 @@ class BogleBenchAnalyzer:
         """Calculate relative performance metrics vs benchmark."""
         if benchmark_returns is None or portfolio_returns.empty:
             self.logger.warning(
-                "No benchmark data available for relative metrics."
+                "⚠️  No benchmark data available for relative metrics."
             )
             return {}
 
@@ -2024,7 +2086,7 @@ class BogleBenchAnalyzer:
 
         # Align the series by index. This is crucial for non-continuous date
         # ranges.
-        self.logger.info("Aligning portfolio and benchmark returns...")
+        self.logger.debug("Aligning portfolio and benchmark returns...")
         self.logger.debug("Portfolio returns:\n%s", portfolio_returns.head(10))
         self.logger.debug("Benchmark returns:\n%s", benchmark_returns.head(10))
 
@@ -2034,7 +2096,7 @@ class BogleBenchAnalyzer:
 
         if aligned_portfolio.empty:
             self.logger.warning(
-                "No overlapping dates between portfolio and benchmark returns."
+                "⚠️  No overlapping dates between portfolio and benchmark returns."
             )
             return {}
 
@@ -2279,7 +2341,7 @@ class PerformanceResults:
                         {
                             "account": account,
                             "ticker": ticker,
-                            "shares": shares,
+                            "quantity": shares,
                             "price": price,
                             "value": value,
                             "weight": weight,
@@ -2290,13 +2352,13 @@ class PerformanceResults:
         output_dir = self.config.get_output_path()
         output_path = self._export_history_metrics_to_csv(output_dir)
 
-        print(f"📁 Results exported to: {output_path}")
+        self.logger.info(f"📁 Results exported to: {output_path}")
         return pd.DataFrame(holdings_data)
 
     def export_to_csv(self, output_dir: Optional[str] = None) -> str:
         """Export results to CSV files."""
         output_path = self._export_history_metrics_to_csv(output_dir)
-        print(f"Results exported to: {output_path}")
+        self.logger.info(f"Results exported to: {output_path}")
         return str(output_path)
 
     def _export_history_metrics_to_csv(

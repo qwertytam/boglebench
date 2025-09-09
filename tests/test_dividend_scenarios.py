@@ -15,28 +15,6 @@ import pytest
 from boglebench.core.portfolio import BogleBenchAnalyzer
 from boglebench.utils.config import ConfigManager
 
-# def create_test_config(workspace: Path) -> Path:
-#     """Creates a standard config.yaml file in the test workspace."""
-#     config_file = workspace / "config.yaml"
-#     config_file.write_text(
-#         """
-# settings:
-#   benchmark_ticker: "SPY"
-#   cache_market_data: false
-#   annual_trading_days: 252
-#   risk_free_rate: 0.02
-# paths:
-#   transactions: "transactions.csv"
-# api:
-#   alpha_vantage_key: "DUMMY_KEY"
-# advanced:
-#   performance:
-#     period_cash_flow_weight: 0.5
-# """
-#     )
-#     return config_file
-
-
 # --- Scenario Data Generators ---
 
 
@@ -51,18 +29,18 @@ def scenario_single_stock_cash_dividend():
                 "date": "2023-01-02",
                 "ticker": "TICKA",
                 "transaction_type": "BUY",
-                "shares": 100,
-                "price_per_share": 10.00,
-                "amount": 1000.00,
+                "quantity": 100,
+                "value_per_share": 10.00,
+                "total_value": 1000.00,
                 "account": "Taxable",
             },
             {
                 "date": "2023-01-04",
                 "ticker": "TICKA",
                 "transaction_type": "DIVIDEND",
-                "shares": 0,
-                "price_per_share": 0,
-                "amount": 50.00,  # $0.50/share dividend
+                "quantity": 0,
+                "value_per_share": 0,
+                "total_value": 50.00,  # $0.50/share dividend
                 "account": "Taxable",
             },
         ]
@@ -101,18 +79,27 @@ def scenario_single_stock_full_reinvestment():
                 "date": "2023-01-02",
                 "ticker": "TICKB",
                 "transaction_type": "BUY",
-                "shares": 100,
-                "price_per_share": 20.00,
-                "amount": 2000.00,
+                "quantity": 100,
+                "value_per_share": 20.00,
+                "total_value": 2000.00,
+                "account": "IRA",
+            },
+            {
+                "date": "2023-01-04",
+                "ticker": "TICKB",
+                "transaction_type": "DIVIDEND",
+                "quantity": 2.5,  # $50 dividend / $20 share price = 2.5 shares
+                "value_per_share": 20.0,
+                "total_value": 50.00,
                 "account": "IRA",
             },
             {
                 "date": "2023-01-04",
                 "ticker": "TICKB",
                 "transaction_type": "DIVIDEND_REINVEST",
-                "shares": 2.5,  # $50 dividend / $20 share price = 2.5 shares
-                "price_per_share": 20.0,
-                "amount": 50.00,
+                "quantity": 2.5,  # $50 dividend / $20 share price = 2.5 shares
+                "value_per_share": 20.0,
+                "total_value": 50.00,
                 "account": "IRA",
             },
         ]
@@ -153,18 +140,18 @@ def scenario_single_stock_partial_reinvestment():
                 "date": "2023-01-02",
                 "ticker": "TICKC",
                 "transaction_type": "BUY",
-                "shares": 100,
-                "price_per_share": 30.00,
-                "amount": 3000.00,
+                "quantity": 100,
+                "value_per_share": 30.00,
+                "total_value": 3000.00,
                 "account": "Taxable",
             },
             {
                 "date": "2023-01-04",
                 "ticker": "TICKC",
-                "transaction_type": "DIVIDEND",  # $25 cash portion
-                "shares": 0,
-                "price_per_share": 0,
-                "amount": 25.00,
+                "transaction_type": "DIVIDEND",  # $100 total value
+                "quantity": 0,
+                "value_per_share": 0,
+                "total_value": 100.00,
                 "account": "Taxable",
             },
             {
@@ -172,9 +159,9 @@ def scenario_single_stock_partial_reinvestment():
                 "ticker": "TICKC",
                 # $75 reinvested portion
                 "transaction_type": "DIVIDEND_REINVEST",
-                "shares": 2.5,  # $75 / $30 share price
-                "price_per_share": 30.0,
-                "amount": 75.00,
+                "quantity": 2.5,  # $75 / $30 share price
+                "value_per_share": 30.0,
+                "total_value": 75.00,
                 "account": "Taxable",
             },
         ]
@@ -214,27 +201,27 @@ def scenario_dividend_after_partial_sale():
                 "date": "2023-01-02",
                 "ticker": "TICKD",
                 "transaction_type": "BUY",
-                "shares": 200,
-                "price_per_share": 10.00,
-                "amount": 2000.00,
+                "quantity": 200,
+                "value_per_share": 10.00,
+                "total_value": 2000.00,
                 "account": "Taxable",
             },
             {
                 "date": "2023-01-03",
                 "ticker": "TICKD",
                 "transaction_type": "SELL",
-                "shares": 50,  # Sell 50 shares
-                "price_per_share": 10.10,
-                "amount": 505.00,
+                "quantity": 50,  # Sell 50 shares
+                "value_per_share": 10.10,
+                "total_value": 505.00,
                 "account": "Taxable",
             },
             {
                 "date": "2023-01-05",
                 "ticker": "TICKD",
                 "transaction_type": "DIVIDEND",
-                "shares": 0,
-                "price_per_share": 0,
-                "amount": 75.00,  # $0.50/share on remaining 150 shares
+                "quantity": 0,
+                "value_per_share": 0,
+                "total_value": 75.00,  # $0.50/share on remaining 150 shares
                 "account": "Taxable",
             },
         ]
@@ -286,11 +273,6 @@ class TestDividendScenarios:
             ] = 1.0
 
             yield config
-
-    @pytest.fixture
-    def test_data_dir(self):
-        """Path to test data directory."""
-        return Path(__file__).parent / "test_data"
 
     @pytest.fixture(
         params=[
@@ -363,7 +345,7 @@ class TestDividendScenarios:
                 portfolio_df["date"].dt.date
                 == pd.to_datetime("2023-01-04").date()
             ]["net_cash_flow"].sum()
-            assert dividend_day_flow == 50.00
+            assert dividend_day_flow == -50.00
 
         elif scenario_name == "full_reinvest":
             assert final_day["Ira_TICKB_shares"] == 102.5
@@ -373,7 +355,7 @@ class TestDividendScenarios:
                 portfolio_df["date"].dt.date
                 == pd.to_datetime("2023-01-04").date()
             ]["net_cash_flow"].sum()
-            assert dividend_day_flow == 50.00
+            assert dividend_day_flow == 0.00
 
         elif scenario_name == "partial_reinvest":
             assert final_day["Taxable_TICKC_shares"] == 102.5
@@ -382,7 +364,7 @@ class TestDividendScenarios:
                 portfolio_df["date"].dt.date
                 == pd.to_datetime("2023-01-04").date()
             ]["net_cash_flow"].sum()
-            assert dividend_day_flow == 100.00  # 25 cash + 75 reinvest
+            assert dividend_day_flow == -25.00  # 25 cash + 75 reinvest
 
         elif scenario_name == "partial_sale":
             assert final_day["Taxable_TICKD_shares"] == 150
@@ -390,4 +372,4 @@ class TestDividendScenarios:
                 portfolio_df["date"].dt.date
                 == pd.to_datetime("2023-01-05").date()
             ]["net_cash_flow"].sum()
-            assert dividend_day_flow == 75.00
+            assert dividend_day_flow == -75.00
