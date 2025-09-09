@@ -42,7 +42,6 @@ def init_workspace(path: str, force: bool):
     for dir_name in directories:
         dir_path = workspace_path / dir_name
         dir_path.mkdir(parents=True, exist_ok=True)
-        # print(f"DEBUG: Created directory: {dir_path}")
 
     print(f"INFO: Created workspace directories under: {workspace_path}")
 
@@ -50,9 +49,7 @@ def init_workspace(path: str, force: bool):
     _copy_templates(workspace_path, force)
 
     # Initialize logging (will use correct workspace)
-    # print("DEBUG: init_workspace Setting up logging...")
     setup_logging()
-    # logger = get_logger("cli.init")
 
     # Create configuration file
     config_manager = ConfigManager()
@@ -129,7 +126,7 @@ def _create_sample_transactions(file_path: Path, force: bool):
         click.echo(f"WARNING: Sample template not found at {sample_template}")
         click.echo("INFO: Creating minimal sample file")
 
-        minimal_sample = """date,ticker,transaction_type,shares,price_per_share,account
+        minimal_sample = """date,ticker,transaction_type,quantity,value_per_share,account
 2023-01-15,AAPL,BUY,100,150.50,Default
 2023-02-15,SPY,BUY,50,380.00,Default
 """

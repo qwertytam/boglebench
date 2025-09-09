@@ -50,25 +50,16 @@ class BogleBenchLogger:
         if config_path is None:
             config_path = self._get_default_config_path()
 
-        # print(f"DEBUG: Using logging config: {config_path}")
-
         config_file = Path(config_path)
 
         if config_file.exists():
             try:
                 with open(config_file, "r", encoding="utf-8") as f:
-                    # print(
-                    #     f"DEBUG: Trying to load logging config from "
-                    #     f"{config_path}"
-                    # )
                     config = yaml.safe_load(f)
 
-                # print("DEBUG: Loaded yaml; setup_log Updating config paths")
                 config = self._update_config_paths(config)
-                # print("DEBUG: Applying logging configuration")
                 try:
                     logging.config.dictConfig(config)
-                    # print(f"DEBUG: Loaded logging config from {config_path}")
                 except Exception as config_error:
                     print(
                         f"!! ERROR !!: Specific config error: {config_error}\n"
@@ -124,7 +115,6 @@ class BogleBenchLogger:
                 with open(template_path, "r", encoding="utf-8") as f:
                     config = yaml.safe_load(f)
 
-                # print("DEBUG: _setup_default_logging Updating config paths")
                 config = self._update_config_paths(config)
                 logging.config.dictConfig(config)
                 return
@@ -147,23 +137,19 @@ class BogleBenchLogger:
         """Update relative paths in config to absolute paths."""
         from .workspace import WorkspaceContext
 
-        # print("DEBUG: _update_config_paths Updating config paths")
         workspace = WorkspaceContext.get_workspace()
         if workspace:
             log_dir = workspace / "logs"
-            # print(f"DEBUG: Using workspace log directory: {log_dir}")
         else:
             try:
                 from .config import ConfigManager
 
                 config_manager = ConfigManager()
                 log_dir = config_manager.get_data_path("logs")
-                # print(f"DEBUG: Using config manager log directory: {log_dir}")
             except Exception:
                 import tempfile
 
                 log_dir = Path(tempfile.gettempdir())
-                # print(f"DEBUG: Using temp log directory: {log_dir}")
 
         log_dir.mkdir(exist_ok=True)
 
@@ -175,10 +161,6 @@ class BogleBenchLogger:
                 if not Path(original_filename).is_absolute():
                     new_path = str(log_dir / original_filename)
                     handler_config["filename"] = new_path
-                    # print(
-                    #     f"DEBUG: Updated {handler_name} log path: "
-                    #     f"{original_filename} -> {new_path}"
-                    # )
 
         return config
 
@@ -271,7 +253,9 @@ class BogleBenchLogger:
             }
 
             with open(output_file, "w", encoding="utf-8") as f:
-                yaml.dump(minimal_config, f, default_flow_style=False, indent=2)
+                yaml.dump(
+                    minimal_config, f, default_flow_style=False, indent=2
+                )
 
     def _create_rotating_handler(
         self, log_file_path: str, level: str = "DEBUG"
