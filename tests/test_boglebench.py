@@ -28,8 +28,9 @@ class TestBogleBenchAnalyzer:
                 ],
                 "ticker": ["AAPL", "MSFT", "AAPL", "SPY"],
                 "transaction_type": ["BUY", "BUY", "BUY", "BUY"],
-                "shares": [100, 50, 50, 25],
-                "price_per_share": [150.50, 240.25, 155.75, 380.00],
+                "quantity": [100, 50, 50, 25],
+                "value_per_share": [150.50, 240.25, 155.75, 380.00],
+                "total_value": [15050.0, 12012.5, 7787.5, 9500.0],
                 "account": ["Schwab", "Fidelity", "Schwab", "Personal"],
                 "group1": ["Tech", "Tech", "Tech", "Index"],
                 "group2": [
@@ -74,7 +75,7 @@ class TestBogleBenchAnalyzer:
         """Test analyzer initialization."""
         analyzer = BogleBenchAnalyzer()
         assert analyzer.config is not None
-        assert analyzer.transactions is None
+        assert analyzer.transactions.empty is True
         assert not analyzer.market_data
         assert analyzer.portfolio_history is None
 
@@ -138,7 +139,7 @@ class TestBogleBenchAnalyzer:
             "Fidelity",
             "Fidelity",
         ]
-        assert cleaned.loc[3, "shares"] == -25  # SELL should be negative
+        assert cleaned.loc[3, "quantity"] == -25  # SELL should be negative
         assert "total_value" in cleaned.columns
         assert pd.api.types.is_datetime64_any_dtype(cleaned["date"])
 
@@ -207,8 +208,9 @@ def test_basic_workflow():
                 "date": ["2023-01-15", "2023-02-15"],
                 "ticker": ["AAPL", "MSFT"],
                 "transaction_type": ["BUY", "BUY"],
-                "shares": [100, 50],
-                "price_per_share": [150.50, 240.25],
+                "quantity": [100, 50],
+                "value_per_share": [150.50, 240.25],
+                "total_value": [15050.0, 12012.5],
                 "account": ["Test", "Test"],
             }
         )

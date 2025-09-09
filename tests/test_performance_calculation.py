@@ -95,26 +95,6 @@ class TestPerformanceCalculation:
         expected_total_return = (184.92 - 180.00) / 180.00
         accuracy = 0.001 / 100  # 0.001% accuracy
 
-        print(
-            analyzer.portfolio_history[
-                [
-                    "AAPL_total_value",
-                    "net_cash_flow",
-                    "weighted_cash_flow",
-                ]
-            ]
-        )
-
-        print(
-            analyzer.portfolio_history[
-                [
-                    "market_value_return",
-                    "cash_flow_impact",
-                    "portfolio_mod_dietz_return",
-                ]
-            ]
-        )
-
         assert (
             abs(portfolio_metrics["total_return"] - expected_total_return)
             < accuracy
@@ -159,15 +139,6 @@ class TestPerformanceCalculation:
         expected_annualized_return = (1 + expected_total_return) ** (
             annual_trading_days / return_days
         ) - 1
-
-        print("--- Portfolio Performance Calculation Debug ---")
-        print(f"Return days: {return_days}")
-        print(f"Annual trading days: {annual_trading_days}")
-        print(f"Expected total return: {expected_total_return * 100:.6f}%")
-        print(
-            f"Expected annualized return: "
-            f"{expected_annualized_return * 100:.6f}%"
-        )
 
         assert (
             abs(

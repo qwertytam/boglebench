@@ -287,19 +287,19 @@ class TestMultiTransactionPerformance:
             transactions["transaction_type"] == "SELL"
         ]
         assert len(sell_transactions) == 2
-        assert all(sell_transactions["shares"] < 0)
+        assert all(sell_transactions["quantity"] < 0)
 
         # Check that BUY transactions have positive shares
         buy_transactions = transactions[
             transactions["transaction_type"] == "BUY"
         ]
         assert len(buy_transactions) == 2
-        assert all(buy_transactions["shares"] > 0)
+        assert all(buy_transactions["quantity"] > 0)
 
         # Verify total values are calculated correctly
         assert "total_value" in transactions.columns
         for _, row in transactions.iterrows():
-            expected_total = row["shares"] * row["price_per_share"]
+            expected_total = row["quantity"] * row["value_per_share"]
             assert abs(row["total_value"] - expected_total) < 0.01
 
     def test_complex_performance_summary(self, temp_config, test_data_dir):
@@ -469,10 +469,6 @@ class TestMultiTransactionPerformance:
             )
             < accuracy
         )
-
-        # print("Portfolio Metrics:\n%s\n", results.portfolio_metrics)
-        # print("Benchmark Metrics:\n%s\n", results.benchmark_metrics)
-        # print("Relative Metrics:\n%s\n", results.relative_metrics)
 
         # Verify comprehensive summary content
         assert "BOGLEBENCH PERFORMANCE ANALYSIS" in summary
