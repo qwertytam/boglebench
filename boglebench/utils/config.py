@@ -137,7 +137,10 @@ class ConfigManager:
 
     def get_transactions_path(self) -> Path:
         """Get path to transactions file."""
-        return self.get_data_path(self.get("data.transactions_file"))
+        transactions_file = self.get("data.transactions_file")
+        if not isinstance(transactions_file, str):
+            transactions_file = ""
+        return self.get_data_path(transactions_file)
 
     def get_market_data_path(self) -> Path:
         """Get path to market data cache directory."""
