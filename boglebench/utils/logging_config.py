@@ -120,7 +120,7 @@ class BogleBenchLogger:
                 )
 
         # Final fallback if template doesn't exist
-        print("INFO: Setting up fallback logging")
+        print("Setting up fallback logging")
         self._setup_fallback_logging()
 
     def _get_template_path(self) -> Path:
@@ -224,7 +224,7 @@ class BogleBenchLogger:
             import shutil
 
             shutil.copy2(template_path, output_file)
-            print(f"INFO: Created logging configuration: {output_file}")
+            print(f"Created logging configuration: {output_file}")
         else:
             print(
                 f"WARNING: Template file not found at {template_path}\n"
@@ -337,7 +337,7 @@ class BogleBenchLogger:
                 try:
                     if os.path.getmtime(log_file) < cutoff_time:
                         os.remove(log_file)
-                        print(f"INFO: Cleaned up old log file: {log_file}")
+                        print(f"Cleaned up old log file: {log_file}")
                 except OSError:
                     pass  # File might be in use or already deleted
 
