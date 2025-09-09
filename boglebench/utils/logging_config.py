@@ -35,7 +35,6 @@ class BogleBenchLogger:
     def __init__(self):
         """Initialize logger if not already done."""
         if not self._initialized:
-            print("INFO: BogleBenchLogger Initializing logging...")
             self.setup_logging()
             BogleBenchLogger._initialized = True
 
@@ -77,10 +76,7 @@ class BogleBenchLogger:
                 )
         else:
             # Use default config if file doesn't exist
-            print(
-                f"WARNING: setup_logging Logging config file not found "
-                f"at {config_path}"
-            )
+            print(f"Logging using config file: {config_path}")
             self._setup_default_logging()
 
     def _get_default_config_path(self) -> str:
