@@ -18,7 +18,7 @@ def test_analyzer_creation():
     analyzer = BogleBenchAnalyzer()
     assert analyzer is not None
     assert analyzer.config is not None
-    assert analyzer.transactions is None
+    assert analyzer.transactions.empty is True
 
 
 def test_config_manager():
