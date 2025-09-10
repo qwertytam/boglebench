@@ -1876,6 +1876,10 @@ class BogleBenchAnalyzer:
 
         self.logger.info("📊 Calculating performance metrics...")
 
+        self.portfolio_history["date"] = pd.to_datetime(
+            self.portfolio_history["date"], utc=True
+        ).dt.normalize()
+
         # Calculate portfolio performance metrics
         portfolio_metrics = self._calculate_metrics(
             self.portfolio_history["portfolio_mod_dietz_return"].dropna(),
@@ -1884,10 +1888,27 @@ class BogleBenchAnalyzer:
 
         # Calculate benchmark performance metrics
         benchmark_metrics = {}
+        benchmark_returns = pd.Series(dtype=float)
         if self.benchmark_data is not None:
             # Align benchmark data with portfolio dates
-            benchmark_returns = self._align_benchmark_returns()
-            self.portfolio_history["Benchmark_Returns"] = benchmark_returns
+            aligned_benchmark_df = self._align_benchmark_returns()
+
+            self.logger.info(
+                "Aligned benchmark %s returns:\n%s",
+                len(benchmark_returns),
+                benchmark_returns.head(n=10) * TO_PERCENT,
+            )
+
+            self.portfolio_history = pd.merge(
+                self.portfolio_history,
+                aligned_benchmark_df,
+                on="date",
+                how="left",
+            )
+
+            benchmark_returns = self.portfolio_history[
+                "Benchmark_Returns"
+            ].copy()
             benchmark_metrics = self._calculate_metrics(
                 benchmark_returns[1:], "Benchmark"
             )
@@ -1896,13 +1917,22 @@ class BogleBenchAnalyzer:
         portfolio_returns = self.portfolio_history[
             "portfolio_mod_dietz_return"
         ].copy()
+
         portfolio_returns.index = pd.to_datetime(
             self.portfolio_history["date"]
-        ).dt.date
+        )
+        if benchmark_returns.any():
+            benchmark_returns.index = pd.to_datetime(
+                self.portfolio_history["date"]
+            )
 
         relative_metrics = self._calculate_relative_metrics(
             portfolio_returns.dropna()[1:],
-            benchmark_returns[1:] if self.benchmark_data is not None else None,
+            (
+                benchmark_returns.dropna()[1:]
+                if benchmark_returns.any()
+                else None
+            ),
         )
 
         # Create results object
@@ -1922,30 +1952,37 @@ class BogleBenchAnalyzer:
     def _align_benchmark_returns(self) -> pd.Series:
         """Align benchmark returns with portfolio dates."""
         portfolio_dates = pd.to_datetime(
-            self.portfolio_history["date"]
-        ).dt.date
+            self.portfolio_history["date"], utc=True
+        ).dt.normalize()
 
         # Convert benchmark data to returns
         benchmark_df = self.benchmark_data.copy()
-        benchmark_df["date"] = pd.to_datetime(benchmark_df["date"]).dt.date
+        benchmark_df["date"] = pd.to_datetime(
+            benchmark_df["date"], utc=True
+        ).dt.normalize()
 
         # Ensure ascending date order
         benchmark_df = benchmark_df.sort_values("date").reset_index(drop=True)
 
         # Calculate period on period returns
         # Use adjusted close prices for benchmark returns
-        benchmark_df["return"] = benchmark_df["adj_close"].pct_change()
+        benchmark_df["Benchmark_Returns"] = benchmark_df[
+            "adj_close"
+        ].pct_change()
 
         # Reindex benchmark returns to match portfolio dates, forward-filling for missing days
         benchmark_df.set_index("date", inplace=True)
-        aligned_returns = benchmark_df["return"].reindex(
+        aligned_returns = benchmark_df["Benchmark_Returns"].reindex(
             portfolio_dates, method="ffill"
         )
 
         # The first return is NaN after reindexing, fill with 0
         aligned_returns.iloc[0] = DEFAULT_RETURN
 
-        return pd.Series(aligned_returns).dropna()
+        aligned_df = aligned_returns.reset_index()
+        aligned_df.rename(columns={"index": "date"}, inplace=True)
+
+        return aligned_df
 
     def _calculate_metrics(self, returns: pd.Series, name: str) -> Dict:
         """Calculate performance metrics for a return series."""
@@ -2275,7 +2312,7 @@ class PerformanceResults:
 
                 # Calculate account-specific return
                 account_returns = self.portfolio_history[
-                    f"{account}_return"
+                    f"{account}_mod_dietz_return"
                 ].dropna()
                 if len(account_returns) > 0:
                     total_periods = len(account_returns)
