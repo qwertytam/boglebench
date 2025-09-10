@@ -137,7 +137,10 @@ class ConfigManager:
 
     def get_transactions_path(self) -> Path:
         """Get path to transactions file."""
-        return self.get_data_path(self.get("data.transactions_file"))
+        transactions_file = self.get("data.transactions_file")
+        if not isinstance(transactions_file, str):
+            transactions_file = ""
+        return self.get_data_path(transactions_file)
 
     def get_market_data_path(self) -> Path:
         """Get path to market data cache directory."""
@@ -161,13 +164,13 @@ class ConfigManager:
             import shutil
 
             shutil.copy2(template_path, path)
-            print(f"INFO: Created configuration file: {path}")
+            print(f"Created configuration file: {path}")
         else:
             # Fallback: create from loaded defaults
             config = self._load_default_config()
             with open(path, "w") as f:
                 yaml.dump(config, f, default_flow_style=False, indent=2)
-            print(f"INFO: Created configuration file: {path}")
+            print(f"Created configuration file: {path}")
 
         return path
 

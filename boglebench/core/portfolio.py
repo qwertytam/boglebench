@@ -16,7 +16,7 @@ import re
 import warnings
 from datetime import datetime, timedelta, tzinfo
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
 import numpy as np
@@ -27,19 +27,26 @@ from alpha_vantage.timeseries import TimeSeries  # type: ignore
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
 from ..utils.timing import timed_operation
-from ..utils.tools import cagr, ensure_timestamp, to_tz_mixed
+from ..utils.tools import (
+    aggregate_dividends,
+    cagr,
+    ensure_timestamp,
+    to_tz_mixed,
+)
 from ..utils.workspace import WorkspaceContext
 
 TO_PERCENT = 100
 DEFAULT_TRADING_DAYS = 252
-DEFAULT_VALUE = 0.0
-DEFAULT_RETURN = DEFAULT_VALUE
-DEFAULT_ASSET_VALUE = DEFAULT_VALUE
-DEFAULT_PRICE = DEFAULT_VALUE
-DEFAULT_CASH_FLOW = DEFAULT_VALUE
-DEFAULT_WEIGHT = DEFAULT_VALUE
+DEFAULT_VALUE = float(0.0)
+DEFAULT_ZERO = DEFAULT_VALUE
+DEFAULT_RETURN = DEFAULT_ZERO
+DEFAULT_ASSET_VALUE = DEFAULT_ZERO
+DEFAULT_PRICE = DEFAULT_ZERO
+DEFAULT_CASH_FLOW = DEFAULT_ZERO
+DEFAULT_WEIGHT = DEFAULT_ZERO
 DEFAULT_RISK_FREE_RATE = 0.02
 DEFAULT_LOOK_FORWARD_PRICE_DATA = 10  # days
+DEFAULT_DIV_TYPE = "CASH"  # Default dividend type if not specified
 
 
 class BogleBenchAnalyzer:
@@ -68,14 +75,13 @@ class BogleBenchAnalyzer:
                 WorkspaceContext.discover_workspace(config_file.parent)
 
         self.config = ConfigManager(config_path)
-        print("DEBUG: Config loaded from:", self.config.config_path)
-        print("DEBUG: BogleBench Setting up logging...")
+        # print("DEBUG: Config loaded from:", self.config.config_path)
+        # print("DEBUG: BogleBench Setting up logging...")
         setup_logging()  # Initialize after workspace context is set
         self.logger = get_logger("core.portfolio")
 
-        self.config = ConfigManager(config_path)
-        self.transactions = None
-        self.market_data = {}
+        self.transactions = pd.DataFrame()
+        self.market_data: Dict[str, pd.DataFrame] = {}
         self.portfolio_history = None
         self.benchmark_data = None
         self.performance_results = None
@@ -101,33 +107,18 @@ class BogleBenchAnalyzer:
             ValueError: If required columns are missing or data is invalid
         """
         if file_path is None:
-            file_path = self.config.get_transactions_path()
+            file_path = str(self.config.get_transactions_path())
 
         if not Path(file_path).exists():
             raise FileNotFoundError(f"Transaction file not found: {file_path}")
 
-        print(f"📄 Loading transactions from: {file_path}")
+        self.logger.info(f"📄 Loading transactions from: {file_path}")
 
         # Load CSV with flexible parsing
         try:
             df = pd.read_csv(file_path)
-        except Exception as e:
-            raise ValueError(f"Error reading CSV file: {e}")
-
-        # Validate required columns
-        required_columns = [
-            "date",
-            "ticker",
-            "transaction_type",
-            "shares",
-            "price_per_share",
-        ]
-
-        missing_columns = [
-            col for col in required_columns if col not in df.columns
-        ]
-        if missing_columns:
-            raise ValueError(f"Missing required columns: {missing_columns}")
+        except ValueError as e:
+            raise ValueError(f"Error reading CSV file: {e}") from e
 
         # Clean and validate data
         df = self._clean_transaction_data(df)
@@ -135,14 +126,16 @@ class BogleBenchAnalyzer:
         # Store processed transactions
         self.transactions = df
 
-        print(
+        self.logger.info(
             f"✅ Loaded {len(df)} transactions for "
             f"{df['ticker'].nunique()} unique assets"
         )
-        print(f"📅 Date range: {df['date'].min()} to {df['date'].max()}")
-        print(f"🏦 Accounts: {', '.join(df['account'].unique())}")
+        self.logger.info(
+            f"📅 Date range: {df['date'].min()} to {df['date'].max()}"
+        )
+        self.logger.info(f"🏦 Accounts: {', '.join(df['account'].unique())}")
         total_invested = df[df["total_value"] > 0]["total_value"].sum()
-        print(f"💰 Total invested: ${total_invested:,.2f}")
+        self.logger.info(f"💰 Total invested: ${total_invested:,.2f}")
 
         return df
 
@@ -162,6 +155,22 @@ class BogleBenchAnalyzer:
         """Clean and validate transaction data."""
         # Make a copy to avoid modifying original
         df = df.copy()
+
+        # Validate required columns
+        reqd_columns = [
+            "date",
+            "ticker",
+            "transaction_type",
+            "quantity",
+            "value_per_share",
+            "total_value",
+        ]
+
+        missing_columns = [
+            col for col in reqd_columns if col not in df.columns
+        ]
+        if missing_columns:
+            raise ValueError(f"Missing required columns: {missing_columns}")
 
         # Convert date column - enforce ISO8601 format
         try:
@@ -192,15 +201,18 @@ class BogleBenchAnalyzer:
         # Clean ticker symbols (uppercase, strip whitespace)
         df["ticker"] = df["ticker"].str.upper().str.strip()
 
-        # Validate required columns
-        reqd_columns = [
-            "date",
-            "ticker",
-            "transaction_type",
-            "shares",
-            "price_per_share",
+        opt_columns = [
+            "account",
+            "group1",
+            "group2",
+            "group3",
+            "div_type",
+            "div_pay_date",
+            "div_record_date",
+            "div_ex_date",
+            "split_ratio",
+            "notes",
         ]
-        opt_columns = ["account", "group1", "group2", "group3", "notes"]
 
         missing_cols = [col for col in reqd_columns if col not in df.columns]
         if missing_cols:
@@ -215,10 +227,23 @@ class BogleBenchAnalyzer:
                     df[col] = "Unassigned"
                 elif col == "notes":
                     df[col] = ""
+                elif col == "div_type":
+                    df[col] = DEFAULT_DIV_TYPE
+                elif col == "div_pay_date":
+                    df[col] = df["date"]
+                elif col in ["div_record_date", "div_ex_date"]:
+                    df[col] = pd.NaT
+                elif col == "split_ratio":
+                    df[col] = DEFAULT_ZERO
 
                 self.logger.debug(
                     "ℹ️  No '%s' column found. Added default values.", col
                 )
+
+        # Convert optional date columns
+        for date_col in ["div_pay_date", "div_ex_date", "div_record_date"]:
+            if date_col in df.columns:
+                df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
 
         # Clean account names (strip whitespace, title case)
         df["account"] = df["account"].str.strip().str.title()
@@ -239,7 +264,15 @@ class BogleBenchAnalyzer:
             df["notes"] = df["notes"].fillna("").astype(str).str.strip()
 
         # Validate transaction types
-        valid_types = ["BUY", "SELL"]
+        valid_types = [
+            "BUY",
+            "SELL",
+            "DIVIDEND",
+            "DIVIDEND_REINVEST",
+            "SPLIT",
+            "MERGER",
+            "FEE",
+        ]
         df["transaction_type"] = df["transaction_type"].str.upper().str.strip()
         invalid_types = df[~df["transaction_type"].isin(valid_types)]
         if not invalid_types.empty:
@@ -249,20 +282,77 @@ class BogleBenchAnalyzer:
             )
 
         # Validate numeric fields
-        numeric_columns = ["shares", "price_per_share"]
+        numeric_columns = ["quantity", "value_per_share", "total_value"]
         for col in numeric_columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
             if df[col].isna().any():
                 raise ValueError(f"Invalid numeric values in column: {col}")
-            if (df[col] <= 0).any():
-                raise ValueError(f"Non-positive values found in column: {col}")
+            if col in ["quantity", "value_per_share"]:
+                is_dividend_or_fee = df["transaction_type"].isin(
+                    ["DIVIDEND", "FEE"]
+                )
+                if (df[col] < 0).any() or (
+                    (df[col] == 0) & ~is_dividend_or_fee
+                ).any():
+                    raise ValueError(
+                        f"Non-positive values found in column: {col} "
+                        f"for non-dividend/fee transactions"
+                    )
 
-        # Calculate total value for each transaction
-        df["total_value"] = df["shares"] * df["price_per_share"]
+        # Check total value for each transaction
+        # Ensure positive for checking - will be adjusted for SELL later
+        df["total_value"] = np.abs(df["total_value"])
+
+        error_limit = 0.01  # In dollars; allow small rounding errors
+        exclude_ttype = ["DIVIDEND", "DIVIDEND_REINVEST", "FEE"]
+        df.loc[
+            ~df["transaction_type"].isin(exclude_ttype),
+            "total_value_check",
+        ] = (
+            df.loc[
+                ~df["transaction_type"].isin(exclude_ttype),
+                "quantity",
+            ]
+            * df.loc[
+                ~df["transaction_type"].isin(exclude_ttype),
+                "value_per_share",
+            ]
+        )
+        value_mismatch = (
+            np.abs(df["total_value"] - df["total_value_check"]) > error_limit
+        )
+        if value_mismatch.any():
+            mismatch_rows = df[value_mismatch]
+            self.logger.warning(
+                "⚠️  Total value mismatch in %s transactions. "
+                "Using quantity * value_per_share.",
+                len(mismatch_rows),
+            )
+            self.logger.debug(
+                "Original data with mismatches:\n%s",
+                mismatch_rows[
+                    [
+                        "date",
+                        "ticker",
+                        "transaction_type",
+                        "quantity",
+                        "value_per_share",
+                        "total_value",
+                        "total_value_check",
+                    ]
+                ],
+            )
+            df.loc[value_mismatch, "total_value"] = df.loc[
+                value_mismatch, "total_value_check"
+            ]
 
         # For SELL transactions, make shares negative for easier calculations
-        df.loc[df["transaction_type"] == "SELL", "shares"] *= -1
+        df.loc[df["transaction_type"] == "SELL", "quantity"] *= -1
         df.loc[df["transaction_type"] == "SELL", "total_value"] *= -1
+
+        # For DIVIDEND transactions, make quantity zero and total value negative
+        df.loc[df["transaction_type"] == "DIVIDEND", "quantity"] = 0
+        df.loc[df["transaction_type"] == "DIVIDEND", "total_value"] *= -1
 
         # Sort by date
         df = df.sort_values("date").reset_index(drop=True)
@@ -352,7 +442,7 @@ class BogleBenchAnalyzer:
         Returns:
             Dictionary mapping ticker symbols to price DataFrames
         """
-        if self.transactions is None:
+        if self.transactions.empty:
             raise ValueError(
                 "Must load transactions first using load_transactions()"
             )
@@ -360,7 +450,7 @@ class BogleBenchAnalyzer:
         # Ensure start_dt and end_dt are pd.Timestamp and not None
         default_start_date = None
         if start_date is None:
-            self.logger.info(
+            self.logger.debug(
                 "No start date provided. "
                 + "Defaulting to %s days before first transaction.",
                 DEFAULT_LOOK_FORWARD_PRICE_DATA,
@@ -400,7 +490,7 @@ class BogleBenchAnalyzer:
         end_date = to_tz_mixed(end_date)
         if end_date is None:
             self.logger.warning(
-                "No valid end date provided or found. Defaulting to %s",
+                "⚠️  No valid end date provided or found. Defaulting to %s",
                 default_end_date.strftime("%Y-%m-%d"),
             )
 
@@ -582,7 +672,9 @@ class BogleBenchAnalyzer:
         if benchmark_ticker in market_data:
             self.benchmark_data = market_data[benchmark_ticker].copy()
 
-        print(f"✅ Successfully downloaded data for {len(market_data)} assets")
+        self.logger.info(
+            f"✅ Successfully downloaded data for {len(market_data)} assets"
+        )
         return market_data
 
     def _get_cached_data(
@@ -700,7 +792,9 @@ class BogleBenchAnalyzer:
     def _cache_data(self, ticker: str, data: pd.DataFrame) -> None:
         """Cache market data to disk."""
         if not self.config.get("settings.cache_market_data", True):
-            self.logger.debug("Caching disabled, skipping cache for %s", ticker)
+            self.logger.debug(
+                "Caching disabled, skipping cache for %s", ticker
+            )
             return
 
         cache_dir = self.config.get_market_data_path()
@@ -751,7 +845,7 @@ class BogleBenchAnalyzer:
             if days_back <= 7:  # Only forward-fill up to 7 days
                 return available_data["close"].iloc[-1]
             else:
-                print(
+                self.logger.warning(
                     f"Warning: No recent price data for {ticker} near {target_date}"
                 )
                 return available_data["close"].iloc[
@@ -791,13 +885,22 @@ class BogleBenchAnalyzer:
         for i in range(len(portfolio_df)):
             if i == 0:
                 # First day - beginning_value is zero
-                beginning_value = np.float64(0.0)  # zero
+                beginning_value = DEFAULT_ZERO
             else:
                 beginning_value = portfolio_df.iloc[i - 1]["total_value"]
 
+            # Dividends are considered internal cash flows and do not directly
+            # affect the Modified Dietz calculation. Instead, the method
+            # focuses on external cash flows, which are movements of value
+            # into or out of the portfolio that are not related to investment
+            # income.
+            # Value change = total change minus external cash flow impact
             # Get values
             ending_value = portfolio_df.iloc[i]["total_value"]
-            net_cash_flow = portfolio_df.iloc[i]["net_cash_flow"]
+            external_cash_flow = (
+                portfolio_df.iloc[i]["investment_cash_flow"]
+                + portfolio_df.iloc[i]["income_cash_flow"]
+            )
             weighted_cash_flow = portfolio_df.iloc[i]["weighted_cash_flow"]
 
             # Modified Dietz formula
@@ -808,7 +911,7 @@ class BogleBenchAnalyzer:
                 returns.append(DEFAULT_RETURN)
             else:
                 daily_return = (
-                    ending_value - beginning_value - net_cash_flow
+                    ending_value - beginning_value - external_cash_flow
                 ) / denominator
                 returns.append(daily_return)
 
@@ -816,33 +919,71 @@ class BogleBenchAnalyzer:
 
     def _process_daily_transactions(
         self, date: pd.Timestamp
-    ) -> Dict[str, float]:
+    ) -> Tuple[Dict[str, float], Dict[str, float]]:
         """Process all transactions for a specific date and return cash
         flows by account."""
         if isinstance(date, str):
             date = pd.to_datetime(date)
 
         day_transactions = self.transactions[
-            self.transactions["date"].dt.date == date  # .date()
+            self.transactions["date"].dt.date == date.date()
         ]
 
-        cash_flows = {"total": DEFAULT_CASH_FLOW}
+        self.logger.debug(
+            "Processing daily %d transactions for %s",
+            len(day_transactions),
+            date.strftime("%Y-%m-%d"),
+        )
+        self.logger.debug("Transactions:\n%s", day_transactions)
+
+        # Investment cash flows: affect cost basis (BUY/SELL)
+        inv_cf = {"total": DEFAULT_CASH_FLOW}
+
+        # Income cash flows: dividends, fees (do not affect cost basis)
+        inc_cf = {"total": DEFAULT_CASH_FLOW}
 
         # Initialize all accounts
         for account in self.transactions["account"].unique():
-            cash_flows[account] = DEFAULT_CASH_FLOW
+            inv_cf[account] = DEFAULT_CASH_FLOW
+            inc_cf[account] = DEFAULT_CASH_FLOW
 
         # Process each transaction
         for _, trans in day_transactions.iterrows():
             account = trans["account"]
-            cash_flow = trans[
-                "total_value"
-            ]  # Already signed correctly (negative for SELL)
+            ttype = trans["transaction_type"]
+            self.logger.debug(
+                "  Processing %s of value $%.2f for %s in account %s",
+                ttype,
+                trans["total_value"],
+                trans["ticker"],
+                account,
+            )
 
-            cash_flows[account] += cash_flow
-            cash_flows["total"] += cash_flow
+            self.logger.debug(
+                "  Is ttype %s in DIVIDEND? %s", ttype, ttype in ["DIVIDEND"]
+            )
 
-        return cash_flows
+            if ttype in ["BUY", "SELL"]:
+                cf = trans["total_value"]  # +ve for BUY, -ve for SELL
+                inv_cf[account] += cf
+                inv_cf["total"] += cf
+
+            elif ttype in ["DIVIDEND", "DIVIDEND_REINVEST", "FEE"]:
+                cf = trans["total_value"]
+                self.logger.debug(
+                    "  Processing %s of cash flow $%.2f for %s in account %s",
+                    ttype,
+                    cf,
+                    trans["ticker"],
+                    account,
+                )
+                inc_cf[account] += cf
+                inc_cf["total"] += cf
+
+        self.logger.debug("Investment cash flows: %s", inv_cf)
+        self.logger.debug("Income cash flows: %s", inc_cf)
+
+        return inv_cf, inc_cf
 
     def _calculate_account_modified_dietz_returns(
         self, portfolio_df: pd.DataFrame, account: str
@@ -884,7 +1025,7 @@ class BogleBenchAnalyzer:
         Returns:
             DataFrame with daily portfolio holdings, values, and weights
         """
-        if self.transactions is None:
+        if self.transactions.empty:
             raise ValueError("Must load transactions first")
         if not self.market_data:
             raise ValueError("Must fetch market data first")
@@ -895,79 +1036,156 @@ class BogleBenchAnalyzer:
         tickers = self.transactions["ticker"].unique()
         accounts = self.transactions["account"].unique()
 
+        # Validate dividend data for all tickers before building portfolio
+        if self.config.get("dividend.auto_validate", True):
+            self.logger.debug(
+                "🔍 Validating dividend data against market data..."
+            )
+
+            for ticker in tickers:
+                try:
+                    auto_calc_div_per_share = self.config.get(
+                        "dividend.auto_calculate_div_per_share", True
+                    )
+                    if not isinstance(auto_calc_div_per_share, bool):
+                        auto_calc_div_per_share = True
+
+                    warn_missing_dividends = self.config.get(
+                        "dividend.warn_missing_dividends", True
+                    )
+                    if not isinstance(warn_missing_dividends, bool):
+                        warn_missing_dividends = True
+
+                    messages = self.compare_user_dividends_to_market(
+                        ticker,
+                        auto_calculate_div_per_share=auto_calc_div_per_share,
+                        warn_missing_dividends=warn_missing_dividends,
+                    )
+
+                    for msg in messages:
+                        if (
+                            "mismatch" in msg.lower()
+                            or "warning" in msg.lower()
+                        ):
+                            self.logger.warning("⚠️  %s", msg)
+                        else:
+                            self.logger.info("ℹ️  %s", msg)
+
+                except ValueError as e:
+                    self.logger.error(
+                        "Could not validate dividends for %s: %s", ticker, e
+                    )
+
         # Initialize portfolio tracking by account and ticker
         portfolio_data = []
+
         # Track holdings by account and ticker: {account: {ticker: shares}}
         current_holdings = {
-            account: {ticker: 0.0 for ticker in tickers} for account in accounts
+            account: {ticker: 0.0 for ticker in tickers}
+            for account in accounts
         }
 
         # Get full date range for analysis
         start_date = self.transactions["date"].min()
-        end_date = max([df["date"].max() for df in self.market_data.values()])
+        end_date = max(
+            [df["date"].dt.date.max() for df in self.market_data.values()]
+            + [self.transactions["date"].dt.date.max()]
+        )
 
+        # Default is all day between and including start and end dates that are
+        # trading days.
+        # However, will also include any transaction dates that fall outside
+        # this range to ensure all transactions are processed.
         # Get actual NYSE trading days (excludes weekends AND holidays)
+
+        # 1. Get all trading days in the period
         self.logger.debug(
             "Getting NYSE trading days from %s to %s", start_date, end_date
         )
         nyse = mcal.get_calendar("NYSE")
         trading_days = nyse.schedule(start_date=start_date, end_date=end_date)
-        date_range = trading_days.index.date  # Convert to date objects
+        trading_dates = set(to_tz_mixed(trading_days.index))
 
-        # Check if all transaction dates are trading days
-        self.logger.debug("Validating transaction dates against trading days")
-        transaction_dates = set(self.transactions["date"].dt.date)
-        trading_dates = set(date_range)
+        # 2. Get all unique transaction dates
+        transaction_dates = set(self.transactions["date"].dt.normalize())
 
+        # 3. Find transactions dates that are outside of trading days
         self.logger.debug("Checking for transactions on non-trading days")
-        non_trading_dates = transaction_dates - trading_dates
-        if non_trading_dates:
-            non_trading_sorted = sorted(non_trading_dates)
+        non_trading_transaction_dates = transaction_dates - trading_dates
+
+        if non_trading_transaction_dates:
             self.logger.warning(
-                "⚠️  Warning: %d transactions on non-trading days:",
-                len(non_trading_dates),
+                "⚠️  Warning: %d transactions on non-trading days:\n%s",
+                len(non_trading_transaction_dates),
+                "\n".join(str(date) for date in non_trading_transaction_dates),
             )
 
-            for date in non_trading_sorted[:5]:
-                day_name = pd.to_datetime(date).strftime("%A")
-                # Check if it's a weekend or holiday
-                if day_name in ["Saturday", "Sunday"]:
-                    reason = "weekend"
-                else:
-                    reason = "market holiday"
-                print(f"   {date} ({day_name}, {reason})")
-            if len(non_trading_sorted) > 5:
-                print(f"   ... and {len(non_trading_sorted) - 5} more")
-            print("   These transactions will use forward-filled prices.")
+        all_dates_to_process = sorted(
+            list(trading_dates.union(non_trading_transaction_dates))
+        )
 
-        self.logger.debug("Processing each trading day for portfolio history")
+        date_range = pd.to_datetime(all_dates_to_process, utc=True)
+
+        self.logger.info(
+            "📅 Processing %d trading days from %s to %s",
+            len(date_range),
+            date_range[0],
+            date_range[-1],
+        )
+
+        self.logger.debug(
+            "Starting to process %d transactions by date",
+            len(self.transactions),
+        )
+
         for date in date_range:
             # Process any transactions on this date
+            self.logger.debug(
+                "Processing transaction dates:\n%s\nagainst date %s",
+                self.transactions["date"].dt.date,
+                date.date(),
+            )
+            self.logger.debug(
+                "These dates have type %s and %s",
+                type(self.transactions["date"].dt.date),
+                type(date.date()),
+            )
+
             day_transactions = self.transactions[
-                self.transactions["date"].dt.date == date  # date.date()
+                self.transactions["date"].dt.date == date.date()
             ]
+
+            self.logger.debug(
+                "Processing %s transactions for %s:\n%s",
+                len(day_transactions),
+                date.date(),
+                day_transactions,
+            )
 
             for _, transaction in day_transactions.iterrows():
                 account = transaction["account"]
                 ticker = transaction["ticker"]
-                shares = transaction[
-                    "shares"
-                ]  # Already negative for SELL transactions
+                ttype = transaction["transaction_type"]
 
-                # Ensure account and ticker exist in our tracking
-                if account not in current_holdings:
-                    current_holdings[account] = {
-                        t: DEFAULT_ASSET_VALUE for t in tickers
-                    }
-                if ticker not in current_holdings[account]:
-                    current_holdings[account][ticker] = DEFAULT_ASSET_VALUE
+                if ttype in ["BUY", "SELL", "DIVIDEND_REINVEST"]:
+                    shares = transaction["quantity"]
 
-                current_holdings[account][ticker] += shares
+                    self.logger.debug("Have %s shares for %s", shares, ttype)
+
+                    # Ensure account and ticker exist in our tracking
+                    if account not in current_holdings:
+                        current_holdings[account] = {
+                            t: DEFAULT_ASSET_VALUE for t in tickers
+                        }
+                    if ticker not in current_holdings[account]:
+                        current_holdings[account][ticker] = DEFAULT_ASSET_VALUE
+
+                    # For DIVIDEND, do not adjust holdings;
+                    # handled in cash flow
+                    current_holdings[account][ticker] += shares
 
             # Get market prices for this date
-            self.logger.debug(
-                "Calculating portfolio value for %s", date
-            )  # date.date())
+            self.logger.debug("Calculating portfolio value for %s", date)
             day_data = {"date": date}
             total_portfolio_value = DEFAULT_ASSET_VALUE
             account_totals = {}
@@ -984,17 +1202,32 @@ class BogleBenchAnalyzer:
                         # )
                         price = self._get_price_for_date(ticker, date)
                     except ValueError as e:
-                        self.logger.error(f"Skipping {ticker} on {date}: {e}")
+                        self.logger.error(
+                            "Skipping %s on %s: %s", ticker, date, e
+                        )
                         price = DEFAULT_PRICE  # Only set to 0 if truly no data exists
 
-                    # self.logger.debug(
-                    #     "Calculated price for %s on %s: $%.2f",
-                    #     ticker,
-                    #     date,
-                    #     price,
-                    # )
+                    self.logger.debug(
+                        "Calculated price for %s on %s: $%.2f",
+                        ticker,
+                        date,
+                        price,
+                    )
                     position_value = shares * price
                     account_value += position_value
+
+                    self.logger.debug(
+                        "Storing shares %.4f of %s", shares, ticker
+                    )
+                    self.logger.debug(
+                        "Storing price $%.2f for %s on %s", price, ticker, date
+                    )
+                    self.logger.debug(
+                        "Storing position value $%.2f for %s on %s",
+                        position_value,
+                        ticker,
+                        date,
+                    )
 
                     # Store account-specific position data
                     day_data[f"{account}_{ticker}_shares"] = shares
@@ -1016,13 +1249,13 @@ class BogleBenchAnalyzer:
                 if ticker in self.market_data:
                     ticker_data = self.market_data[ticker]
                     price_data = ticker_data[
-                        ticker_data["date"].dt.date == date  # date.date()
+                        ticker_data["date"].dt.date == date.date()
                     ]
                     if not price_data.empty:
                         price = price_data["close"].iloc[0]
                     else:
                         available_data = ticker_data[
-                            ticker_data["date"].dt.date <= date  # date.date()
+                            ticker_data["date"].dt.date <= date.date()
                         ]
                         if not available_data.empty:
                             price = available_data["close"].iloc[-1]
@@ -1030,6 +1263,15 @@ class BogleBenchAnalyzer:
                             price = DEFAULT_PRICE
                 else:
                     price = DEFAULT_PRICE
+
+                self.logger.debug(
+                    "Storing total shares %.4f of %s", total_shares, ticker
+                )
+                self.logger.debug(
+                    "Storing total value $%.2f of %s",
+                    total_shares * price,
+                    ticker,
+                )
 
                 day_data[f"{ticker}_total_shares"] = total_shares
                 day_data[f"{ticker}_total_value"] = total_shares * price
@@ -1080,35 +1322,44 @@ class BogleBenchAnalyzer:
             if isinstance(date, str):
                 date = pd.to_datetime(date)
 
-            cash_flows = self._process_daily_transactions(date)
+            inv_cf, inc_cf = self._process_daily_transactions(date)
+            total_cf = inv_cf["total"] + inc_cf["total"]
 
-            portfolio_df.at[i, "net_cash_flow"] = cash_flows["total"]
+            portfolio_df.at[i, "investment_cash_flow"] = inv_cf["total"]
+            portfolio_df.at[i, "income_cash_flow"] = inc_cf["total"]
+            portfolio_df.at[i, "net_cash_flow"] = total_cf
             portfolio_df.at[i, "weighted_cash_flow"] = (
-                cash_flows["total"] * period_cash_flow_weight
-            )  # Mid-day weighting
+                total_cf * period_cash_flow_weight
+            )
 
             # Store ALL account cash flows
             for account in accounts:
-                portfolio_df.at[i, f"{account}_cash_flow"] = cash_flows.get(
+                total_account_cf = inv_cf.get(
                     account, DEFAULT_CASH_FLOW
-                )
+                ) + inc_cf.get(account, DEFAULT_CASH_FLOW)
+
+                portfolio_df.at[i, f"{account}_cash_flow"] = total_account_cf
                 portfolio_df.at[i, f"{account}_weighted_cash_flow"] = (
-                    cash_flows.get(account, DEFAULT_CASH_FLOW)
-                    * period_cash_flow_weight
+                    total_account_cf * period_cash_flow_weight
                 )
 
         # Calculate market value change (pure investment performance)
         for i in range(0, len(portfolio_df)):
             if i == 0:
-                prev_value = np.float64(0.0)  # zero
+                prev_value = DEFAULT_ZERO
             else:
                 prev_value = portfolio_df.iloc[i - 1]["total_value"]
 
             current_value = portfolio_df.iloc[i]["total_value"]
-            net_cash_flow = portfolio_df.iloc[i]["net_cash_flow"]
+            external_cash_flow = portfolio_df.iloc[i]["investment_cash_flow"]
 
-            # Market value change = total change minus cash flow impact
-            market_change = current_value - prev_value - net_cash_flow
+            # Dividends are considered internal cash flows and do not directly
+            # affect the Modified Dietz calculation. Instead, the method
+            # focuses on external cash flows, which are movements of value
+            # into or out of the portfolio that are not related to investment
+            # income.
+            # Market value change = total change minus external cash flow impact
+            market_change = current_value - prev_value - external_cash_flow
 
             if prev_value == 0:
                 market_return = 0
@@ -1127,19 +1378,19 @@ class BogleBenchAnalyzer:
         portfolio_df["cash_flow_impact"] = portfolio_df["net_cash_flow"]
 
         # Calculate Modified Dietz returns
-        portfolio_df["portfolio_return"] = (
+        portfolio_df["portfolio_mod_dietz_return"] = (
             self._calculate_modified_dietz_returns(portfolio_df)
         )
 
         # Handle edge case where previous total_value is zero
         denominator_is_zero_mask = portfolio_df["total_value"].shift(1) == 0
-        portfolio_df.loc[denominator_is_zero_mask, "portfolio_return"] = (
-            DEFAULT_RETURN
-        )
+        portfolio_df.loc[
+            denominator_is_zero_mask, "portfolio_mod_dietz_return"
+        ] = DEFAULT_RETURN
 
         self.logger.debug(
-            "Portfolio returns had %d NaN values; replaced with %s",
-            portfolio_df["portfolio_return"].isna().sum(),
+            "Portfolio modified Dietz returns had %d NaN values; replaced with %s",
+            portfolio_df["portfolio_mod_dietz_return"].isna().sum(),
             DEFAULT_RETURN,
         )
 
@@ -1147,7 +1398,7 @@ class BogleBenchAnalyzer:
         for account in accounts:
             account_total_col = f"{account}_total"
             if account_total_col in portfolio_df.columns:
-                portfolio_df[f"{account}_return"] = (
+                portfolio_df[f"{account}_mod_dietz_return"] = (
                     self._calculate_account_modified_dietz_returns(
                         portfolio_df, account
                     )
@@ -1164,9 +1415,458 @@ class BogleBenchAnalyzer:
 
         return portfolio_df
 
+    def fetch_dividend_data(self, ticker: str) -> pd.DataFrame:
+        """
+        Extracts dividend data for a given ticker from already-fetched
+        self.market_data.
+        Returns a DataFrame with columns: 'date', 'dividend'
+        """
+        if ticker not in self.market_data:
+            raise ValueError(
+                f"Market data for ticker {ticker} not found. "
+                f"Did you run fetch_market_data()?"
+            )
+
+        df = self.market_data[ticker]
+        # Only consider days where a dividend was paid
+        self.logger.debug("Extracting dividend data for %s", ticker)
+        dividend_df = df[df["dividend"] > 0][["date", "dividend"]].copy()
+        dividend_df["value_per_share"] = dividend_df["dividend"]
+        dividend_df["div_type"] = DEFAULT_DIV_TYPE
+
+        # Normalize date for merging
+        dividend_df["date"] = pd.to_datetime(
+            dividend_df["date"], utc=True
+        ).dt.normalize()
+        dividend_df = dividend_df.rename(columns={"date": "div_pay_date"})
+
+        dividend_df["div_ex_date"] = pd.NaT
+        dividend_df["div_record_date"] = pd.NaT
+
+        return_columns = [
+            "div_pay_date",
+            "value_per_share",
+            "div_type",
+            "div_ex_date",
+            "div_record_date",
+        ]
+
+        return dividend_df[return_columns]
+
+    def _get_shares_held_on_date(
+        self, ticker: str, account: str, target_date: pd.Timestamp
+    ) -> float:
+        """
+        Calculate shares held for a specific ticker and account on a given date.
+        Looks at all BUY/SELL/DIVIDEND_REINVEST transactions up to target_date.
+        Note: DIVIDEND_REINVEST increases shares held only up to one day before
+        the dividend pay date.
+        """
+        if self.transactions.empty:
+            raise ValueError("Must load transactions first")
+        if ticker not in self.transactions["ticker"].values:
+            raise ValueError(f"No transactions found for ticker {ticker}")
+        if account not in self.transactions["account"].values:
+            raise ValueError(f"No transactions found for account {account}")
+        if isinstance(target_date, str):
+            target_date = pd.to_datetime(target_date)
+
+        # Up to and including target_date for BUY/SELL
+        relevant_transactions_buy_sell = self.transactions[
+            (self.transactions["ticker"] == ticker)
+            & (self.transactions["account"] == account)
+            & (self.transactions["date"] <= target_date)
+            & (self.transactions["transaction_type"].isin(["BUY", "SELL"]))
+        ].copy()
+
+        # Only before target_date for DIVIDEND_REINVEST
+        relevant_transactions_div_reinvest = self.transactions[
+            (self.transactions["ticker"] == ticker)
+            & (self.transactions["account"] == account)
+            & (self.transactions["date"] < target_date)
+            & (self.transactions["transaction_type"] == "DIVIDEND_REINVEST")
+        ].copy()
+
+        relevant_transactions = pd.concat(
+            [
+                relevant_transactions_buy_sell,
+                relevant_transactions_div_reinvest,
+            ]
+        )
+
+        if relevant_transactions.empty:
+            self.logger.warning(
+                "⚠️  No transactions found for %s in %s before %s",
+                ticker,
+                account,
+                target_date.date(),
+            )
+            return DEFAULT_ZERO
+
+        # Sum all share changes (SELL transactions already have negative shares)
+        total_shares = relevant_transactions["quantity"].sum()
+        # Ensure non-negative
+        result = max(0.0, total_shares)
+
+        self.logger.debug(
+            "Shares held for %s in %s on %s: %s",
+            ticker,
+            account,
+            target_date.date(),
+            result,
+        )
+        return result
+
+    def _perform_dividend_comparison(
+        self,
+        ticker: str,
+        user_dividends: pd.DataFrame,
+        error_margin: float,
+        warn_missing_dividends: bool = True,
+    ) -> List[str]:
+        """Perform the actual dividend comparison with flexible matching."""
+
+        messages: list[str] = []
+        if user_dividends.empty:
+            return messages
+
+        # Group by date and sum amounts in case both cash+reinvest are logged
+        # separately
+        self.logger.debug("Grouping user dividends for %s by pay date", ticker)
+        self.logger.debug(
+            "User dividends before grouping:\n%s", user_dividends
+        )
+        self.logger.debug(
+            "User dividends columns: %s", user_dividends.columns.tolist()
+        )
+        user_divs_grouped = user_dividends.groupby(
+            "div_pay_date", as_index=False
+        ).apply(aggregate_dividends)
+
+        self.logger.debug(
+            "User dividends grouped by pay date:\n%s", user_divs_grouped
+        )
+        user_divs_grouped["div_pay_date"] = user_divs_grouped[
+            "div_pay_date"
+        ].dt.normalize()
+
+        self.logger.debug("Fetching market dividends for %s", ticker)
+        market_dividends = self.fetch_dividend_data(ticker)
+
+        self.logger.debug(
+            "Market dividends fetched for %s:\n%s", ticker, market_dividends
+        )
+        market_dividends["div_pay_date"] = market_dividends[
+            "div_pay_date"
+        ].dt.normalize()
+
+        self.logger.debug(
+            "Comparing %d user dividends to %d market dividends for %s",
+            len(user_divs_grouped),
+            len(market_dividends),
+            ticker,
+        )
+        self.logger.debug("User dividends:\n%s", user_divs_grouped)
+        self.logger.debug("Market dividends:\n%s", market_dividends)
+
+        # Use outer join to catch missing dividends if warn_missing_dividends is True
+        how_merge = "outer" if warn_missing_dividends else "left"
+        self.logger.debug(
+            "Merging user and market dividends for %s with '%s' join with date columns %s and %s",
+            ticker,
+            how_merge,
+            user_divs_grouped["div_pay_date"].head(),
+            market_dividends["div_pay_date"].head(),
+        )
+        merged = pd.merge(
+            user_divs_grouped,
+            market_dividends,
+            on="div_pay_date",
+            how=how_merge,
+            suffixes=("_user", "_mkt"),
+        )
+
+        self.logger.debug("user_divs head:\n%s", user_divs_grouped.head())
+        self.logger.debug("mkt_divs head:\n%s", market_dividends.head())
+        self.logger.debug(
+            "Merged user and market dividends for %s:\n%s", ticker, merged
+        )
+
+        # Check for missing user dividends
+        if warn_missing_dividends:
+            missing_user_divs = merged[
+                (merged["total_value"].isna())
+                & (merged["value_per_share_mkt"].notna())
+            ]
+
+            for _, row in missing_user_divs.iterrows():
+                msg = (
+                    f"Missing user dividend for {ticker} "
+                    f"on {row['div_pay_date'].date()}: "
+                    f"Market shows ${row['value_per_share_mkt']:.4f} per share"
+                )
+                messages.append(msg)
+
+        # Check for mismatches in recorded dividends
+        recorded_dividends = merged[
+            (merged["total_value"].notna())
+            & (merged["value_per_share_mkt"].notna())
+        ]
+
+        for _, row in recorded_dividends.iterrows():
+            issues = []
+
+            # Compare per-share amounts if user div_per_share is available
+            if (
+                pd.notna(row["value_per_share_user"])
+                and row["value_per_share_user"] > 0
+            ):
+                self.logger.debug("Found valid dividend row to compare")
+                self.logger.debug("Row data: %s", row.to_dict())
+                if (
+                    abs(
+                        row["value_per_share_user"]
+                        - row["value_per_share_mkt"]
+                    )
+                    > error_margin
+                ):
+                    issues.append(
+                        f"per-share mismatch (user: "
+                        f"${row['value_per_share_user']:.4f}, "
+                        f"market: ${row['value_per_share_mkt']:.4f})"
+                    )
+
+            # Compare div_type if provided
+            if pd.notna(row["div_type_user"]) and row["div_type_user"] != "":
+                if row["div_type_user"] != row["div_type_mkt"]:
+                    issues.append(
+                        f"type mismatch (user: {row['div_type_user']}, "
+                        f"market: {row['div_type_mkt']})"
+                    )
+
+            if issues:
+                messages.append(
+                    f"Dividend mismatch for {ticker} on {row['div_pay_date'].date()}: {'; '.join(issues)} "
+                    f"(user total: ${row['total_value']:.2f})"
+                )
+
+        return messages
+
+    def validate_dividend_data(
+        self,
+        tickers: Optional[list] = None,
+        auto_calculate_div_per_share: bool = True,
+        warn_missing_dividends: bool = True,
+    ) -> None:
+        """
+        Validate dividend data for specified tickers or all tickers in portfolio.
+
+        Args:
+            tickers: List of tickers to validate. If None, validates all tickers.
+            auto_calculate_div_per_share: Whether to auto-calculate missing div_per_share
+            warn_missing_dividends: Whether to warn about missing dividend entries
+        """
+        if self.transactions.empty:
+            raise ValueError("Must load transactions first")
+
+        if tickers is None:
+            tickers = self.transactions["ticker"].unique()
+
+        self.logger.info(
+            "🔍 Validating dividend data for %d tickers...", len(tickers or [])
+        )
+
+        for ticker in tickers:
+            try:
+                self.compare_user_dividends_to_market(
+                    ticker,
+                    auto_calculate_div_per_share=auto_calculate_div_per_share,
+                    warn_missing_dividends=warn_missing_dividends,
+                )
+            except Exception as e:
+                self.logger.error(
+                    "Error validating dividends for %s: %s", ticker, e
+                )
+
+        self.logger.info("✅ Dividend validation complete")
+
+    def compare_user_dividends_to_market(
+        self,
+        ticker: str,
+        error_margin: float = 0.01,
+        auto_calculate_div_per_share: bool = True,
+        warn_missing_dividends: bool = True,
+        default_div_type: str = DEFAULT_DIV_TYPE,
+    ) -> List[str]:
+        """
+        Compare user-provided dividend and dividend reinvestment transactions
+        with market dividend data. Prints a warning if values differ by more
+        than the error margin. Sums amounts for the same date.
+
+        Args:
+            ticker: Stock ticker symbol
+            error_margin: Acceptable difference for matching dividends
+            auto_calculate_div_per_share: If True, calculate missing
+                div_per_share from holdings
+            warn_missing_dividends: If True, warn about market dividends not
+                in user data
+            default_div_type: Default dividend type when not specified by user
+        Returns:
+            A list of strings, where each string is a message about a
+            mismatch or calculation.
+        """
+
+        if self.transactions.empty:
+            raise ValueError("No transactions loaded to compare against.")
+
+        user_dividends = self.transactions[
+            (self.transactions["ticker"] == ticker)
+            & (
+                self.transactions["transaction_type"].isin(
+                    ["DIVIDEND", "DIVIDEND_REINVEST"]
+                )
+            )
+        ].copy()
+
+        self.logger.debug(
+            "Comparing user dividends for %s:\n%s", ticker, user_dividends
+        )
+
+        if user_dividends.empty:
+            self.logger.debug(
+                "No user dividends found for %s to compare.", ticker
+            )
+            return ["No user dividends found to compare."]
+
+        if "div_type" not in user_dividends.columns:
+            user_dividends["div_type"] = DEFAULT_DIV_TYPE
+
+        if "div_pay_date" not in user_dividends.columns:
+            user_dividends["div_pay_date"] = user_dividends["date"]
+
+        if "value_per_share" not in user_dividends.columns:
+            user_dividends["value_per_share"] = DEFAULT_ZERO
+
+        # Process dividends per account first ---
+        all_enhanced_dividends = []
+        all_validation_messages = []
+
+        # Group by account AND date to handle each dividend event individually
+        grouped_by_account_and_date = user_dividends.groupby(
+            ["account", "date"]
+        )
+
+        for (account, date), group in grouped_by_account_and_date:
+            self.logger.debug(
+                "Validating dividend for %s in account %s on %s",
+                ticker,
+                account,
+                date.date(),
+            )
+            enhanced_group, validation_messages = (
+                self._validate_and_enhance_dividend_data(
+                    group,
+                    ticker,
+                    account,
+                    auto_calculate_div_per_share,
+                    default_div_type,
+                )
+            )
+            all_enhanced_dividends.append(enhanced_group)
+            all_validation_messages.extend(validation_messages)
+
+        if not all_enhanced_dividends:
+            return all_validation_messages
+
+        final_user_dividends = pd.concat(all_enhanced_dividends)
+        final_user_dividends["div_pay_date"] = pd.to_datetime(
+            final_user_dividends["div_pay_date"], utc=True
+        )
+
+        self.logger.debug(
+            "final_user_dividends:\n%s", final_user_dividends.head()
+        )
+
+        # Perform the comparison
+        comparison_messages = self._perform_dividend_comparison(
+            ticker, final_user_dividends, error_margin, warn_missing_dividends
+        )
+
+        self.logger.debug("Completed dividend comparison for %s", ticker)
+        self.logger.debug(comparison_messages)
+
+        return validation_messages + comparison_messages
+
+    def _validate_and_enhance_dividend_data(
+        self,
+        dividend_group: pd.DataFrame,
+        ticker: str,
+        account: str,
+        auto_calculate_div_per_share: bool = True,
+        default_div_type: str = DEFAULT_DIV_TYPE,
+    ) -> Tuple[pd.DataFrame, List[str]]:
+        """
+        Validate and enhance a specific group of user dividend transactions
+        (for a single account and date).
+        """
+        enhanced_group = dividend_group.copy()
+        info_messages = []
+
+        # Consolidate the group first (e.g., partial reinvest)
+        total_amount = enhanced_group["total_value"].sum()
+        div_date = enhanced_group["date"].iloc[0]
+        pay_date = (
+            enhanced_group["div_pay_date"].dropna().iloc[0]
+            if not enhanced_group["div_pay_date"].dropna().empty
+            else div_date
+        )
+
+        # Calculate div_per_share if needed
+        # Use the first non-zero div_per_share provided, otherwise calculate
+        provided_dps = enhanced_group[enhanced_group["value_per_share"] > 0][
+            "value_per_share"
+        ]
+        final_dps = 0.0
+
+        self.logger.debug(
+            "Validating dividend for %s in %s on %s and auto calculate %s",
+            ticker,
+            account,
+            pay_date.date(),
+            auto_calculate_div_per_share,
+        )
+
+        if not provided_dps.empty:
+            final_dps = provided_dps.iloc[0]
+        elif auto_calculate_div_per_share:
+            shares_held = self._get_shares_held_on_date(
+                ticker, account, pay_date
+            )
+            if shares_held > 0 and total_amount != 0:
+                final_dps = total_amount / shares_held
+                info_messages.append(
+                    f"Calculated div/share for {ticker} in {account} "
+                    f"on {pay_date.date()} "
+                    f"as ${np.abs(final_dps):.4f} (${np.abs(total_amount):.2f} / "
+                    f"{shares_held:.4f} shares)"
+                )
+            else:
+                info_messages.append(
+                    f"Warning: Could not calculate div/share for {ticker} in "
+                    f"{account} on {pay_date.date()} "
+                    f"(shares={shares_held}, amount=${total_amount})"
+                )
+
+            # Apply the final calculated/validated DPS to all rows in the group
+            enhanced_group["value_per_share"] = final_dps
+            enhanced_group["div_pay_date"] = pd.to_datetime(pay_date)
+
+        return enhanced_group, info_messages
+
     def calculate_performance(self) -> "PerformanceResults":
         """
-        Calculate comprehensive performance metrics for the portfolio and benchmark.
+        Calculate comprehensive performance metrics for the portfolio and
+        benchmark.
 
         Returns:
             PerformanceResults object containing all metrics and analysis
@@ -1174,27 +1874,65 @@ class BogleBenchAnalyzer:
         if self.portfolio_history is None:
             self.build_portfolio_history()
 
-        print("📊 Calculating performance metrics...")
+        self.logger.info("📊 Calculating performance metrics...")
+
+        self.portfolio_history["date"] = pd.to_datetime(
+            self.portfolio_history["date"], utc=True
+        ).dt.normalize()
 
         # Calculate portfolio performance metrics
         portfolio_metrics = self._calculate_metrics(
-            self.portfolio_history["portfolio_return"].dropna(), "Portfolio"
+            self.portfolio_history["portfolio_mod_dietz_return"].dropna(),
+            "Portfolio",
         )
 
         # Calculate benchmark performance metrics
         benchmark_metrics = {}
+        benchmark_returns = pd.Series(dtype=float)
         if self.benchmark_data is not None:
             # Align benchmark data with portfolio dates
-            benchmark_returns = self._align_benchmark_returns()
-            self.portfolio_history["Benchmark_Returns"] = benchmark_returns
+            aligned_benchmark_df = self._align_benchmark_returns()
+
+            self.logger.info(
+                "Aligned benchmark %s returns:\n%s",
+                len(benchmark_returns),
+                benchmark_returns.head(n=10) * TO_PERCENT,
+            )
+
+            self.portfolio_history = pd.merge(
+                self.portfolio_history,
+                aligned_benchmark_df,
+                on="date",
+                how="left",
+            )
+
+            benchmark_returns = self.portfolio_history[
+                "Benchmark_Returns"
+            ].copy()
             benchmark_metrics = self._calculate_metrics(
                 benchmark_returns[1:], "Benchmark"
             )
 
         # Calculate relative performance metrics
+        portfolio_returns = self.portfolio_history[
+            "portfolio_mod_dietz_return"
+        ].copy()
+
+        portfolio_returns.index = pd.to_datetime(
+            self.portfolio_history["date"]
+        )
+        if benchmark_returns.any():
+            benchmark_returns.index = pd.to_datetime(
+                self.portfolio_history["date"]
+            )
+
         relative_metrics = self._calculate_relative_metrics(
-            self.portfolio_history["portfolio_return"].dropna()[1:],
-            benchmark_returns[1:] if self.benchmark_data is not None else None,
+            portfolio_returns.dropna()[1:],
+            (
+                benchmark_returns.dropna()[1:]
+                if benchmark_returns.any()
+                else None
+            ),
         )
 
         # Create results object
@@ -1208,46 +1946,47 @@ class BogleBenchAnalyzer:
 
         self.performance_results = results
 
-        print("✅ Performance analysis complete!")
+        self.logger.info("✅ Performance analysis complete!")
         return results
 
     def _align_benchmark_returns(self) -> pd.Series:
         """Align benchmark returns with portfolio dates."""
-        portfolio_dates = self.portfolio_history["date"]
+        portfolio_dates = pd.to_datetime(
+            self.portfolio_history["date"], utc=True
+        ).dt.normalize()
 
         # Convert benchmark data to returns
         benchmark_df = self.benchmark_data.copy()
+        benchmark_df["date"] = pd.to_datetime(
+            benchmark_df["date"], utc=True
+        ).dt.normalize()
 
         # Ensure ascending date order
         benchmark_df = benchmark_df.sort_values("date").reset_index(drop=True)
 
         # Calculate period on period returns
         # Use adjusted close prices for benchmark returns
-        benchmark_df["return"] = benchmark_df["adj_close"].pct_change()
+        benchmark_df["Benchmark_Returns"] = benchmark_df[
+            "adj_close"
+        ].pct_change()
 
-        # Align dates
-        aligned_returns = []
-        for date in portfolio_dates:
-            benchmark_data_for_date = benchmark_df[
-                benchmark_df["date"].dt.date == date  # date.date()
-            ]
+        # Reindex benchmark returns to match portfolio dates, forward-filling for missing days
+        benchmark_df.set_index("date", inplace=True)
+        aligned_returns = benchmark_df["Benchmark_Returns"].reindex(
+            portfolio_dates, method="ffill"
+        )
 
-            if not benchmark_data_for_date.empty:
-                aligned_returns.append(
-                    benchmark_data_for_date["return"].iloc[0]
-                )
-            else:
-                aligned_returns.append(np.nan)
+        # The first return is NaN after reindexing, fill with 0
+        aligned_returns.iloc[0] = DEFAULT_RETURN
 
-        # Bechmark returns are based on previous to current close, so the first
-        # return is by definition zero, as there is no previous close
-        aligned_returns[0] = np.float64(0.0)
+        aligned_df = aligned_returns.reset_index()
+        aligned_df.rename(columns={"index": "date"}, inplace=True)
 
-        return pd.Series(aligned_returns).dropna()
+        return aligned_df
 
     def _calculate_metrics(self, returns: pd.Series, name: str) -> Dict:
         """Calculate performance metrics for a return series."""
-        if returns.empty:
+        if returns.empty or returns.isna().all():
             return {}
 
         # Basic statistics
@@ -1275,7 +2014,7 @@ class BogleBenchAnalyzer:
         )
         annualized_return = cagr(1, 1 + total_return, year_fraction)
 
-        self.logger.info(
+        self.logger.debug(
             "%s: Periods: %d, Years: %.2f",
             name,
             total_periods,
@@ -1289,7 +2028,7 @@ class BogleBenchAnalyzer:
             returns.index[-1] if len(returns) > 0 else "N/A",
         )
 
-        self.logger.info(
+        self.logger.debug(
             "%s: Total Return: %.2f%%, Annualized Return: %.2f%%",
             name,
             total_return * TO_PERCENT,
@@ -1301,7 +2040,7 @@ class BogleBenchAnalyzer:
             annual_trading_days
         )  # Annualized volatility
 
-        self.logger.info(
+        self.logger.debug(
             "%s: Volatility: %.2f%% (period) %.2f%% (annualized)",
             name,
             volatility * TO_PERCENT,
@@ -1339,7 +2078,7 @@ class BogleBenchAnalyzer:
         drawdown = (cumulative_returns - running_max) / running_max
         max_drawdown = drawdown.min()
 
-        # self.logger.info(
+        # self.logger.debug(
         #     "cumulative returns:\n%s\nrunning max:\n%s\n"
         #     + "drawdown:\n%s\nmax drawdown:%.6f%%",
         #     cumulative_returns,
@@ -1372,21 +2111,40 @@ class BogleBenchAnalyzer:
     ) -> Dict:
         """Calculate relative performance metrics vs benchmark."""
         if benchmark_returns is None or portfolio_returns.empty:
+            self.logger.warning(
+                "⚠️  No benchmark data available for relative metrics."
+            )
             return {}
 
-        annual_trading_days = int(
-            self.config.get(
-                "settings.annual_trading_days", DEFAULT_TRADING_DAYS
+        annual_trading_days = self.config.get(
+            "settings.annual_trading_days", DEFAULT_TRADING_DAYS
+        )
+        if isinstance(annual_trading_days, Dict):
+            annual_trading_days = annual_trading_days.get(
+                "value", DEFAULT_TRADING_DAYS
             )
+        if annual_trading_days is None:
+            annual_trading_days = DEFAULT_TRADING_DAYS
+        annual_trading_days = int(annual_trading_days)
+
+        # Align the series by index. This is crucial for non-continuous date
+        # ranges.
+        self.logger.debug("Aligning portfolio and benchmark returns...")
+        self.logger.debug("Portfolio returns:\n%s", portfolio_returns.head(10))
+        self.logger.debug("Benchmark returns:\n%s", benchmark_returns.head(10))
+
+        aligned_portfolio, aligned_benchmark = portfolio_returns.align(
+            benchmark_returns, join="inner"
         )
 
-        # Align the series
-        min_length = min(len(portfolio_returns), len(benchmark_returns))
-        portfolio_returns = portfolio_returns.iloc[-min_length:]
-        benchmark_returns = benchmark_returns.iloc[-min_length:]
+        if aligned_portfolio.empty:
+            self.logger.warning(
+                "⚠️  No overlapping dates between portfolio and benchmark returns."
+            )
+            return {}
 
         # Calculate excess returns (alpha)
-        excess_returns = portfolio_returns - benchmark_returns
+        excess_returns = aligned_portfolio - aligned_benchmark
 
         # Tracking error (volatility of excess returns)
         tracking_error = excess_returns.std() * np.sqrt(annual_trading_days)
@@ -1399,17 +2157,24 @@ class BogleBenchAnalyzer:
         )
 
         # Beta calculation
-        covariance = np.cov(portfolio_returns, benchmark_returns, ddof=1)[0, 1]
-        benchmark_variance = np.var(benchmark_returns, ddof=1)
+        covariance = np.cov(aligned_portfolio, aligned_benchmark, ddof=1)[0, 1]
+        benchmark_variance = np.var(aligned_benchmark, ddof=1)
         beta = covariance / benchmark_variance if benchmark_variance > 0 else 0
 
         # Jensen's Alpha (risk-adjusted excess return)
         risk_free_rate = self.config.get(
             "settings.risk_free_rate", DEFAULT_RISK_FREE_RATE
         )
+        if isinstance(risk_free_rate, Dict):
+            risk_free_rate = risk_free_rate.get(
+                "value", DEFAULT_RISK_FREE_RATE
+            )
+        if risk_free_rate is None:
+            risk_free_rate = DEFAULT_RISK_FREE_RATE
+
         daily_risk_free_rate = cagr(1, 1 + risk_free_rate, annual_trading_days)
-        portfolio_excess = portfolio_returns.mean() - daily_risk_free_rate
-        benchmark_excess = benchmark_returns.mean() - daily_risk_free_rate
+        portfolio_excess = aligned_portfolio.mean() - daily_risk_free_rate
+        benchmark_excess = aligned_benchmark.mean() - daily_risk_free_rate
         jensens_alpha = portfolio_excess - (beta * benchmark_excess)
         jensens_alpha_annualized = jensens_alpha * annual_trading_days
 
@@ -1418,7 +2183,7 @@ class BogleBenchAnalyzer:
             "information_ratio": information_ratio,
             "beta": beta,
             "jensens_alpha": jensens_alpha_annualized,
-            "correlation": np.corrcoef(portfolio_returns, benchmark_returns)[
+            "correlation": np.corrcoef(aligned_portfolio, aligned_benchmark)[
                 0, 1
             ],
         }
@@ -1441,6 +2206,9 @@ class PerformanceResults:
         self.portfolio_history = portfolio_history
         self.config = config
 
+        setup_logging()  # Initialize after workspace context is set
+        self.logger = get_logger("core.portfolio")
+
     def summary(self) -> str:
         """Generate a summary report of the performance analysis."""
         lines = []
@@ -1454,7 +2222,9 @@ class PerformanceResults:
             p = self.portfolio_metrics
             lines.append("\n📊 PORTFOLIO PERFORMANCE")
             lines.append(f"  Total Return:        {p['total_return']:.2%}")
-            lines.append(f"  Annualized Return:   {p['annualized_return']:.2%}")
+            lines.append(
+                f"  Annualized Return:   {p['annualized_return']:.2%}"
+            )
             lines.append(f"  Volatility:          {p['volatility']:.2%}")
             lines.append(f"  Sharpe Ratio:        {p['sharpe_ratio']:.3f}")
             lines.append(f"  Max Drawdown:        {p['max_drawdown']:.2%}")
@@ -1468,7 +2238,9 @@ class PerformanceResults:
             )
             lines.append(f"\n📈 {benchmark_name} PERFORMANCE")
             lines.append(f"  Total Return:        {b['total_return']:.2%}")
-            lines.append(f"  Annualized Return:   {b['annualized_return']:.2%}")
+            lines.append(
+                f"  Annualized Return:   {b['annualized_return']:.2%}"
+            )
             lines.append(f"  Volatility:          {b['volatility']:.2%}")
             lines.append(f"  Sharpe Ratio:        {b['sharpe_ratio']:.3f}")
             lines.append(f"  Max Drawdown:        {b['max_drawdown']:.2%}")
@@ -1477,8 +2249,10 @@ class PerformanceResults:
         if self.relative_metrics:
             r = self.relative_metrics
             lines.append("\n🎯 RELATIVE PERFORMANCE")
-            lines.append(f"  Information Ratio:   {r['information_ratio']:.3f}")
             lines.append(f"  Tracking Error:      {r['tracking_error']:.2%}")
+            lines.append(
+                f"  Information Ratio:   {r['information_ratio']:.3f}"
+            )
             lines.append(f"  Beta:                {r['beta']:.3f}")
             lines.append(f"  Jensen's Alpha:      {r['jensens_alpha']:.2%}")
             lines.append(f"  Correlation:         {r['correlation']:.3f}")
@@ -1495,7 +2269,7 @@ class PerformanceResults:
 
     def get_portfolio_returns(self) -> pd.Series:
         """Get portfolio return series."""
-        return self.portfolio_history["portfolio_return"].dropna()
+        return self.portfolio_history["portfolio_mod_dietz_return"].dropna()
 
     def get_cumulative_returns(self) -> pd.Series:
         """Get cumulative portfolio returns."""
@@ -1538,13 +2312,15 @@ class PerformanceResults:
 
                 # Calculate account-specific return
                 account_returns = self.portfolio_history[
-                    f"{account}_return"
+                    f"{account}_mod_dietz_return"
                 ].dropna()
                 if len(account_returns) > 0:
                     total_periods = len(account_returns)
                     year_fraction = total_periods / annual_trading_days
                     total_return = (1 + account_returns).prod() - 1
-                    annualized_return = cagr(1, 1 + total_return, year_fraction)
+                    annualized_return = cagr(
+                        1, 1 + total_return, year_fraction
+                    )
                 else:
                     total_return = DEFAULT_RETURN
                     annualized_return = DEFAULT_RETURN
@@ -1611,7 +2387,7 @@ class PerformanceResults:
                         {
                             "account": account,
                             "ticker": ticker,
-                            "shares": shares,
+                            "quantity": shares,
                             "price": price,
                             "value": value,
                             "weight": weight,
@@ -1622,13 +2398,13 @@ class PerformanceResults:
         output_dir = self.config.get_output_path()
         output_path = self._export_history_metrics_to_csv(output_dir)
 
-        print(f"📁 Results exported to: {output_path}")
+        self.logger.info(f"📁 Results exported to: {output_path}")
         return pd.DataFrame(holdings_data)
 
     def export_to_csv(self, output_dir: Optional[str] = None) -> str:
         """Export results to CSV files."""
         output_path = self._export_history_metrics_to_csv(output_dir)
-        print(f"Results exported to: {output_path}")
+        self.logger.info(f"📁 Results exported to: {output_path}")
         return str(output_path)
 
     def _export_history_metrics_to_csv(
@@ -1648,9 +2424,13 @@ class PerformanceResults:
         # Export performance metrics
         metrics_data = []
         if self.portfolio_metrics:
-            metrics_data.append({**self.portfolio_metrics, "type": "Portfolio"})
+            metrics_data.append(
+                {**self.portfolio_metrics, "type": "Portfolio"}
+            )
         if self.benchmark_metrics:
-            metrics_data.append({**self.benchmark_metrics, "type": "Benchmark"})
+            metrics_data.append(
+                {**self.benchmark_metrics, "type": "Benchmark"}
+            )
 
         if metrics_data:
             metrics_file = output_path / "performance_metrics.csv"

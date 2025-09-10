@@ -83,7 +83,7 @@ include = [
 
 # Development tools configuration
 [tool.black]
-line-length = 80
+line-length = 79
 target-version = ['py313']
 
 [tool.pytest.ini_options]
@@ -94,3 +94,6 @@ addopts = "-v --cov=boglebench"
 [tool.isort]
 profile = "black"
 multi_line_output = 3
+
+[tool.ruff]
+line-length = 79

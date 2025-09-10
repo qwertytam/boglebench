@@ -146,7 +146,9 @@ class TestMultiTransactionPerformance:
             expected_quantity_msft * expected_close_price_msft
         )
         assert (
-            abs(june_12_data.iloc[0]["total_value"] - expected_close_value_msft)
+            abs(
+                june_12_data.iloc[0]["total_value"] - expected_close_value_msft
+            )
             < 1
         )
 
@@ -203,7 +205,7 @@ class TestMultiTransactionPerformance:
         june_12_returns = portfolio_history[
             portfolio_history["date"].dt.date
             == pd.Timestamp("2023-06-12").date()
-        ]["portfolio_return"]
+        ]["portfolio_mod_dietz_return"]
 
         if not june_12_returns.empty:
             # Should see portfolio composition change on sale date
@@ -285,19 +287,19 @@ class TestMultiTransactionPerformance:
             transactions["transaction_type"] == "SELL"
         ]
         assert len(sell_transactions) == 2
-        assert all(sell_transactions["shares"] < 0)
+        assert all(sell_transactions["quantity"] < 0)
 
         # Check that BUY transactions have positive shares
         buy_transactions = transactions[
             transactions["transaction_type"] == "BUY"
         ]
         assert len(buy_transactions) == 2
-        assert all(buy_transactions["shares"] > 0)
+        assert all(buy_transactions["quantity"] > 0)
 
         # Verify total values are calculated correctly
         assert "total_value" in transactions.columns
         for _, row in transactions.iterrows():
-            expected_total = row["shares"] * row["price_per_share"]
+            expected_total = row["quantity"] * row["value_per_share"]
             assert abs(row["total_value"] - expected_total) < 0.01
 
     def test_complex_performance_summary(self, temp_config, test_data_dir):
@@ -383,7 +385,7 @@ class TestMultiTransactionPerformance:
         portfolio_history = results.portfolio_history
         assert len(portfolio_history) == 10  # 10 trading days
         assert "total_value" in portfolio_history.columns
-        assert "portfolio_return" in portfolio_history.columns
+        assert "portfolio_mod_dietz_return" in portfolio_history.columns
 
         # Verify returns
         accuracy = 0.001 / 100  # 0.001% accuracy
@@ -396,7 +398,9 @@ class TestMultiTransactionPerformance:
         )
         portfolio_metrics = results.portfolio_metrics
         assert (
-            abs(portfolio_metrics["total_return"] - expected_asset_total_return)
+            abs(
+                portfolio_metrics["total_return"] - expected_asset_total_return
+            )
             < accuracy
         )
 
@@ -460,13 +464,11 @@ class TestMultiTransactionPerformance:
         asset_draw_down = cum_asset_wealth / cum_asset_wealth.cummax() - 1
         expected_max_asset_drawdown = asset_draw_down.min().values[0]
         assert (
-            abs(portfolio_metrics["max_drawdown"] - expected_max_asset_drawdown)
+            abs(
+                portfolio_metrics["max_drawdown"] - expected_max_asset_drawdown
+            )
             < accuracy
         )
-
-        # print("Portfolio Metrics:\n%s\n", results.portfolio_metrics)
-        # print("Benchmark Metrics:\n%s\n", results.benchmark_metrics)
-        # print("Relative Metrics:\n%s\n", results.relative_metrics)
 
         # Verify comprehensive summary content
         assert "BOGLEBENCH PERFORMANCE ANALYSIS" in summary

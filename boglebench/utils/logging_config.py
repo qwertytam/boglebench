@@ -35,7 +35,6 @@ class BogleBenchLogger:
     def __init__(self):
         """Initialize logger if not already done."""
         if not self._initialized:
-            print("INFO: BogleBenchLogger Initializing logging...")
             self.setup_logging()
             BogleBenchLogger._initialized = True
 
@@ -50,25 +49,16 @@ class BogleBenchLogger:
         if config_path is None:
             config_path = self._get_default_config_path()
 
-        # print(f"DEBUG: Using logging config: {config_path}")
-
         config_file = Path(config_path)
 
         if config_file.exists():
             try:
                 with open(config_file, "r", encoding="utf-8") as f:
-                    # print(
-                    #     f"DEBUG: Trying to load logging config from "
-                    #     f"{config_path}"
-                    # )
                     config = yaml.safe_load(f)
 
-                # print("DEBUG: Loaded yaml; setup_log Updating config paths")
                 config = self._update_config_paths(config)
-                # print("DEBUG: Applying logging configuration")
                 try:
                     logging.config.dictConfig(config)
-                    # print(f"DEBUG: Loaded logging config from {config_path}")
                 except Exception as config_error:
                     print(
                         f"!! ERROR !!: Specific config error: {config_error}\n"
@@ -86,10 +76,7 @@ class BogleBenchLogger:
                 )
         else:
             # Use default config if file doesn't exist
-            print(
-                f"WARNING: setup_logging Logging config file not found "
-                f"at {config_path}"
-            )
+            print(f"Logging using config file: {config_path}")
             self._setup_default_logging()
 
     def _get_default_config_path(self) -> str:
@@ -124,7 +111,6 @@ class BogleBenchLogger:
                 with open(template_path, "r", encoding="utf-8") as f:
                     config = yaml.safe_load(f)
 
-                # print("DEBUG: _setup_default_logging Updating config paths")
                 config = self._update_config_paths(config)
                 logging.config.dictConfig(config)
                 return
@@ -134,7 +120,7 @@ class BogleBenchLogger:
                 )
 
         # Final fallback if template doesn't exist
-        print("INFO: Setting up fallback logging")
+        print("Setting up fallback logging")
         self._setup_fallback_logging()
 
     def _get_template_path(self) -> Path:
@@ -147,23 +133,19 @@ class BogleBenchLogger:
         """Update relative paths in config to absolute paths."""
         from .workspace import WorkspaceContext
 
-        # print("DEBUG: _update_config_paths Updating config paths")
         workspace = WorkspaceContext.get_workspace()
         if workspace:
             log_dir = workspace / "logs"
-            # print(f"DEBUG: Using workspace log directory: {log_dir}")
         else:
             try:
                 from .config import ConfigManager
 
                 config_manager = ConfigManager()
                 log_dir = config_manager.get_data_path("logs")
-                # print(f"DEBUG: Using config manager log directory: {log_dir}")
             except Exception:
                 import tempfile
 
                 log_dir = Path(tempfile.gettempdir())
-                # print(f"DEBUG: Using temp log directory: {log_dir}")
 
         log_dir.mkdir(exist_ok=True)
 
@@ -175,10 +157,6 @@ class BogleBenchLogger:
                 if not Path(original_filename).is_absolute():
                     new_path = str(log_dir / original_filename)
                     handler_config["filename"] = new_path
-                    # print(
-                    #     f"DEBUG: Updated {handler_name} log path: "
-                    #     f"{original_filename} -> {new_path}"
-                    # )
 
         return config
 
@@ -246,7 +224,7 @@ class BogleBenchLogger:
             import shutil
 
             shutil.copy2(template_path, output_file)
-            print(f"INFO: Created logging configuration: {output_file}")
+            print(f"Created logging configuration: {output_file}")
         else:
             print(
                 f"WARNING: Template file not found at {template_path}\n"
@@ -271,7 +249,9 @@ class BogleBenchLogger:
             }
 
             with open(output_file, "w", encoding="utf-8") as f:
-                yaml.dump(minimal_config, f, default_flow_style=False, indent=2)
+                yaml.dump(
+                    minimal_config, f, default_flow_style=False, indent=2
+                )
 
     def _create_rotating_handler(
         self, log_file_path: str, level: str = "DEBUG"
@@ -357,7 +337,7 @@ class BogleBenchLogger:
                 try:
                     if os.path.getmtime(log_file) < cutoff_time:
                         os.remove(log_file)
-                        print(f"INFO: Cleaned up old log file: {log_file}")
+                        print(f"Cleaned up old log file: {log_file}")
                 except OSError:
                     pass  # File might be in use or already deleted
 

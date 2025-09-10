@@ -42,17 +42,14 @@ def init_workspace(path: str, force: bool):
     for dir_name in directories:
         dir_path = workspace_path / dir_name
         dir_path.mkdir(parents=True, exist_ok=True)
-        # print(f"DEBUG: Created directory: {dir_path}")
 
-    print(f"INFO: Created workspace directories under: {workspace_path}")
+    click.echo(f"Created workspace directories under: {workspace_path}")
 
     # Copy template files
     _copy_templates(workspace_path, force)
 
     # Initialize logging (will use correct workspace)
-    # print("DEBUG: init_workspace Setting up logging...")
     setup_logging()
-    # logger = get_logger("cli.init")
 
     # Create configuration file
     config_manager = ConfigManager()
@@ -95,7 +92,7 @@ def _copy_templates(workspace_path: Path, force: bool):
         dest_file = workspace_path / "output" / "analysis_template.ipynb"
         if not dest_file.exists() or force:
             shutil.copy2(notebook_template, dest_file)
-            click.echo(f"INFO: Copied template: {dest_file}")
+            click.echo(f"Copied template: {dest_file}")
 
     # Copy logging config to config directory
     logging_template = templates_source / "logging_config_template.yaml"
@@ -103,15 +100,13 @@ def _copy_templates(workspace_path: Path, force: bool):
         dest_file = workspace_path / "config" / "logging.yaml"
         if not dest_file.exists() or force:
             shutil.copy2(logging_template, dest_file)
-            click.echo(f"INFO: Created logging configuration: {dest_file}")
+            click.echo(f"Created logging configuration: {dest_file}")
 
 
 def _create_sample_transactions(file_path: Path, force: bool):
     """Create a sample transactions CSV file from template."""
     if file_path.exists() and not force:
-        click.echo(
-            f"INFO: Sample transactions file already exists: {file_path}"
-        )
+        click.echo(f"Sample transactions file already exists: {file_path}")
         return
 
     # Get template file path
@@ -123,13 +118,13 @@ def _create_sample_transactions(file_path: Path, force: bool):
         import shutil
 
         shutil.copy2(sample_template, file_path)
-        click.echo(f"INFO: Created sample transactions: {file_path}")
+        click.echo(f"Created sample transactions: {file_path}")
     else:
         # Fallback if template not found
         click.echo(f"WARNING: Sample template not found at {sample_template}")
-        click.echo("INFO: Creating minimal sample file")
+        click.echo("Creating minimal sample file")
 
-        minimal_sample = """date,ticker,transaction_type,shares,price_per_share,account
+        minimal_sample = """date,ticker,transaction_type,quantity,value_per_share,account
 2023-01-15,AAPL,BUY,100,150.50,Default
 2023-02-15,SPY,BUY,50,380.00,Default
 """
@@ -218,9 +213,12 @@ def run_analysis(
 
         logger.info(f"✅ Analysis complete! Results saved to {output_dir}")
 
-    except Exception as e:
-        logger.error(f"❌ Error running analysis: {e}")
+    except ValueError as e:
+        logger.error("❌ Error running analysis: %s", e)
         raise click.Abort()
+    # except AttributeError as e:
+    #     logger.error("❌ Error running analysis: %s", e)
+    #     raise click.Abort()
 
 
 @click.command()

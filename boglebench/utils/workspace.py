@@ -39,28 +39,21 @@ class WorkspaceContext:
         """Discover workspace by looking for config/config.yaml."""
         current = Path(start_path).expanduser().resolve()
 
-        # print(f"DEBUG: Starting workspace discovery from: {current}")
-
         # If start_path is a file, start from its parent
         if current.is_file():
             current = current.parent
-            # print(f"DEBUG: Starting from parent directory: {current}")
 
         # Check current directory and parents
         for _ in range(10):  # Reasonable limit
             config_file = current / "config" / "config.yaml"
-            # print(f"DEBUG: Checking for config at: {config_file}")
 
             if config_file.exists():
-                # print(f"DEBUG: Found workspace at: {current}")
                 cls.set_workspace(current)
                 return current
 
             parent = current.parent
             if parent == current:  # Reached filesystem root
-                # print("DEBUG: Reached filesystem root")
                 break
             current = parent
 
-        # print("DEBUG: No workspace found")
         return None

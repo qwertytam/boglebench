@@ -9,11 +9,11 @@ import json
 from datetime import datetime as dt
 from datetime import timedelta, tzinfo
 from typing import Any, Iterable, Literal, Optional, Union
+from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
 import numpy as np
 import pandas as pd
 from pandas import Timedelta
-from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
 from ..utils.logging_config import get_logger
 
@@ -104,7 +104,7 @@ def to_tz_mixed(
     ambiguous: Any = "NaT",  # DST fall-back duplicates
     errors: str = "coerce",  # default for pd.to_datetime
     **to_datetime_kwargs: Any,  # passed through to pd.to_datetime
-):
+) -> Union[pd.Timestamp, pd.Series, None]:
     """
     Convert scalars or sequences of date-like values to tz-aware pandas
     Timestamps using the modern ZoneInfo backend.
@@ -128,7 +128,9 @@ def to_tz_mixed(
             return None
 
         ts = (
-            v if isinstance(v, pd.Timestamp) else pd.to_datetime(v, **dt_kwargs)
+            v
+            if isinstance(v, pd.Timestamp)
+            else pd.to_datetime(v, **dt_kwargs)
         )
         if pd.isna(ts):
             return None
@@ -153,13 +155,67 @@ def to_tz_mixed(
     raise TypeError(f"Unsupported input type for to_tz_mixed: {type(x)}")
 
 
+def ensure_date_only(
+    x: Union[DateLike, SeqLike],
+    errors: Literal["coerce"] = "coerce",
+    **to_pd_datetime_kwargs: Any,
+) -> Union[pd.Timestamp, pd.Series, None]:
+    """
+    Ensure that the input is a date-like value (pd.Timestamp or str) and
+    convert it to a date-only format (YYYY-MM-DD).
+
+    Parameters
+    ----------
+    x : Union[DateLike, SeqLike]
+        The input value(s) to convert.
+    errors : Literal["coerce"], optional
+        How to handle errors during conversion. Defaults to "coerce".
+    **to_datetime_kwargs : Any
+        Additional arguments passed to pd.to_datetime.
+
+    Returns
+    -------
+    Union[pd.Timestamp, pd.Series, None]
+        The converted date-only value(s), or None if conversion fails.
+    """
+
+    # Helper function to apply date-only conversion
+    def _to_date_only(v: DateLike) -> Optional[pd.Timestamp]:
+        if v is None:
+            return None
+        ts = pd.to_datetime(v, errors=errors, **to_pd_datetime_kwargs)
+        if pd.isna(ts):
+            return None
+        return ts.normalize()
+
+    if isinstance(x, pd.Series):
+        logger.debug("ensure_date_only: processing pd.Series input")
+        return x.apply(_to_date_only)
+
+    if isinstance(x, (list, tuple, pd.Index)):
+        logger.debug("ensure_date_only: processing list/tuple/pd.Index input")
+        return pd.Series(list(x)).apply(_to_date_only)
+
+    # Only pass scalars (not sequences) to _to_date_only
+    if isinstance(x, (pd.Timestamp, dt, str)) or x is None:
+        logger.debug("ensure_date_only: processing scalar input")
+        return _to_date_only(x)
+
+    logger.error("ensure_date_only: unsupported input type %s", type(x))
+    raise TypeError(f"Unsupported input type for ensure_date_only: {type(x)}")
+
+
 def cagr(
     start_value: float,
     end_value: float,
     periods: float,
-) -> Optional[float]:
+) -> float:
     """
     Calculate the Compound Annual Growth Rate (CAGR).
+
+    Uses the formula to handle negative start values:
+        numerator = end_value - start_value + abs(start_value)
+        CAGR = (numerator / abs(start_value))^(1 / periods) - 1
 
     Parameters
     ----------
@@ -172,22 +228,20 @@ def cagr(
 
     Returns
     -------
-    Optional[float]
-        The CAGR as a decimal (e.g., 0.05 for 5%), or None if inputs are
-        invalid.
-    """
-    if periods <= 0 or start_value <= 0:
-        logger.warning(
-            "CAGR calculation requires positive start_value and periods > 0"
-        )
-        return None
-    try:
-        cagr = (end_value / start_value) ** (1 / periods) - 1
-        return cagr
+    float
+        The CAGR as a decimal (e.g., 0.05 for 5%)
 
-    except ValueError as e:
-        logger.error("Error calculating CAGR: %s", e)
-        return None
+    Raises
+    ------
+    ValueError
+        If `periods` <= 0.
+    """
+    if periods <= 0:
+        raise ValueError("CAGR calculation requires periods > 0")
+
+    numerator = end_value - start_value + abs(start_value)
+    result = (numerator / abs(start_value)) ** (1 / periods) - 1
+    return result
 
 
 class NpEncoder(json.JSONEncoder):
@@ -203,3 +257,34 @@ class NpEncoder(json.JSONEncoder):
         elif isinstance(o, (np.ndarray,)):
             return o.tolist()
         return super(NpEncoder, self).default(o)
+
+
+def aggregate_dividends(group):
+    """
+    A helper function to correctly aggregate dividend transactions for a single pay date.
+    It sums the total value, gets the dividend-per-share value only from
+    'DIVIDEND' type transactions, and combines the dividend types.
+    """
+    # Filter for the cash dividend portion to get the correct per-share value
+    dividend_rows = group[group["transaction_type"] == "DIVIDEND"]
+
+    if not dividend_rows.empty:
+        # If dividend exists, use its per-share value.
+        # .mean() handles cases where it might appear multiple times, though it shouldn't.
+        value_per_share = dividend_rows["value_per_share"].mean()
+    else:
+        # If only reinvestment, there is no 'dividend per share' to report.
+        # NaN (Not a Number) is the correct representation for a missing value.
+        value_per_share = float("nan")
+
+    # Combine all transaction types for that day (e.g., "DIVIDEND,DIVIDEND_REINVEST")
+    div_types = ",".join(sorted(set(group["div_type"].dropna())))
+
+    # Return a pandas Series. Pandas will assemble these into the new DataFrame.
+    return pd.Series(
+        {
+            "total_value": group["total_value"].sum(),
+            "value_per_share": value_per_share,
+            "div_type": div_types,
+        }
+    )

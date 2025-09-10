@@ -164,8 +164,8 @@ def create_sample_data():
                 "date": ["2023-01-15", "2023-02-15", "2023-03-15"],
                 "ticker": ["AAPL", "SPY", "MSFT"],
                 "transaction_type": ["BUY", "BUY", "BUY"],
-                "shares": [100, 50, 25],
-                "price_per_share": [150.50, 380.00, 240.25],
+                "quantity": [100, 50, 25],
+                "value_per_share": [150.50, 380.00, 240.25],
                 "account": ["Test", "Test", "Test"],
             }
         )

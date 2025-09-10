@@ -33,7 +33,7 @@ def timed_operation(
     finally:
         end_time = time.perf_counter()
         elapsed = end_time - start_time
-        logger.info(f"{operation_name} completed in {elapsed:.4f} seconds")
+        logger.debug(f"{operation_name} completed in {elapsed:.4f} seconds")
 
 
 def time_function(logger: Optional[logging.Logger] = None):
