@@ -134,11 +134,14 @@ class BogleBenchAnalyzer:
             df["ticker"].nunique(),
         )
         self.logger.info(
-            "📅 Date range: %s to %s", df["date"].min(), df["date"].max()
+            "📅 Date range: %s to %s",
+            df["date"].min().date(),
+            df["date"].max().date(),
         )
         self.logger.info("🏦 Accounts: %s", ", ".join(df["account"].unique()))
         total_invested = df[df["total_value"] > 0]["total_value"].sum()
-        self.logger.info("💰 Total invested: $%.2f", total_invested)
+        msg = f"💰 Total invested: ${total_invested:,.2f}"
+        self.logger.info(msg)
 
         return df
 
@@ -2101,7 +2104,7 @@ class BogleBenchAnalyzer:
             # Align benchmark data with portfolio dates
             aligned_benchmark_df = self._align_benchmark_returns()
 
-            self.logger.info(
+            self.logger.debug(
                 "Aligned benchmark %s returns:\n%s",
                 len(benchmark_returns),
                 benchmark_returns.head(n=10) * TO_PERCENT,
