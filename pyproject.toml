@@ -41,6 +41,7 @@ dependencies = [
     "pyarrow>=21.0.0,<22.0.0",
     "fastparquet>=2024.11.0,<2025.0.0",
     "pandas-market-calendars>=5.1.1,<6.0.0",
+    "numpy-financial (>=1.0.0,<2.0.0)",
 ]
 
 requires-python = ">= 3.13"
