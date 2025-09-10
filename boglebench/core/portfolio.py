@@ -85,7 +85,7 @@ class BogleBenchAnalyzer:
         self.transactions = pd.DataFrame()
         self.market_data: Dict[str, pd.DataFrame] = {}
         self.portfolio_history = None
-        self.benchmark_data = None
+        self.benchmark_data = pd.DataFrame()
         self.performance_results = None
 
         # Suppress warnings for cleaner output
@@ -518,6 +518,11 @@ class BogleBenchAnalyzer:
         # Get list of all tickers (portfolio + benchmark)
         portfolio_tickers = self.transactions["ticker"].unique().tolist()
         benchmark_ticker = self.config.get("settings.benchmark_ticker", "SPY")
+        if isinstance(benchmark_ticker, dict):
+            benchmark_ticker = benchmark_ticker.get("value", "SPY")
+        if benchmark_ticker is None or benchmark_ticker.strip() == "":
+            benchmark_ticker = "SPY"
+
         all_tickers = portfolio_tickers + [benchmark_ticker]
         all_tickers = list(set(all_tickers))  # Remove duplicates
 
