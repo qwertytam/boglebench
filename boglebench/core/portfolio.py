@@ -474,35 +474,44 @@ class BogleBenchAnalyzer:
             start_date,
         )
 
-        default_end_date = None
+        last_market_close_date = None
         if self._is_market_currently_open():
             self.logger.info("Market is currently open")
-            default_end_date = self._get_last_closed_market_day()
+            last_market_close_date = self._get_last_closed_market_day()
         else:
             self.logger.info("Market is currently closed")
-            default_end_date = to_tz_mixed(datetime.now())
 
-            if default_end_date is None:
-                raise ValueError("default_end_date is None after to_tz_mixed")
+            # Ensure last_market_close_date is a scalar Timestamp,
+            # not a Series or None
+            dt_now = to_tz_mixed(datetime.now())
+            if isinstance(dt_now, pd.Series):
+                if not dt_now.empty:
+                    last_market_close_date = pd.to_datetime(dt_now.iloc[0])
+                else:
+                    raise ValueError("dt_now Series is empty")
+            else:
+                last_market_close_date = dt_now
 
-        end_date = pd.Timestamp(
-            self.config.get("analysis.default_end_date", None)
+        # Ensure the config value is not a dict before passing to pd.Timestamp
+        config_end_date = self.config.get(
+            "analysis.default_end_date", last_market_close_date
         )
-        end_date = to_tz_mixed(end_date)
+        if isinstance(config_end_date, dict):
+            config_end_date = config_end_date.get(
+                "value", last_market_close_date
+            )
+        if config_end_date is not None:
+            end_date = pd.Timestamp(config_end_date)
+        elif last_market_close_date is not None:
+            end_date = pd.Timestamp(last_market_close_date)
+        else:
+            raise ValueError("No valid end date provided or found.")
+
         if end_date is None:
             self.logger.warning(
                 "⚠️  No valid end date provided or found. Defaulting to %s",
-                default_end_date.strftime("%Y-%m-%d"),
+                str(last_market_close_date),
             )
-
-        # Ensure default_end_date is a scalar Timestamp, not a Series
-        if isinstance(default_end_date, pd.Series):
-            if not default_end_date.empty:
-                default_end_date = default_end_date.iloc[0]
-            else:
-                raise ValueError("default_end_date Series is empty")
-        end_date = ensure_timestamp(end_date, default_end_date)
-        end_date = min(end_date, default_end_date)
 
         # Get list of all tickers (portfolio + benchmark)
         portfolio_tickers = self.transactions["ticker"].unique().tolist()
