@@ -916,6 +916,39 @@ class BogleBenchAnalyzer:
 
         return pd.Series(returns)
 
+    def _calculate_account_modified_dietz_returns(
+        self, portfolio_df: pd.DataFrame, account: str
+    ) -> pd.Series:
+        """Calculate account-level returns using Modified Dietz method."""
+        returns = []
+        account_total_col = f"{account}_total"
+        account_cash_flow_col = f"{account}_cash_flow"
+        account_weighted_cash_flow_col = f"{account}_weighted_cash_flow"
+
+        for i in range(len(portfolio_df)):
+            if i == 0:
+                returns.append(DEFAULT_RETURN)
+                continue
+
+            beginning_value = portfolio_df.iloc[i - 1][account_total_col]
+            ending_value = portfolio_df.iloc[i][account_total_col]
+            net_cash_flow = portfolio_df.iloc[i][account_cash_flow_col]
+            weighted_cash_flow = portfolio_df.iloc[i][
+                account_weighted_cash_flow_col
+            ]
+
+            denominator = beginning_value + weighted_cash_flow
+
+            if denominator <= 0:
+                returns.append(DEFAULT_RETURN)
+            else:
+                daily_return = (
+                    ending_value - beginning_value - net_cash_flow
+                ) / denominator
+                returns.append(daily_return)
+
+        return pd.Series(returns)
+
     def _process_daily_transactions(
         self, date: pd.Timestamp
     ) -> Tuple[Dict[str, float], Dict[str, float]]:
@@ -983,39 +1016,6 @@ class BogleBenchAnalyzer:
         self.logger.debug("Income cash flows: %s", inc_cf)
 
         return inv_cf, inc_cf
-
-    def _calculate_account_modified_dietz_returns(
-        self, portfolio_df: pd.DataFrame, account: str
-    ) -> pd.Series:
-        """Calculate account-level returns using Modified Dietz method."""
-        returns = []
-        account_total_col = f"{account}_total"
-        account_cash_flow_col = f"{account}_cash_flow"
-        account_weighted_cash_flow_col = f"{account}_weighted_cash_flow"
-
-        for i in range(len(portfolio_df)):
-            if i == 0:
-                returns.append(DEFAULT_RETURN)
-                continue
-
-            beginning_value = portfolio_df.iloc[i - 1][account_total_col]
-            ending_value = portfolio_df.iloc[i][account_total_col]
-            net_cash_flow = portfolio_df.iloc[i][account_cash_flow_col]
-            weighted_cash_flow = portfolio_df.iloc[i][
-                account_weighted_cash_flow_col
-            ]
-
-            denominator = beginning_value + weighted_cash_flow
-
-            if denominator <= 0:
-                returns.append(DEFAULT_RETURN)
-            else:
-                daily_return = (
-                    ending_value - beginning_value - net_cash_flow
-                ) / denominator
-                returns.append(daily_return)
-
-        return pd.Series(returns)
 
     def build_portfolio_history(self) -> pd.DataFrame:
         """
