@@ -164,6 +164,14 @@ class TestPerformanceWithDividends:
             assert "max_drawdown" in portfolio_mod_dietz_metrics
             assert "win_rate" in portfolio_mod_dietz_metrics
 
+            portfolio_twr_metrics = results.portfolio_twr_metrics
+            assert "total_return" in portfolio_twr_metrics
+            assert "annualized_return" in portfolio_twr_metrics
+            assert "volatility" in portfolio_twr_metrics
+            assert "sharpe_ratio" in portfolio_twr_metrics
+            assert "max_drawdown" in portfolio_twr_metrics
+            assert "win_rate" in portfolio_twr_metrics
+
             # Verify expected calculations
             # Portfolio: Buy at 100 -> End at 102, no dividends
             expected_total_return = (102.00 - 100.00) / 100.00

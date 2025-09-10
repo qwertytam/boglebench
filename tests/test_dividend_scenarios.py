@@ -334,6 +334,7 @@ class TestDividendScenarios:
         # --- Assertions ---
         assert results is not None
         assert "total_return" in results.portfolio_mod_dietz_metrics
+        assert "total_return" in results.portfolio_twr_metrics
         assert "total_return" in results.benchmark_metrics
 
         final_day = portfolio_df.iloc[-1]

@@ -189,6 +189,10 @@ class TestMultiTransactionPerformance:
         assert "total_return" in portfolio_mod_dietz_metrics
         assert "win_rate" in portfolio_mod_dietz_metrics
 
+        portfolio_twr_metrics = results.portfolio_twr_metrics
+        assert "total_return" in portfolio_twr_metrics
+        assert "win_rate" in portfolio_twr_metrics
+
         # Check that win rate reflects profitable transactions
         # Both AAPL and MSFT sales were profitable, so win rate should be high
         assert portfolio_mod_dietz_metrics["win_rate"] > 0.5
@@ -375,7 +379,7 @@ class TestMultiTransactionPerformance:
             "advanced.performance.period_cash_flow_weight", 0.5
         )
         expected_weighted_cfs = expected_asset_cash_flows * cash_flow_weight
-        expected_asset_daily_returns_numerator = (
+        expected_asset_daily_returns_mod_dietz_numerator = (
             expected_asset_end_values
             - expected_asset_beg_values
             - expected_asset_cash_flows
@@ -386,21 +390,46 @@ class TestMultiTransactionPerformance:
         assert len(portfolio_history) == 10  # 10 trading days
         assert "total_value" in portfolio_history.columns
         assert "portfolio_mod_dietz_return" in portfolio_history.columns
+        assert "portfolio_twr_return" in portfolio_history.columns
 
         # Verify returns
         accuracy = 0.001 / 100  # 0.001% accuracy
-        expected_asset_daily_returns = (
-            expected_asset_daily_returns_numerator
+
+        # Modified Dietz return
+        expected_asset_daily_mod_dietz_returns = (
+            expected_asset_daily_returns_mod_dietz_numerator
             / (expected_asset_beg_values + expected_weighted_cfs)
         )
-        expected_asset_total_return = float(
-            (1 + expected_asset_daily_returns).prod() - 1
+        expected_asset_total_mod_dietz_return = float(
+            (1 + expected_asset_daily_mod_dietz_returns).prod() - 1
         )
         portfolio_mod_dietz_metrics = results.portfolio_mod_dietz_metrics
+
         assert (
             abs(
                 portfolio_mod_dietz_metrics["total_return"]
-                - expected_asset_total_return
+                - expected_asset_total_mod_dietz_return
+            )
+            < accuracy
+        )
+
+        # TWR return
+        expected_asset_beg_values[0] = 1  # Avoid div by zero on first day
+        expected_asset_daily_twr_returns = (
+            (expected_asset_end_values - expected_asset_cash_flows)
+            / expected_asset_beg_values
+        ) - 1
+
+        expected_asset_daily_twr_returns[0] = 0  # No return on first day
+        expected_asset_total_twr_return = float(
+            (1 + expected_asset_daily_twr_returns).prod() - 1
+        )
+        portfolio_twr_metrics = results.portfolio_twr_metrics
+
+        assert (
+            abs(
+                portfolio_twr_metrics["total_return"]
+                - expected_asset_total_twr_return
             )
             < accuracy
         )
@@ -410,63 +439,109 @@ class TestMultiTransactionPerformance:
         )
         # Annualized return
         return_days = len(portfolio_history)
-        expected_annualized_asset_return = (
-            1 + expected_asset_total_return
+        expected_annualized_asset_mod_dietz_return = (
+            1 + expected_asset_total_mod_dietz_return
         ) ** (annual_trading_days / return_days) - 1
         assert (
             abs(
                 portfolio_mod_dietz_metrics["annualized_return"]
-                - expected_annualized_asset_return
+                - expected_annualized_asset_mod_dietz_return
+            )
+            < accuracy
+        )
+
+        expected_annualized_asset_twr_return = (
+            1 + expected_asset_total_twr_return
+        ) ** (annual_trading_days / return_days) - 1
+        assert (
+            abs(
+                portfolio_twr_metrics["annualized_return"]
+                - expected_annualized_asset_twr_return
             )
             < accuracy
         )
 
         # Verify Volatility
-        expected_asset_volatility = np.std(
-            expected_asset_daily_returns, ddof=1
+        expected_asset_mod_dietz_volatility = np.std(
+            expected_asset_daily_mod_dietz_returns, ddof=1
         )  # Sample stddev so ddof=1
-        expected_annual_asset_volatility = expected_asset_volatility * np.sqrt(
-            annual_trading_days
+        expected_annual_asset_mod_dietz_volatility = (
+            expected_asset_mod_dietz_volatility * np.sqrt(annual_trading_days)
         )
 
         assert (
             abs(
                 portfolio_mod_dietz_metrics["volatility"]
-                - expected_annual_asset_volatility
+                - expected_annual_asset_mod_dietz_volatility
+            )
+            < accuracy
+        )
+
+        expected_asset_twr_volatility = np.std(
+            expected_asset_daily_twr_returns, ddof=1
+        )  # Sample stddev so ddof=1
+        expected_annual_asset_twr_volatility = (
+            expected_asset_twr_volatility * np.sqrt(annual_trading_days)
+        )
+        assert (
+            abs(
+                portfolio_twr_metrics["volatility"]
+                - expected_annual_asset_twr_volatility
             )
             < accuracy
         )
 
         # Verify Sharpe Ratio
-        expected_asset_daily_mean_returns = np.mean(
-            expected_asset_daily_returns
+        expected_asset_daily_mean_mod_dietz_returns = np.mean(
+            expected_asset_daily_mod_dietz_returns
         )
         risk_free_rate = temp_config.get("settings.risk_free_rate", 0.02)
         daily_risk_free_rate = (1 + risk_free_rate) ** (
             1 / annual_trading_days
         ) - 1
-        expected_asset_sharpe_ratio = (
-            expected_asset_daily_mean_returns - daily_risk_free_rate
-        ) / expected_asset_volatility
-        expected_annual_asset_sharpe_ratio = (
-            expected_asset_sharpe_ratio * np.sqrt(annual_trading_days)
+        expected_asset_mod_dietz_sharpe_ratio = (
+            expected_asset_daily_mean_mod_dietz_returns - daily_risk_free_rate
+        ) / expected_asset_mod_dietz_volatility
+        expected_annual_asset_mod_dietz_sharpe_ratio = (
+            expected_asset_mod_dietz_sharpe_ratio
+            * np.sqrt(annual_trading_days)
         )
         assert abs(
             portfolio_mod_dietz_metrics["sharpe_ratio"]
-            - expected_annual_asset_sharpe_ratio
-        ) < (
-            accuracy * 1
-        )  # Sharpe ratio can be larger, adjust accuracy if required
+            - expected_annual_asset_mod_dietz_sharpe_ratio
+        ) < (accuracy)
+
+        expected_asset_daily_mean_twr_returns = np.mean(
+            expected_asset_daily_twr_returns
+        )
+        expected_asset_twr_sharpe_ratio = (
+            expected_asset_daily_mean_twr_returns - daily_risk_free_rate
+        ) / expected_asset_twr_volatility
+        expected_annual_asset_twr_sharpe_ratio = (
+            expected_asset_twr_sharpe_ratio * np.sqrt(annual_trading_days)
+        )
+        assert abs(
+            portfolio_twr_metrics["sharpe_ratio"]
+            - expected_annual_asset_twr_sharpe_ratio
+        ) < (accuracy)
 
         # Max drawdown; use dataframe for cummax function
         cum_asset_wealth = pd.DataFrame(
-            (1 + expected_asset_daily_returns).cumprod()
+            (1 + expected_asset_daily_mod_dietz_returns).cumprod()
         )
         asset_draw_down = cum_asset_wealth / cum_asset_wealth.cummax() - 1
         expected_max_asset_drawdown = asset_draw_down.min().values[0]
         assert (
             abs(
                 portfolio_mod_dietz_metrics["max_drawdown"]
+                - expected_max_asset_drawdown
+            )
+            < accuracy
+        )
+
+        assert (
+            abs(
+                portfolio_twr_metrics["max_drawdown"]
                 - expected_max_asset_drawdown
             )
             < accuracy
@@ -509,7 +584,8 @@ class TestMultiTransactionPerformance:
 
         # Tracking error
         expected_excess_returns = (
-            expected_asset_daily_returns[1:] - expected_bm_daily_returns[1:]
+            expected_asset_daily_mod_dietz_returns[1:]
+            - expected_bm_daily_returns[1:]
         )
         expected_tracking_error = np.std(expected_excess_returns, ddof=1)
         expected_annual_tracking_error = expected_tracking_error * np.sqrt(
@@ -536,7 +612,7 @@ class TestMultiTransactionPerformance:
 
         # Beta
         covariance_matrix = np.cov(
-            expected_asset_daily_returns[1:],
+            expected_asset_daily_mod_dietz_returns[1:],
             expected_bm_daily_returns[1:],
             ddof=1,
         )  # Sample covariance so ddof=1
@@ -549,7 +625,7 @@ class TestMultiTransactionPerformance:
         ) - 1
 
         expected_jensens_alpha = (
-            np.mean(expected_asset_daily_returns[1:])
+            np.mean(expected_asset_daily_mod_dietz_returns[1:])
             - daily_risk_free_rate
             - expected_beta
             * (np.mean(expected_bm_daily_returns[1:]) - daily_risk_free_rate)

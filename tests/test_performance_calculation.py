@@ -90,6 +90,14 @@ class TestPerformanceCalculation:
         assert "max_drawdown" in portfolio_mod_dietz_metrics
         assert "win_rate" in portfolio_mod_dietz_metrics
 
+        portfolio_twr_metrics = results.portfolio_twr_metrics
+        assert "total_return" in portfolio_twr_metrics
+        assert "annualized_return" in portfolio_twr_metrics
+        assert "volatility" in portfolio_twr_metrics
+        assert "sharpe_ratio" in portfolio_twr_metrics
+        assert "max_drawdown" in portfolio_twr_metrics
+        assert "win_rate" in portfolio_twr_metrics
+
         # Verify expected calculations for one week
         # Portfolio: Buy at 180 -> End at 184.92
         expected_total_return = (184.92 - 180.00) / 180.00
@@ -108,6 +116,7 @@ class TestPerformanceCalculation:
         assert len(portfolio_history) == 10  # 10 trading days
         assert "total_value" in portfolio_history.columns
         assert "portfolio_mod_dietz_return" in portfolio_history.columns
+        assert "portfolio_twr_return" in portfolio_history.columns
 
         # Check initial and final portfolio values
         initial_value = portfolio_history["total_value"].iloc[0]
@@ -183,6 +192,34 @@ class TestPerformanceCalculation:
             < accuracy
         )
 
+        # TWR total return
+        expected_daily_twr_returns = expected_daily_returns.copy()
+        expected_daily_twr_returns[0] = 0  # First return is zero for TWR
+        expected_total_twr_return = (1 + expected_daily_twr_returns).prod() - 1
+        expected_daily_mean_twr_returns = np.mean(expected_daily_twr_returns)
+
+        assert (
+            abs(
+                portfolio_twr_metrics["total_return"]
+                - expected_total_twr_return
+            )
+            < accuracy
+        )
+
+        expected_twr_volatility = np.std(
+            expected_daily_twr_returns, ddof=1
+        )  # Sample stddev so ddof=1
+        expected_annual_twr_volatility = expected_twr_volatility * np.sqrt(
+            annual_trading_days
+        )
+        assert (
+            abs(
+                portfolio_twr_metrics["volatility"]
+                - expected_annual_twr_volatility
+            )
+            < accuracy
+        )
+
         risk_free_rate = temp_config.get("settings.risk_free_rate", 0.02)
         daily_risk_free_rate = (1 + risk_free_rate) ** (
             1 / annual_trading_days
@@ -196,9 +233,18 @@ class TestPerformanceCalculation:
         assert abs(
             portfolio_mod_dietz_metrics["sharpe_ratio"]
             - expected_annual_sharpe_ratio
-        ) < (
-            accuracy * 1
-        )  # Sharpe ratio can be larger, adjust accuracy if required
+        ) < (accuracy)
+
+        expected_sharpe_twr_ratio = (
+            expected_daily_mean_twr_returns - daily_risk_free_rate
+        ) / expected_twr_volatility
+        expected_annual_sharpe_twr_ratio = expected_sharpe_twr_ratio * np.sqrt(
+            annual_trading_days
+        )
+        assert abs(
+            portfolio_twr_metrics["sharpe_ratio"]
+            - expected_annual_sharpe_twr_ratio
+        ) < (accuracy)
 
         # Max drawdown; use dataframe for cummax function
         wealth = pd.DataFrame((1 + expected_daily_returns).cumprod())
@@ -209,6 +255,11 @@ class TestPerformanceCalculation:
                 portfolio_mod_dietz_metrics["max_drawdown"]
                 - expected_max_drawdown
             )
+            < accuracy
+        )
+
+        assert (
+            abs(portfolio_twr_metrics["max_drawdown"] - expected_max_drawdown)
             < accuracy
         )
 
