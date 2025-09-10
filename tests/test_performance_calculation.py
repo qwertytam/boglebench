@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
+import numpy_financial as npf
 import pandas as pd
 import pytest
 
@@ -89,6 +90,7 @@ class TestPerformanceCalculation:
         assert "sharpe_ratio" in portfolio_mod_dietz_metrics
         assert "max_drawdown" in portfolio_mod_dietz_metrics
         assert "win_rate" in portfolio_mod_dietz_metrics
+        assert "irr" in portfolio_mod_dietz_metrics
 
         portfolio_twr_metrics = results.portfolio_twr_metrics
         assert "total_return" in portfolio_twr_metrics
@@ -191,6 +193,32 @@ class TestPerformanceCalculation:
             )
             < accuracy
         )
+
+        # IRR returns
+        irr_daily_cash_flows = np.array(
+            [
+                purchase_price * purchase_qty * -1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                final_expected,
+            ]
+        )
+        expected_irr = npf.irr(irr_daily_cash_flows)
+        expected_annual_irr = (1 + expected_irr) ** annual_trading_days - 1
+
+        print(irr_daily_cash_flows)
+
+        print(portfolio_history["net_cash_flow"].values * -1)
+
+        assert abs(
+            portfolio_mod_dietz_metrics["irr"] - expected_annual_irr
+        ) < (accuracy)
 
         # TWR total return
         expected_daily_twr_returns = expected_daily_returns.copy()

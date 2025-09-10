@@ -20,9 +20,11 @@ from typing import Dict, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
 import numpy as np
+import numpy_financial as npf
 import pandas as pd
 import pandas_market_calendars as mcal  # type: ignore
 from alpha_vantage.timeseries import TimeSeries  # type: ignore
+from matplotlib import lines
 
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
@@ -1024,6 +1026,67 @@ class BogleBenchAnalyzer:
 
         return pd.Series(returns)
 
+    def _calculate_irr(self) -> float:
+        """
+        Calculate the Internal Rate of Return (IRR) for the entire portfolio period.
+        """
+        if self.portfolio_history is None or self.portfolio_history.empty:
+            return DEFAULT_RETURN
+
+        # IRR calculation requires a series of cash flows over time.
+        # The convention for numpy.irr is:
+        # - Investments (cash inflows to the portfolio) are negative.
+        # - Withdrawals (cash outflows from the portfolio) are positive.
+        # - The final value is the terminal market value of the portfolio.
+
+        # Your 'net_cash_flow' is positive for BUYs and negative for SELLs.
+        # We need to invert this for the IRR calculation.
+        cash_flows = (
+            np.array(self.portfolio_history["net_cash_flow"].values) * -1
+        )
+
+        # The first cash flow is the initial investment at time 0.
+        # We replace the first day's cash flow with the starting value.
+        # cash_flows[0] = -self.portfolio_history["total_value"].iloc[0]
+
+        # The last entry in the series must be include the final market value
+        # of the portfolio >> so the net last cash flow is selling the entire
+        # portfolio less any other cash flow actions on that day.
+        final_value = self.portfolio_history["total_value"].iloc[-1]
+
+        all_flows = cash_flows.copy()
+        all_flows[-1] += final_value  # Add final value to last cash flow
+
+        try:
+            # numpy.irr calculates the IRR for the given period (daily in this case).
+            daily_irr = npf.irr(all_flows)
+            if np.isnan(daily_irr) or np.isinf(daily_irr):
+                return DEFAULT_RETURN
+
+            # Annualize the daily IRR.
+            annual_trading_days = self.config.get(
+                "settings.annual_trading_days", DEFAULT_TRADING_DAYS
+            )
+
+            if annual_trading_days is None:
+                annual_trading_days = DEFAULT_TRADING_DAYS
+            elif isinstance(annual_trading_days, dict):
+                annual_trading_days = annual_trading_days.get(
+                    "value", DEFAULT_TRADING_DAYS
+                )
+
+            annual_trading_days = int(annual_trading_days)
+            annualized_irr = (1 + daily_irr) ** annual_trading_days - 1
+            return annualized_irr
+
+        except ValueError:
+            # numpy.irr raises a ValueError if it cannot find a solution.
+            self.logger.warning(
+                "⚠️  Internal Rate of Return (IRR) calculation did not converge. "
+                "This can happen with unconventional cash flow patterns."
+            )
+            return DEFAULT_RETURN
+
     def _process_daily_transactions(
         self, date: pd.Timestamp
     ) -> Tuple[Dict[str, float], Dict[str, float]]:
@@ -1968,6 +2031,8 @@ class BogleBenchAnalyzer:
             "Portfolio (TWR)",
         )
 
+        portfolio_mod_dietz_metrics["irr"] = self._calculate_irr()
+
         # Calculate benchmark performance metrics
         benchmark_metrics = {}
         benchmark_returns = pd.Series(dtype=float)
@@ -2291,6 +2356,7 @@ class PerformanceResults:
             lines.append(
                 f"  Annualized Return:   {p['annualized_return']:.2%}"
             )
+            lines.append(f"  IRR:                 {p['irr']:.2%}")
             lines.append(f"  Volatility:          {p['volatility']:.2%}")
             lines.append(f"  Sharpe Ratio:        {p['sharpe_ratio']:.3f}")
             lines.append(f"  Max Drawdown:        {p['max_drawdown']:.2%}")
