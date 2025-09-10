@@ -2123,7 +2123,7 @@ class BogleBenchAnalyzer:
 
         # Calculate relative performance metrics
         portfolio_returns = self.portfolio_history[
-            "portfolio_daily_return_mod_dietz"
+            "portfolio_daily_return_twr"
         ].copy()
 
         portfolio_returns.index = pd.to_datetime(
@@ -2405,38 +2405,40 @@ class PerformanceResults:
         lines.append("   'Stay the course' - John C. Bogle")
         lines.append("=" * 60)
 
-        # Portfolio metrics
+        # Portfolio metrics.   f"{3­:0=­+5}­"
         if self.portfolio_metrics:
             p = self.portfolio_metrics
             lines.append("\n📊 PORTFOLIO PERFORMANCE")
-            lines.append("                     Mod. Dietz   TWR      IRR")
+            lines.append(
+                "  Return Methods       Mod. Dietz     TWR        IRR"
+            )
             lines.append(
                 f"  Total Return:        "
-                f"{p['mod_dietz']['total_return']:.2%}    "
-                f"{p['twr']['total_return']:.2%}"
+                f"{p['mod_dietz']['total_return']:>+8.2%}    "
+                f"{p['twr']['total_return']:>+8.2%}"
             )
             lines.append(
                 f"  Annualized Return:   "
-                f"{p['mod_dietz']['annualized_return']:.2%}    "
-                f"{p['twr']['annualized_return']:.2%}   "
-                f"{p['irr']['annualized_return']:.2%}"
+                f"{p['mod_dietz']['annualized_return']:>+8.2%}    "
+                f"{p['twr']['annualized_return']:>+8.2%}   "
+                f"{p['irr']['annualized_return']:>+8.2%}"
             )
             lines.append(
                 f"  Volatility:          "
-                f"{p['mod_dietz']['volatility']:.2%}     "
-                f"{p['twr']['volatility']:.2%}"
+                f"{p['mod_dietz']['volatility']:>+8.2%}    "
+                f"{p['twr']['volatility']:>+8.2%}"
             )
             lines.append(
                 f"  Sharpe Ratio:        "
-                f"{p['mod_dietz']['sharpe_ratio']:.3f}     "
-                f"{p['twr']['sharpe_ratio']:.3f}"
+                f"{p['mod_dietz']['sharpe_ratio']:>+8.3f}    "
+                f"{p['twr']['sharpe_ratio']:>+8.3f}"
             )
             lines.append(
-                f"  Max Drawdown:        "
-                f"{p['mod_dietz']['max_drawdown']:.2%}"
+                f"\n  Max Drawdown:        "
+                f"{p['mod_dietz']['max_drawdown']:>+8.2%}"
             )
             lines.append(
-                f"  Win Rate:            {p['mod_dietz']['win_rate']:.2%}"
+                f"  Win Rate:            {p['mod_dietz']['win_rate']:>+8.2%}"
             )
 
         # Benchmark metrics
@@ -2445,26 +2447,30 @@ class PerformanceResults:
             benchmark_name = self.config.get(
                 "settings.benchmark_ticker", "Benchmark"
             )
-            lines.append(f"\n📈 {benchmark_name} PERFORMANCE")
-            lines.append(f"  Total Return:        {b['total_return']:.2%}")
             lines.append(
-                f"  Annualized Return:   {b['annualized_return']:.2%}"
+                f"\n📈 {benchmark_name} PERFORMANCE (Using Adj. Close)"
             )
-            lines.append(f"  Volatility:          {b['volatility']:.2%}")
-            lines.append(f"  Sharpe Ratio:        {b['sharpe_ratio']:.3f}")
-            lines.append(f"  Max Drawdown:        {b['max_drawdown']:.2%}")
+            lines.append(f"  Total Return:        {b['total_return']:>+8.2%}")
+            lines.append(
+                f"  Annualized Return:   {b['annualized_return']:>+8.2%}"
+            )
+            lines.append(f"  Volatility:          {b['volatility']:>+8.2%}")
+            lines.append(f"  Sharpe Ratio:        {b['sharpe_ratio']:>+8.3f}")
+            lines.append(f"  Max Drawdown:        {b['max_drawdown']:>+8.2%}")
 
         # Relative performance
         if self.relative_metrics:
             r = self.relative_metrics
-            lines.append("\n🎯 RELATIVE PERFORMANCE")
-            lines.append(f"  Tracking Error:      {r['tracking_error']:.2%}")
+            lines.append("\n🎯 RELATIVE PERFORMANCE (Using TWR)")
             lines.append(
-                f"  Information Ratio:   {r['information_ratio']:.3f}"
+                f"  Tracking Error:      {r['tracking_error']:>+8.2%}"
             )
-            lines.append(f"  Beta:                {r['beta']:.3f}")
-            lines.append(f"  Jensen's Alpha:      {r['jensens_alpha']:.2%}")
-            lines.append(f"  Correlation:         {r['correlation']:.3f}")
+            lines.append(
+                f"  Information Ratio:   {r['information_ratio']:>+8.3f}"
+            )
+            lines.append(f"  Beta:                {r['beta']:>+8.3f}")
+            lines.append(f"  Jensen's Alpha:      {r['jensens_alpha']:>+8.2%}")
+            lines.append(f"  Correlation:         {r['correlation']:>+8.3f}")
 
         lines.append("\n" + "=" * 60)
         lines.append(
