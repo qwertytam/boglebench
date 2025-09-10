@@ -1332,8 +1332,8 @@ class BogleBenchAnalyzer:
         self.logger.info(
             "📅 Processing %d trading days from %s to %s",
             len(date_range),
-            date_range[0],
-            date_range[-1],
+            pd.Timestamp(date_range[0]).date(),
+            pd.Timestamp(date_range[-1]).date(),
         )
 
         self.logger.debug(
