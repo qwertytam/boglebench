@@ -2286,7 +2286,7 @@ class PerformanceResults:
         # Portfolio metrics (Modified Dietz)
         if self.portfolio_mod_dietz_metrics:
             p = self.portfolio_mod_dietz_metrics
-            lines.append("\n📊 PORTFOLIO PERFORMANCE ()Modified Dietz)")
+            lines.append("\n📊 PORTFOLIO PERFORMANCE (Modified Dietz)")
             lines.append(f"  Total Return:        {p['total_return']:.2%}")
             lines.append(
                 f"  Annualized Return:   {p['annualized_return']:.2%}"
