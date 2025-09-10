@@ -824,7 +824,6 @@ class BogleBenchAnalyzer:
         target_date = ensure_timestamp(target_date)
 
         # Try exact date match first
-        # self.logger.debug("Looking for price of %s on %s", ticker, target_date)
         exact_match = ticker_data[
             ticker_data["date"].dt.date == target_date.date()
         ]
@@ -1197,9 +1196,6 @@ class BogleBenchAnalyzer:
                     shares = current_holdings[account][ticker]
 
                     try:
-                        # self.logger.debug(
-                        #     "Getting price for %s on %s", ticker, date
-                        # )
                         price = self._get_price_for_date(ticker, date)
                     except ValueError as e:
                         self.logger.error(
@@ -2062,30 +2058,11 @@ class BogleBenchAnalyzer:
             else 0
         )
 
-        # self.logger.debug(
-        #     "excess returns:\n%s\ndaily_risk_free_rate=%.6f, "
-        #     + "excess_mean_returns=%.6f, volatility=%.6f, sharpe_ratio=%.6f",
-        #     excess_returns,
-        #     daily_risk_free_rate,
-        #     excess_mean_returns,
-        #     volatility,
-        #     sharpe_ratio,
-        # )
-
         # Drawdown analysis
         cumulative_returns = (1 + returns).cumprod()
         running_max = cumulative_returns.expanding().max()
         drawdown = (cumulative_returns - running_max) / running_max
         max_drawdown = drawdown.min()
-
-        # self.logger.debug(
-        #     "cumulative returns:\n%s\nrunning max:\n%s\n"
-        #     + "drawdown:\n%s\nmax drawdown:%.6f%%",
-        #     cumulative_returns,
-        #     running_max,
-        #     drawdown,
-        #     max_drawdown * TO_PERCENT,
-        # )
 
         # Additional metrics
         positive_periods = (returns > 0).sum()
