@@ -149,28 +149,41 @@ class TestPerformanceWithDividends:
 
             # Verify results structure
             assert isinstance(results, PerformanceResults)
-            assert results.portfolio_metrics is not None
+            assert results.portfolio_mod_dietz_metrics is not None
             assert results.benchmark_metrics is not None
             assert results.relative_metrics is not None
             assert results.config is not None
             assert results.portfolio_history is not None
 
             # Test portfolio metrics calculations
-            portfolio_metrics = results.portfolio_metrics
-            assert "total_return" in portfolio_metrics
-            assert "annualized_return" in portfolio_metrics
-            assert "volatility" in portfolio_metrics
-            assert "sharpe_ratio" in portfolio_metrics
-            assert "max_drawdown" in portfolio_metrics
-            assert "win_rate" in portfolio_metrics
+            portfolio_mod_dietz_metrics = results.portfolio_mod_dietz_metrics
+            assert "total_return" in portfolio_mod_dietz_metrics
+            assert "annualized_return" in portfolio_mod_dietz_metrics
+            assert "volatility" in portfolio_mod_dietz_metrics
+            assert "sharpe_ratio" in portfolio_mod_dietz_metrics
+            assert "max_drawdown" in portfolio_mod_dietz_metrics
+            assert "win_rate" in portfolio_mod_dietz_metrics
+
+            portfolio_twr_metrics = results.portfolio_twr_metrics
+            assert "total_return" in portfolio_twr_metrics
+            assert "annualized_return" in portfolio_twr_metrics
+            assert "volatility" in portfolio_twr_metrics
+            assert "sharpe_ratio" in portfolio_twr_metrics
+            assert "max_drawdown" in portfolio_twr_metrics
+            assert "win_rate" in portfolio_twr_metrics
 
             # Verify expected calculations
             # Portfolio: Buy at 100 -> End at 102, no dividends
             expected_total_return = (102.00 - 100.00) / 100.00
-            accuracy = 0.001 / 100  # 0.001% accuracy
+            accuracy = 0.001 / 100  # 0.001% accuracy)
+
+            print(results.portfolio_history)
 
             assert (
-                abs(portfolio_metrics["total_return"] - expected_total_return)
+                abs(
+                    portfolio_mod_dietz_metrics["total_return"]
+                    - expected_total_return
+                )
                 < accuracy
             )
 
@@ -216,7 +229,7 @@ class TestPerformanceWithDividends:
 
             assert (
                 abs(
-                    portfolio_metrics["annualized_return"]
+                    portfolio_mod_dietz_metrics["annualized_return"]
                     - expected_annualized_return
                 )
                 < accuracy
@@ -241,7 +254,7 @@ class TestPerformanceWithDividends:
 
             assert (
                 abs(
-                    portfolio_metrics["volatility"]
+                    portfolio_mod_dietz_metrics["volatility"]
                     - expected_annual_volatility
                 )
                 < accuracy
@@ -258,7 +271,7 @@ class TestPerformanceWithDividends:
                 annual_trading_days
             )
             assert abs(
-                portfolio_metrics["sharpe_ratio"]
+                portfolio_mod_dietz_metrics["sharpe_ratio"]
                 - expected_annual_sharpe_ratio
             ) < (
                 accuracy * 1
@@ -322,20 +335,20 @@ class TestPerformanceWithDividends:
 
             # Verify results structure
             assert isinstance(results, PerformanceResults)
-            assert results.portfolio_metrics is not None
+            assert results.portfolio_mod_dietz_metrics is not None
             assert results.benchmark_metrics is not None
             assert results.relative_metrics is not None
             assert results.config is not None
             assert results.portfolio_history is not None
 
             # Test portfolio metrics calculations
-            portfolio_metrics = results.portfolio_metrics
-            assert "total_return" in portfolio_metrics
-            assert "annualized_return" in portfolio_metrics
-            assert "volatility" in portfolio_metrics
-            assert "sharpe_ratio" in portfolio_metrics
-            assert "max_drawdown" in portfolio_metrics
-            assert "win_rate" in portfolio_metrics
+            portfolio_mod_dietz_metrics = results.portfolio_mod_dietz_metrics
+            assert "total_return" in portfolio_mod_dietz_metrics
+            assert "annualized_return" in portfolio_mod_dietz_metrics
+            assert "volatility" in portfolio_mod_dietz_metrics
+            assert "sharpe_ratio" in portfolio_mod_dietz_metrics
+            assert "max_drawdown" in portfolio_mod_dietz_metrics
+            assert "win_rate" in portfolio_mod_dietz_metrics
 
             # Verify expected calculations
             accuracy = 0.001 / 100  # 0.001% accuracy
@@ -408,7 +421,7 @@ class TestPerformanceWithDividends:
 
             assert (
                 abs(
-                    portfolio_metrics["volatility"]
+                    portfolio_mod_dietz_metrics["volatility"]
                     - expected_annual_volatility
                 )
                 < accuracy
@@ -425,7 +438,7 @@ class TestPerformanceWithDividends:
                 annual_trading_days
             )
             assert abs(
-                portfolio_metrics["sharpe_ratio"]
+                portfolio_mod_dietz_metrics["sharpe_ratio"]
                 - expected_annual_sharpe_ratio
             ) < (
                 accuracy * 1
@@ -500,20 +513,20 @@ class TestPerformanceWithDividends:
 
             # Verify results structure
             assert isinstance(results, PerformanceResults)
-            assert results.portfolio_metrics is not None
+            assert results.portfolio_mod_dietz_metrics is not None
             assert results.benchmark_metrics is not None
             assert results.relative_metrics is not None
             assert results.config is not None
             assert results.portfolio_history is not None
 
             # Test portfolio metrics calculations
-            portfolio_metrics = results.portfolio_metrics
-            assert "total_return" in portfolio_metrics
-            assert "annualized_return" in portfolio_metrics
-            assert "volatility" in portfolio_metrics
-            assert "sharpe_ratio" in portfolio_metrics
-            assert "max_drawdown" in portfolio_metrics
-            assert "win_rate" in portfolio_metrics
+            portfolio_mod_dietz_metrics = results.portfolio_mod_dietz_metrics
+            assert "total_return" in portfolio_mod_dietz_metrics
+            assert "annualized_return" in portfolio_mod_dietz_metrics
+            assert "volatility" in portfolio_mod_dietz_metrics
+            assert "sharpe_ratio" in portfolio_mod_dietz_metrics
+            assert "max_drawdown" in portfolio_mod_dietz_metrics
+            assert "win_rate" in portfolio_mod_dietz_metrics
 
             # Verify expected calculations
             accuracy = 0.001 / 100  # 0.001% accuracy
@@ -588,7 +601,7 @@ class TestPerformanceWithDividends:
 
             assert (
                 abs(
-                    portfolio_metrics["volatility"]
+                    portfolio_mod_dietz_metrics["volatility"]
                     - expected_annual_volatility
                 )
                 < accuracy
@@ -605,7 +618,7 @@ class TestPerformanceWithDividends:
                 annual_trading_days
             )
             assert abs(
-                portfolio_metrics["sharpe_ratio"]
+                portfolio_mod_dietz_metrics["sharpe_ratio"]
                 - expected_annual_sharpe_ratio
             ) < (
                 accuracy * 1
@@ -700,20 +713,20 @@ class TestPerformanceWithDividends:
 
             # Verify results structure
             assert isinstance(results, PerformanceResults)
-            assert results.portfolio_metrics is not None
+            assert results.portfolio_mod_dietz_metrics is not None
             assert results.benchmark_metrics is not None
             assert results.relative_metrics is not None
             assert results.config is not None
             assert results.portfolio_history is not None
 
             # Test portfolio metrics calculations
-            portfolio_metrics = results.portfolio_metrics
-            assert "total_return" in portfolio_metrics
-            assert "annualized_return" in portfolio_metrics
-            assert "volatility" in portfolio_metrics
-            assert "sharpe_ratio" in portfolio_metrics
-            assert "max_drawdown" in portfolio_metrics
-            assert "win_rate" in portfolio_metrics
+            portfolio_mod_dietz_metrics = results.portfolio_mod_dietz_metrics
+            assert "total_return" in portfolio_mod_dietz_metrics
+            assert "annualized_return" in portfolio_mod_dietz_metrics
+            assert "volatility" in portfolio_mod_dietz_metrics
+            assert "sharpe_ratio" in portfolio_mod_dietz_metrics
+            assert "max_drawdown" in portfolio_mod_dietz_metrics
+            assert "win_rate" in portfolio_mod_dietz_metrics
 
             # Verify expected calculations
             accuracy = 0.001 / 100  # 0.001% accuracy
@@ -783,7 +796,7 @@ class TestPerformanceWithDividends:
 
             assert (
                 abs(
-                    portfolio_metrics["volatility"]
+                    portfolio_mod_dietz_metrics["volatility"]
                     - expected_annual_volatility
                 )
                 < accuracy
@@ -800,7 +813,7 @@ class TestPerformanceWithDividends:
                 annual_trading_days
             )
             assert abs(
-                portfolio_metrics["sharpe_ratio"]
+                portfolio_mod_dietz_metrics["sharpe_ratio"]
                 - expected_annual_sharpe_ratio
             ) < (
                 accuracy * 1

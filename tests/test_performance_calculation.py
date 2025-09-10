@@ -75,20 +75,28 @@ class TestPerformanceCalculation:
 
         # Verify results structure
         assert isinstance(results, PerformanceResults)
-        assert results.portfolio_metrics is not None
+        assert results.portfolio_mod_dietz_metrics is not None
         assert results.benchmark_metrics is not None
         assert results.relative_metrics is not None
         assert results.config is not None
         assert results.portfolio_history is not None
 
         # Test portfolio metrics calculations
-        portfolio_metrics = results.portfolio_metrics
-        assert "total_return" in portfolio_metrics
-        assert "annualized_return" in portfolio_metrics
-        assert "volatility" in portfolio_metrics
-        assert "sharpe_ratio" in portfolio_metrics
-        assert "max_drawdown" in portfolio_metrics
-        assert "win_rate" in portfolio_metrics
+        portfolio_mod_dietz_metrics = results.portfolio_mod_dietz_metrics
+        assert "total_return" in portfolio_mod_dietz_metrics
+        assert "annualized_return" in portfolio_mod_dietz_metrics
+        assert "volatility" in portfolio_mod_dietz_metrics
+        assert "sharpe_ratio" in portfolio_mod_dietz_metrics
+        assert "max_drawdown" in portfolio_mod_dietz_metrics
+        assert "win_rate" in portfolio_mod_dietz_metrics
+
+        portfolio_twr_metrics = results.portfolio_twr_metrics
+        assert "total_return" in portfolio_twr_metrics
+        assert "annualized_return" in portfolio_twr_metrics
+        assert "volatility" in portfolio_twr_metrics
+        assert "sharpe_ratio" in portfolio_twr_metrics
+        assert "max_drawdown" in portfolio_twr_metrics
+        assert "win_rate" in portfolio_twr_metrics
 
         # Verify expected calculations for one week
         # Portfolio: Buy at 180 -> End at 184.92
@@ -96,7 +104,10 @@ class TestPerformanceCalculation:
         accuracy = 0.001 / 100  # 0.001% accuracy
 
         assert (
-            abs(portfolio_metrics["total_return"] - expected_total_return)
+            abs(
+                portfolio_mod_dietz_metrics["total_return"]
+                - expected_total_return
+            )
             < accuracy
         )
 
@@ -105,6 +116,7 @@ class TestPerformanceCalculation:
         assert len(portfolio_history) == 10  # 10 trading days
         assert "total_value" in portfolio_history.columns
         assert "portfolio_mod_dietz_return" in portfolio_history.columns
+        assert "portfolio_twr_return" in portfolio_history.columns
 
         # Check initial and final portfolio values
         initial_value = portfolio_history["total_value"].iloc[0]
@@ -142,7 +154,7 @@ class TestPerformanceCalculation:
 
         assert (
             abs(
-                portfolio_metrics["annualized_return"]
+                portfolio_mod_dietz_metrics["annualized_return"]
                 - expected_annualized_return
             )
             < accuracy
@@ -173,7 +185,38 @@ class TestPerformanceCalculation:
         )
 
         assert (
-            abs(portfolio_metrics["volatility"] - expected_annual_volatility)
+            abs(
+                portfolio_mod_dietz_metrics["volatility"]
+                - expected_annual_volatility
+            )
+            < accuracy
+        )
+
+        # TWR total return
+        expected_daily_twr_returns = expected_daily_returns.copy()
+        expected_daily_twr_returns[0] = 0  # First return is zero for TWR
+        expected_total_twr_return = (1 + expected_daily_twr_returns).prod() - 1
+        expected_daily_mean_twr_returns = np.mean(expected_daily_twr_returns)
+
+        assert (
+            abs(
+                portfolio_twr_metrics["total_return"]
+                - expected_total_twr_return
+            )
+            < accuracy
+        )
+
+        expected_twr_volatility = np.std(
+            expected_daily_twr_returns, ddof=1
+        )  # Sample stddev so ddof=1
+        expected_annual_twr_volatility = expected_twr_volatility * np.sqrt(
+            annual_trading_days
+        )
+        assert (
+            abs(
+                portfolio_twr_metrics["volatility"]
+                - expected_annual_twr_volatility
+            )
             < accuracy
         )
 
@@ -188,17 +231,35 @@ class TestPerformanceCalculation:
             annual_trading_days
         )
         assert abs(
-            portfolio_metrics["sharpe_ratio"] - expected_annual_sharpe_ratio
-        ) < (
-            accuracy * 1
-        )  # Sharpe ratio can be larger, adjust accuracy if required
+            portfolio_mod_dietz_metrics["sharpe_ratio"]
+            - expected_annual_sharpe_ratio
+        ) < (accuracy)
+
+        expected_sharpe_twr_ratio = (
+            expected_daily_mean_twr_returns - daily_risk_free_rate
+        ) / expected_twr_volatility
+        expected_annual_sharpe_twr_ratio = expected_sharpe_twr_ratio * np.sqrt(
+            annual_trading_days
+        )
+        assert abs(
+            portfolio_twr_metrics["sharpe_ratio"]
+            - expected_annual_sharpe_twr_ratio
+        ) < (accuracy)
 
         # Max drawdown; use dataframe for cummax function
         wealth = pd.DataFrame((1 + expected_daily_returns).cumprod())
         draw_down = wealth / wealth.cummax() - 1
         expected_max_drawdown = draw_down.min().values[0]
         assert (
-            abs(portfolio_metrics["max_drawdown"] - expected_max_drawdown)
+            abs(
+                portfolio_mod_dietz_metrics["max_drawdown"]
+                - expected_max_drawdown
+            )
+            < accuracy
+        )
+
+        assert (
+            abs(portfolio_twr_metrics["max_drawdown"] - expected_max_drawdown)
             < accuracy
         )
 
@@ -415,7 +476,7 @@ class TestPerformanceCalculation:
         results = analyzer.calculate_performance()
 
         # Should still have portfolio metrics
-        assert results.portfolio_metrics is not None
+        assert results.portfolio_mod_dietz_metrics is not None
         # But no benchmark metrics
         assert results.benchmark_metrics == {}
         assert results.relative_metrics == {}
