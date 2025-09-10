@@ -185,13 +185,13 @@ class TestMultiTransactionPerformance:
         results = analyzer.calculate_performance()
 
         # Verify performance metrics are calculated
-        portfolio_metrics = results.portfolio_metrics
-        assert "total_return" in portfolio_metrics
-        assert "win_rate" in portfolio_metrics
+        portfolio_mod_dietz_metrics = results.portfolio_mod_dietz_metrics
+        assert "total_return" in portfolio_mod_dietz_metrics
+        assert "win_rate" in portfolio_mod_dietz_metrics
 
         # Check that win rate reflects profitable transactions
         # Both AAPL and MSFT sales were profitable, so win rate should be high
-        assert portfolio_metrics["win_rate"] > 0.5
+        assert portfolio_mod_dietz_metrics["win_rate"] > 0.5
 
         # Verify portfolio returns include realized gains
         portfolio_returns = results.get_portfolio_returns()
@@ -396,10 +396,11 @@ class TestMultiTransactionPerformance:
         expected_asset_total_return = float(
             (1 + expected_asset_daily_returns).prod() - 1
         )
-        portfolio_metrics = results.portfolio_metrics
+        portfolio_mod_dietz_metrics = results.portfolio_mod_dietz_metrics
         assert (
             abs(
-                portfolio_metrics["total_return"] - expected_asset_total_return
+                portfolio_mod_dietz_metrics["total_return"]
+                - expected_asset_total_return
             )
             < accuracy
         )
@@ -414,7 +415,7 @@ class TestMultiTransactionPerformance:
         ) ** (annual_trading_days / return_days) - 1
         assert (
             abs(
-                portfolio_metrics["annualized_return"]
+                portfolio_mod_dietz_metrics["annualized_return"]
                 - expected_annualized_asset_return
             )
             < accuracy
@@ -430,7 +431,7 @@ class TestMultiTransactionPerformance:
 
         assert (
             abs(
-                portfolio_metrics["volatility"]
+                portfolio_mod_dietz_metrics["volatility"]
                 - expected_annual_asset_volatility
             )
             < accuracy
@@ -451,7 +452,7 @@ class TestMultiTransactionPerformance:
             expected_asset_sharpe_ratio * np.sqrt(annual_trading_days)
         )
         assert abs(
-            portfolio_metrics["sharpe_ratio"]
+            portfolio_mod_dietz_metrics["sharpe_ratio"]
             - expected_annual_asset_sharpe_ratio
         ) < (
             accuracy * 1
@@ -465,7 +466,8 @@ class TestMultiTransactionPerformance:
         expected_max_asset_drawdown = asset_draw_down.min().values[0]
         assert (
             abs(
-                portfolio_metrics["max_drawdown"] - expected_max_asset_drawdown
+                portfolio_mod_dietz_metrics["max_drawdown"]
+                - expected_max_asset_drawdown
             )
             < accuracy
         )

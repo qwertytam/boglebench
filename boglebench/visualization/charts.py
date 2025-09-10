@@ -224,14 +224,14 @@ class BogleBenchCharts:
 
     def _plot_risk_return(self, ax):
         """Plot risk vs return scatter."""
-        portfolio_metrics = self.results.portfolio_metrics
+        portfolio_mod_dietz_metrics = self.results.portfolio_mod_dietz_metrics
         benchmark_metrics = self.results.benchmark_metrics
 
         # Portfolio point
-        if portfolio_metrics:
+        if portfolio_mod_dietz_metrics:
             ax.scatter(
-                portfolio_metrics["volatility"] * 100,
-                portfolio_metrics["annualized_return"] * 100,
+                portfolio_mod_dietz_metrics["volatility"] * 100,
+                portfolio_mod_dietz_metrics["annualized_return"] * 100,
                 s=200,
                 color=self.colors["portfolio"],
                 label="Portfolio",
@@ -313,9 +313,9 @@ class BogleBenchCharts:
         table_data["total_return"] = table_data["total_return"].apply(
             lambda x: f"{x:.2%}"
         )
-        table_data["annualized_return"] = table_data["annualized_return"].apply(
-            lambda x: f"{x:.2%}"
-        )
+        table_data["annualized_return"] = table_data[
+            "annualized_return"
+        ].apply(lambda x: f"{x:.2%}")
 
         table = axes[1, 1].table(
             cellText=table_data.values,

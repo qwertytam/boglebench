@@ -961,6 +961,69 @@ class BogleBenchAnalyzer:
 
         return pd.Series(returns)
 
+    def _calculate_twr_daily_returns(
+        self, portfolio_df: pd.DataFrame
+    ) -> pd.Series:
+        """
+        Calculate daily portfolio returns using the Time-Weighted Return (TWR)
+        method. This method removes the effects of cash flows to measure the
+        performance of the underlying assets.
+        """
+        returns = []
+        for i in range(len(portfolio_df)):
+            if i == 0:
+                # No return can be calculated on the first day.
+                returns.append(DEFAULT_RETURN)
+                continue
+
+            beginning_value = portfolio_df.iloc[i - 1]["total_value"]
+            ending_value = portfolio_df.iloc[i]["total_value"]
+            net_cash_flow = portfolio_df.iloc[i]["net_cash_flow"]
+
+            if beginning_value <= 0:
+                # If the starting value is zero or negative, the return for the
+                # period is considered zero as there's no initial investment
+                # base to measure performance against.
+                returns.append(DEFAULT_RETURN)
+            else:
+                # The TWR formula for a single period (in this case, one day).
+                # We are using the assumption that cash flows occur just before
+                # the ending value is measured.
+                # TWR = (Ending Value - Net Cash Flow) / Beginning Value - 1
+                daily_return = (
+                    ending_value - net_cash_flow
+                ) / beginning_value - 1
+                returns.append(daily_return)
+
+        return pd.Series(returns)
+
+    def _calculate_account_twr_daily_returns(
+        self, portfolio_df: pd.DataFrame, account: str
+    ) -> pd.Series:
+        """Calculate account-level returns using Time-Weighted Return method."""
+        returns = []
+        account_total_col = f"{account}_total"
+        account_cash_flow_col = f"{account}_cash_flow"
+
+        for i in range(len(portfolio_df)):
+            if i == 0:
+                returns.append(DEFAULT_RETURN)
+                continue
+
+            beginning_value = portfolio_df.iloc[i - 1][account_total_col]
+            ending_value = portfolio_df.iloc[i][account_total_col]
+            net_cash_flow = portfolio_df.iloc[i][account_cash_flow_col]
+
+            if beginning_value <= 0:
+                returns.append(DEFAULT_RETURN)
+            else:
+                daily_return = (
+                    ending_value - net_cash_flow
+                ) / beginning_value - 1
+                returns.append(daily_return)
+
+        return pd.Series(returns)
+
     def _process_daily_transactions(
         self, date: pd.Timestamp
     ) -> Tuple[Dict[str, float], Dict[str, float]]:
@@ -1390,16 +1453,15 @@ class BogleBenchAnalyzer:
             self._calculate_modified_dietz_returns(portfolio_df)
         )
 
-        # Handle edge case where previous total_value is zero
-        denominator_is_zero_mask = portfolio_df["total_value"].shift(1) == 0
-        portfolio_df.loc[
-            denominator_is_zero_mask, "portfolio_mod_dietz_return"
-        ] = DEFAULT_RETURN
-
         self.logger.debug(
             "Portfolio modified Dietz returns had %d NaN values; replaced with %s",
             portfolio_df["portfolio_mod_dietz_return"].isna().sum(),
             DEFAULT_RETURN,
+        )
+
+        # Calculate Time-Weighted Returns (TWR)
+        portfolio_df["portfolio_twr_return"] = (
+            self._calculate_twr_daily_returns(portfolio_df)
         )
 
         # Calculate account-specific returns
@@ -1408,6 +1470,12 @@ class BogleBenchAnalyzer:
             if account_total_col in portfolio_df.columns:
                 portfolio_df[f"{account}_mod_dietz_return"] = (
                     self._calculate_account_modified_dietz_returns(
+                        portfolio_df, account
+                    )
+                )
+
+                portfolio_df[f"{account}_mod_twr_return"] = (
+                    self._calculate_account_twr_daily_returns(
                         portfolio_df, account
                     )
                 )
@@ -1890,9 +1958,14 @@ class BogleBenchAnalyzer:
         ).dt.normalize()
 
         # Calculate portfolio performance metrics
-        portfolio_metrics = self._calculate_metrics(
+        portfolio_mod_dietz_metrics = self._calculate_metrics(
             self.portfolio_history["portfolio_mod_dietz_return"].dropna(),
-            "Portfolio",
+            "Portfolio (Modified Dietz)",
+        )
+
+        portfolio_twr_metrics = self._calculate_metrics(
+            self.portfolio_history["portfolio_twr_return"].dropna(),
+            "Portfolio (TWR)",
         )
 
         # Calculate benchmark performance metrics
@@ -1946,7 +2019,8 @@ class BogleBenchAnalyzer:
 
         # Create results object
         results = PerformanceResults(
-            portfolio_metrics=portfolio_metrics,
+            portfolio_mod_dietz_metrics=portfolio_mod_dietz_metrics,
+            portfolio_twr_metrics=portfolio_twr_metrics,
             benchmark_metrics=benchmark_metrics,
             relative_metrics=relative_metrics,
             portfolio_history=self.portfolio_history,
@@ -2184,13 +2258,15 @@ class PerformanceResults:
 
     def __init__(
         self,
-        portfolio_metrics: Dict,
+        portfolio_mod_dietz_metrics: Dict,
+        portfolio_twr_metrics: Dict,
         benchmark_metrics: Dict,
         relative_metrics: Dict,
         portfolio_history: pd.DataFrame,
         config: ConfigManager,
     ):
-        self.portfolio_metrics = portfolio_metrics
+        self.portfolio_mod_dietz_metrics = portfolio_mod_dietz_metrics
+        self.portfolio_twr_metrics = portfolio_twr_metrics
         self.benchmark_metrics = benchmark_metrics
         self.relative_metrics = relative_metrics
         self.portfolio_history = portfolio_history
@@ -2207,10 +2283,23 @@ class PerformanceResults:
         lines.append("   'Stay the course' - John C. Bogle")
         lines.append("=" * 60)
 
-        # Portfolio metrics
-        if self.portfolio_metrics:
-            p = self.portfolio_metrics
-            lines.append("\n📊 PORTFOLIO PERFORMANCE")
+        # Portfolio metrics (Modified Dietz)
+        if self.portfolio_mod_dietz_metrics:
+            p = self.portfolio_mod_dietz_metrics
+            lines.append("\n📊 PORTFOLIO PERFORMANCE ()Modified Dietz)")
+            lines.append(f"  Total Return:        {p['total_return']:.2%}")
+            lines.append(
+                f"  Annualized Return:   {p['annualized_return']:.2%}"
+            )
+            lines.append(f"  Volatility:          {p['volatility']:.2%}")
+            lines.append(f"  Sharpe Ratio:        {p['sharpe_ratio']:.3f}")
+            lines.append(f"  Max Drawdown:        {p['max_drawdown']:.2%}")
+            lines.append(f"  Win Rate:            {p['win_rate']:.2%}")
+
+        # Portfolio metrics (TWR)
+        if self.portfolio_twr_metrics:
+            p = self.portfolio_twr_metrics
+            lines.append("\n📊 PORTFOLIO PERFORMANCE (Time-Weighted Return)")
             lines.append(f"  Total Return:        {p['total_return']:.2%}")
             lines.append(
                 f"  Annualized Return:   {p['annualized_return']:.2%}"
@@ -2412,9 +2501,16 @@ class PerformanceResults:
 
         # Export performance metrics
         metrics_data = []
-        if self.portfolio_metrics:
+        if self.portfolio_mod_dietz_metrics:
             metrics_data.append(
-                {**self.portfolio_metrics, "type": "Portfolio"}
+                {
+                    **self.portfolio_mod_dietz_metrics,
+                    "type": "Portfolio (Modified Dietz)",
+                }
+            )
+        if self.portfolio_twr_metrics:
+            metrics_data.append(
+                {**self.portfolio_twr_metrics, "type": "Portfolio (TWR)"}
             )
         if self.benchmark_metrics:
             metrics_data.append(
