@@ -85,7 +85,7 @@ class BogleBenchAnalyzer:
         self.transactions = pd.DataFrame()
         self.market_data: Dict[str, pd.DataFrame] = {}
         self.portfolio_history = None
-        self.benchmark_data = None
+        self.benchmark_data = pd.DataFrame()
         self.performance_results = None
 
         # Suppress warnings for cleaner output
@@ -134,11 +134,14 @@ class BogleBenchAnalyzer:
             df["ticker"].nunique(),
         )
         self.logger.info(
-            "📅 Date range: %s to %s", df["date"].min(), df["date"].max()
+            "📅 Date range: %s to %s",
+            df["date"].min().date(),
+            df["date"].max().date(),
         )
         self.logger.info("🏦 Accounts: %s", ", ".join(df["account"].unique()))
         total_invested = df[df["total_value"] > 0]["total_value"].sum()
-        self.logger.info("💰 Total invested: $%.2f", total_invested)
+        msg = f"💰 Total invested: ${total_invested:,.2f}"
+        self.logger.info(msg)
 
         return df
 
@@ -518,6 +521,11 @@ class BogleBenchAnalyzer:
         # Get list of all tickers (portfolio + benchmark)
         portfolio_tickers = self.transactions["ticker"].unique().tolist()
         benchmark_ticker = self.config.get("settings.benchmark_ticker", "SPY")
+        if isinstance(benchmark_ticker, dict):
+            benchmark_ticker = benchmark_ticker.get("value", "SPY")
+        if benchmark_ticker is None or benchmark_ticker.strip() == "":
+            benchmark_ticker = "SPY"
+
         all_tickers = portfolio_tickers + [benchmark_ticker]
         all_tickers = list(set(all_tickers))  # Remove duplicates
 
@@ -1223,10 +1231,63 @@ class BogleBenchAnalyzer:
         }
 
         # Get full date range for analysis
-        start_date = self.transactions["date"].min()
-        end_date = max(
-            [df["date"].dt.date.max() for df in self.market_data.values()]
-            + [self.transactions["date"].dt.date.max()]
+        # Ensure the config value is not a dict before passing to pd.Timestamp
+        config_start_date = self.config.get(
+            "analysis.default_start_date", None
+        )
+        if isinstance(config_start_date, dict):
+            config_start_date = config_start_date.get("value", None)
+
+        min_transaction_date = self.transactions["date"].min().date()
+        if config_start_date is not None:
+            start_date = min(
+                pd.Timestamp(config_start_date).date(), min_transaction_date
+            )
+        else:
+            start_date = min_transaction_date
+
+        if start_date is None:
+            raise ValueError("No valid start date provided or found.")
+
+        last_market_close_date = None
+        if self._is_market_currently_open():
+            self.logger.info("Market is currently open")
+            last_market_close_date = self._get_last_closed_market_day()
+        else:
+            self.logger.info("Market is currently closed")
+
+            # Ensure last_market_close_date is a scalar Timestamp,
+            # not a Series or None
+            dt_now = to_tz_mixed(datetime.now())
+            if isinstance(dt_now, pd.Series):
+                if not dt_now.empty:
+                    last_market_close_date = pd.to_datetime(dt_now.iloc[0])
+                else:
+                    raise ValueError("dt_now Series is empty")
+            else:
+                last_market_close_date = dt_now
+
+        # Ensure the config value is not a dict before passing to pd.Timestamp
+        config_end_date = self.config.get(
+            "analysis.default_end_date", last_market_close_date
+        )
+        if isinstance(config_end_date, dict):
+            config_end_date = config_end_date.get(
+                "value", last_market_close_date
+            )
+        if config_end_date is not None:
+            end_date = pd.Timestamp(config_end_date)
+        elif last_market_close_date is not None:
+            end_date = pd.Timestamp(last_market_close_date)
+        else:
+            raise ValueError("No valid end date provided or found.")
+
+        end_date = min(
+            end_date.date(),
+            max(
+                [df["date"].dt.date.max() for df in self.market_data.values()]
+                + [self.transactions["date"].dt.date.max()]
+            ),
         )
 
         # Default is all day between and including start and end dates that are
@@ -1244,7 +1305,12 @@ class BogleBenchAnalyzer:
         trading_dates = set(to_tz_mixed(trading_days.index))
 
         # 2. Get all unique transaction dates
-        transaction_dates = set(self.transactions["date"].dt.normalize())
+        transaction_dates_mask = self.transactions["date"].dt.date <= end_date
+        transaction_dates = set(
+            self.transactions.loc[
+                transaction_dates_mask, "date"
+            ].dt.normalize()
+        )
 
         # 3. Find transactions dates that are outside of trading days
         self.logger.debug("Checking for transactions on non-trading days")
@@ -1266,8 +1332,8 @@ class BogleBenchAnalyzer:
         self.logger.info(
             "📅 Processing %d trading days from %s to %s",
             len(date_range),
-            date_range[0],
-            date_range[-1],
+            pd.Timestamp(date_range[0]).date(),
+            pd.Timestamp(date_range[-1]).date(),
         )
 
         self.logger.debug(
@@ -1512,18 +1578,12 @@ class BogleBenchAnalyzer:
         portfolio_df["cash_flow_impact"] = portfolio_df["net_cash_flow"]
 
         # Calculate Modified Dietz returns
-        portfolio_df["portfolio_mod_dietz_return"] = (
+        portfolio_df["portfolio_daily_return_mod_dietz"] = (
             self._calculate_modified_dietz_returns(portfolio_df)
         )
 
-        self.logger.debug(
-            "Portfolio modified Dietz returns had %d NaN values; replaced with %s",
-            portfolio_df["portfolio_mod_dietz_return"].isna().sum(),
-            DEFAULT_RETURN,
-        )
-
         # Calculate Time-Weighted Returns (TWR)
-        portfolio_df["portfolio_twr_return"] = (
+        portfolio_df["portfolio_daily_return_twr"] = (
             self._calculate_twr_daily_returns(portfolio_df)
         )
 
@@ -2020,18 +2080,22 @@ class BogleBenchAnalyzer:
             self.portfolio_history["date"], utc=True
         ).dt.normalize()
 
+        portfolio_metrics = {}
+
         # Calculate portfolio performance metrics
-        portfolio_mod_dietz_metrics = self._calculate_metrics(
-            self.portfolio_history["portfolio_mod_dietz_return"].dropna(),
+        portfolio_metrics["mod_dietz"] = self._calculate_metrics(
+            self.portfolio_history[
+                "portfolio_daily_return_mod_dietz"
+            ].dropna(),
             "Portfolio (Modified Dietz)",
         )
 
-        portfolio_twr_metrics = self._calculate_metrics(
-            self.portfolio_history["portfolio_twr_return"].dropna(),
+        portfolio_metrics["twr"] = self._calculate_metrics(
+            self.portfolio_history["portfolio_daily_return_twr"].dropna(),
             "Portfolio (TWR)",
         )
 
-        portfolio_mod_dietz_metrics["irr"] = self._calculate_irr()
+        portfolio_metrics["irr"] = {"annualized_return": self._calculate_irr()}
 
         # Calculate benchmark performance metrics
         benchmark_metrics = {}
@@ -2040,7 +2104,7 @@ class BogleBenchAnalyzer:
             # Align benchmark data with portfolio dates
             aligned_benchmark_df = self._align_benchmark_returns()
 
-            self.logger.info(
+            self.logger.debug(
                 "Aligned benchmark %s returns:\n%s",
                 len(benchmark_returns),
                 benchmark_returns.head(n=10) * TO_PERCENT,
@@ -2062,7 +2126,7 @@ class BogleBenchAnalyzer:
 
         # Calculate relative performance metrics
         portfolio_returns = self.portfolio_history[
-            "portfolio_mod_dietz_return"
+            "portfolio_daily_return_twr"
         ].copy()
 
         portfolio_returns.index = pd.to_datetime(
@@ -2084,8 +2148,7 @@ class BogleBenchAnalyzer:
 
         # Create results object
         results = PerformanceResults(
-            portfolio_mod_dietz_metrics=portfolio_mod_dietz_metrics,
-            portfolio_twr_metrics=portfolio_twr_metrics,
+            portfolio_metrics=portfolio_metrics,
             benchmark_metrics=benchmark_metrics,
             relative_metrics=relative_metrics,
             portfolio_history=self.portfolio_history,
@@ -2323,21 +2386,18 @@ class PerformanceResults:
 
     def __init__(
         self,
-        portfolio_mod_dietz_metrics: Dict,
-        portfolio_twr_metrics: Dict,
+        portfolio_metrics: Dict,
         benchmark_metrics: Dict,
         relative_metrics: Dict,
         portfolio_history: pd.DataFrame,
         config: ConfigManager,
     ):
-        self.portfolio_mod_dietz_metrics = portfolio_mod_dietz_metrics
-        self.portfolio_twr_metrics = portfolio_twr_metrics
+        self.portfolio_metrics = portfolio_metrics
         self.benchmark_metrics = benchmark_metrics
         self.relative_metrics = relative_metrics
         self.portfolio_history = portfolio_history
         self.config = config
 
-        setup_logging()  # Initialize after workspace context is set
         self.logger = get_logger("core.portfolio")
 
     def summary(self) -> str:
@@ -2348,32 +2408,41 @@ class PerformanceResults:
         lines.append("   'Stay the course' - John C. Bogle")
         lines.append("=" * 60)
 
-        # Portfolio metrics (Modified Dietz)
-        if self.portfolio_mod_dietz_metrics:
-            p = self.portfolio_mod_dietz_metrics
-            lines.append("\n📊 PORTFOLIO PERFORMANCE (Modified Dietz)")
-            lines.append(f"  Total Return:        {p['total_return']:.2%}")
+        # Portfolio metrics.   f"{3­:0=­+5}­"
+        if self.portfolio_metrics:
+            p = self.portfolio_metrics
+            lines.append("\n📊 PORTFOLIO PERFORMANCE")
             lines.append(
-                f"  Annualized Return:   {p['annualized_return']:.2%}"
+                "  Return Methods       Mod. Dietz     TWR        IRR"
             )
-            lines.append(f"  IRR:                 {p['irr']:.2%}")
-            lines.append(f"  Volatility:          {p['volatility']:.2%}")
-            lines.append(f"  Sharpe Ratio:        {p['sharpe_ratio']:.3f}")
-            lines.append(f"  Max Drawdown:        {p['max_drawdown']:.2%}")
-            lines.append(f"  Win Rate:            {p['win_rate']:.2%}")
-
-        # Portfolio metrics (TWR)
-        if self.portfolio_twr_metrics:
-            p = self.portfolio_twr_metrics
-            lines.append("\n📊 PORTFOLIO PERFORMANCE (Time-Weighted Return)")
-            lines.append(f"  Total Return:        {p['total_return']:.2%}")
             lines.append(
-                f"  Annualized Return:   {p['annualized_return']:.2%}"
+                f"  Total Return:        "
+                f"{p['mod_dietz']['total_return']:>+8.2%}    "
+                f"{p['twr']['total_return']:>+8.2%}"
             )
-            lines.append(f"  Volatility:          {p['volatility']:.2%}")
-            lines.append(f"  Sharpe Ratio:        {p['sharpe_ratio']:.3f}")
-            lines.append(f"  Max Drawdown:        {p['max_drawdown']:.2%}")
-            lines.append(f"  Win Rate:            {p['win_rate']:.2%}")
+            lines.append(
+                f"  Annualized Return:   "
+                f"{p['mod_dietz']['annualized_return']:>+8.2%}    "
+                f"{p['twr']['annualized_return']:>+8.2%}   "
+                f"{p['irr']['annualized_return']:>+8.2%}"
+            )
+            lines.append(
+                f"  Volatility:          "
+                f"{p['mod_dietz']['volatility']:>+8.2%}    "
+                f"{p['twr']['volatility']:>+8.2%}"
+            )
+            lines.append(
+                f"  Sharpe Ratio:        "
+                f"{p['mod_dietz']['sharpe_ratio']:>+8.3f}    "
+                f"{p['twr']['sharpe_ratio']:>+8.3f}"
+            )
+            lines.append(
+                f"\n  Max Drawdown:        "
+                f"{p['mod_dietz']['max_drawdown']:>+8.2%}"
+            )
+            lines.append(
+                f"  Win Rate:            {p['mod_dietz']['win_rate']:>+8.2%}"
+            )
 
         # Benchmark metrics
         if self.benchmark_metrics:
@@ -2382,25 +2451,27 @@ class PerformanceResults:
                 "settings.benchmark_ticker", "Benchmark"
             )
             lines.append(f"\n📈 {benchmark_name} PERFORMANCE")
-            lines.append(f"  Total Return:        {b['total_return']:.2%}")
+            lines.append(f"  Total Return:        {b['total_return']:>+8.2%}")
             lines.append(
-                f"  Annualized Return:   {b['annualized_return']:.2%}"
+                f"  Annualized Return:   {b['annualized_return']:>+8.2%}"
             )
-            lines.append(f"  Volatility:          {b['volatility']:.2%}")
-            lines.append(f"  Sharpe Ratio:        {b['sharpe_ratio']:.3f}")
-            lines.append(f"  Max Drawdown:        {b['max_drawdown']:.2%}")
+            lines.append(f"  Volatility:          {b['volatility']:>+8.2%}")
+            lines.append(f"  Sharpe Ratio:        {b['sharpe_ratio']:>+8.3f}")
+            lines.append(f"  Max Drawdown:        {b['max_drawdown']:>+8.2%}")
 
         # Relative performance
         if self.relative_metrics:
             r = self.relative_metrics
-            lines.append("\n🎯 RELATIVE PERFORMANCE")
-            lines.append(f"  Tracking Error:      {r['tracking_error']:.2%}")
+            lines.append("\n🎯 RELATIVE PERFORMANCE (Using TWR)")
             lines.append(
-                f"  Information Ratio:   {r['information_ratio']:.3f}"
+                f"  Tracking Error:      {r['tracking_error']:>+8.2%}"
             )
-            lines.append(f"  Beta:                {r['beta']:.3f}")
-            lines.append(f"  Jensen's Alpha:      {r['jensens_alpha']:.2%}")
-            lines.append(f"  Correlation:         {r['correlation']:.3f}")
+            lines.append(
+                f"  Information Ratio:   {r['information_ratio']:>+8.3f}"
+            )
+            lines.append(f"  Beta:                {r['beta']:>+8.3f}")
+            lines.append(f"  Jensen's Alpha:      {r['jensens_alpha']:>+8.2%}")
+            lines.append(f"  Correlation:         {r['correlation']:>+8.3f}")
 
         lines.append("\n" + "=" * 60)
         lines.append(
@@ -2414,7 +2485,9 @@ class PerformanceResults:
 
     def get_portfolio_returns(self) -> pd.Series:
         """Get portfolio return series."""
-        return self.portfolio_history["portfolio_mod_dietz_return"].dropna()
+        return self.portfolio_history[
+            "portfolio_daily_return_mod_dietz"
+        ].dropna()
 
     def get_cumulative_returns(self) -> pd.Series:
         """Get cumulative portfolio returns."""
@@ -2567,16 +2640,12 @@ class PerformanceResults:
 
         # Export performance metrics
         metrics_data = []
-        if self.portfolio_mod_dietz_metrics:
+        if self.portfolio_metrics:
             metrics_data.append(
                 {
-                    **self.portfolio_mod_dietz_metrics,
-                    "type": "Portfolio (Modified Dietz)",
+                    **self.portfolio_metrics,
+                    "type": "Portfolio",
                 }
-            )
-        if self.portfolio_twr_metrics:
-            metrics_data.append(
-                {**self.portfolio_twr_metrics, "type": "Portfolio (TWR)"}
             )
         if self.benchmark_metrics:
             metrics_data.append(

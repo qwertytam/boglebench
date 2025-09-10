@@ -185,17 +185,15 @@ class TestMultiTransactionPerformance:
         results = analyzer.calculate_performance()
 
         # Verify performance metrics are calculated
-        portfolio_mod_dietz_metrics = results.portfolio_mod_dietz_metrics
-        assert "total_return" in portfolio_mod_dietz_metrics
-        assert "win_rate" in portfolio_mod_dietz_metrics
-
-        portfolio_twr_metrics = results.portfolio_twr_metrics
-        assert "total_return" in portfolio_twr_metrics
-        assert "win_rate" in portfolio_twr_metrics
+        portfolio_metrics = results.portfolio_metrics
+        assert "total_return" in portfolio_metrics["mod_dietz"]
+        assert "win_rate" in portfolio_metrics["mod_dietz"]
+        assert "total_return" in portfolio_metrics["twr"]
+        assert "win_rate" in portfolio_metrics["twr"]
 
         # Check that win rate reflects profitable transactions
         # Both AAPL and MSFT sales were profitable, so win rate should be high
-        assert portfolio_mod_dietz_metrics["win_rate"] > 0.5
+        assert portfolio_metrics["mod_dietz"]["win_rate"] > 0.5
 
         # Verify portfolio returns include realized gains
         portfolio_returns = results.get_portfolio_returns()
@@ -209,7 +207,7 @@ class TestMultiTransactionPerformance:
         june_12_returns = portfolio_history[
             portfolio_history["date"].dt.date
             == pd.Timestamp("2023-06-12").date()
-        ]["portfolio_mod_dietz_return"]
+        ]["portfolio_daily_return_mod_dietz"]
 
         if not june_12_returns.empty:
             # Should see portfolio composition change on sale date
@@ -389,8 +387,8 @@ class TestMultiTransactionPerformance:
         portfolio_history = results.portfolio_history
         assert len(portfolio_history) == 10  # 10 trading days
         assert "total_value" in portfolio_history.columns
-        assert "portfolio_mod_dietz_return" in portfolio_history.columns
-        assert "portfolio_twr_return" in portfolio_history.columns
+        assert "portfolio_daily_return_mod_dietz" in portfolio_history.columns
+        assert "portfolio_daily_return_twr" in portfolio_history.columns
 
         # Verify returns
         accuracy = 0.001 / 100  # 0.001% accuracy
@@ -403,7 +401,7 @@ class TestMultiTransactionPerformance:
         expected_asset_total_mod_dietz_return = float(
             (1 + expected_asset_daily_mod_dietz_returns).prod() - 1
         )
-        portfolio_mod_dietz_metrics = results.portfolio_mod_dietz_metrics
+        portfolio_mod_dietz_metrics = results.portfolio_metrics["mod_dietz"]
 
         assert (
             abs(
@@ -424,7 +422,7 @@ class TestMultiTransactionPerformance:
         expected_asset_total_twr_return = float(
             (1 + expected_asset_daily_twr_returns).prod() - 1
         )
-        portfolio_twr_metrics = results.portfolio_twr_metrics
+        portfolio_twr_metrics = results.portfolio_metrics["twr"]
 
         assert (
             abs(

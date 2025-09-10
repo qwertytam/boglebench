@@ -76,23 +76,24 @@ class TestPerformanceCalculation:
 
         # Verify results structure
         assert isinstance(results, PerformanceResults)
-        assert results.portfolio_mod_dietz_metrics is not None
+        assert results.portfolio_metrics is not None
         assert results.benchmark_metrics is not None
         assert results.relative_metrics is not None
         assert results.config is not None
         assert results.portfolio_history is not None
 
         # Test portfolio metrics calculations
-        portfolio_mod_dietz_metrics = results.portfolio_mod_dietz_metrics
+        portfolio_mod_dietz_metrics = results.portfolio_metrics["mod_dietz"]
         assert "total_return" in portfolio_mod_dietz_metrics
         assert "annualized_return" in portfolio_mod_dietz_metrics
         assert "volatility" in portfolio_mod_dietz_metrics
         assert "sharpe_ratio" in portfolio_mod_dietz_metrics
         assert "max_drawdown" in portfolio_mod_dietz_metrics
         assert "win_rate" in portfolio_mod_dietz_metrics
-        assert "irr" in portfolio_mod_dietz_metrics
 
-        portfolio_twr_metrics = results.portfolio_twr_metrics
+        assert "irr" in results.portfolio_metrics
+
+        portfolio_twr_metrics = results.portfolio_metrics["twr"]
         assert "total_return" in portfolio_twr_metrics
         assert "annualized_return" in portfolio_twr_metrics
         assert "volatility" in portfolio_twr_metrics
@@ -117,8 +118,8 @@ class TestPerformanceCalculation:
         portfolio_history = results.portfolio_history
         assert len(portfolio_history) == 10  # 10 trading days
         assert "total_value" in portfolio_history.columns
-        assert "portfolio_mod_dietz_return" in portfolio_history.columns
-        assert "portfolio_twr_return" in portfolio_history.columns
+        assert "portfolio_daily_return_mod_dietz" in portfolio_history.columns
+        assert "portfolio_daily_return_twr" in portfolio_history.columns
 
         # Check initial and final portfolio values
         initial_value = portfolio_history["total_value"].iloc[0]
@@ -217,7 +218,8 @@ class TestPerformanceCalculation:
         print(portfolio_history["net_cash_flow"].values * -1)
 
         assert abs(
-            portfolio_mod_dietz_metrics["irr"] - expected_annual_irr
+            results.portfolio_metrics["irr"]["annualized_return"]
+            - expected_annual_irr
         ) < (accuracy)
 
         # TWR total return
@@ -504,7 +506,7 @@ class TestPerformanceCalculation:
         results = analyzer.calculate_performance()
 
         # Should still have portfolio metrics
-        assert results.portfolio_mod_dietz_metrics is not None
+        assert results.portfolio_metrics is not None
         # But no benchmark metrics
         assert results.benchmark_metrics == {}
         assert results.relative_metrics == {}
