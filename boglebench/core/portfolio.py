@@ -1436,7 +1436,7 @@ class BogleBenchAnalyzer:
 
         # Normalize date for merging
         dividend_df["date"] = pd.to_datetime(
-            dividend_df["date"]
+            dividend_df["date"], utc=True
         ).dt.normalize()
         dividend_df = dividend_df.rename(columns={"date": "div_pay_date"})
 
@@ -1548,7 +1548,7 @@ class BogleBenchAnalyzer:
         )
         user_divs_grouped["div_pay_date"] = user_divs_grouped[
             "div_pay_date"
-        ].dt.tz_localize(None)
+        ].dt.normalize()
 
         self.logger.debug("Fetching market dividends for %s", ticker)
         market_dividends = self.fetch_dividend_data(ticker)
@@ -1558,7 +1558,7 @@ class BogleBenchAnalyzer:
         )
         market_dividends["div_pay_date"] = market_dividends[
             "div_pay_date"
-        ].dt.tz_localize(None)
+        ].dt.normalize()
 
         self.logger.debug(
             "Comparing %d user dividends to %d market dividends for %s",
@@ -1584,6 +1584,12 @@ class BogleBenchAnalyzer:
             on="div_pay_date",
             how=how_merge,
             suffixes=("_user", "_mkt"),
+        )
+
+        self.logger.debug("user_divs head:\n%s", user_divs_grouped.head())
+        self.logger.debug("mkt_divs head:\n%s", market_dividends.head())
+        self.logger.debug(
+            "Merged user and market dividends for %s:\n%s", ticker, merged
         )
 
         # Check for missing user dividends
@@ -1775,7 +1781,7 @@ class BogleBenchAnalyzer:
         final_user_dividends = pd.concat(all_enhanced_dividends)
         final_user_dividends["div_pay_date"] = pd.to_datetime(
             final_user_dividends["div_pay_date"], utc=True
-        ).dt.tz_localize(None)
+        )
 
         self.logger.debug(
             "final_user_dividends:\n%s", final_user_dividends.head()
@@ -1841,7 +1847,7 @@ class BogleBenchAnalyzer:
                 info_messages.append(
                     f"Calculated div/share for {ticker} in {account} "
                     f"on {pay_date.date()} "
-                    f"as ${final_dps:.4f} (${total_amount:.2f} / "
+                    f"as ${np.abs(final_dps):.4f} (${np.abs(total_amount):.2f} / "
                     f"{shares_held:.4f} shares)"
                 )
             else:
@@ -2206,10 +2212,10 @@ class PerformanceResults:
         if self.relative_metrics:
             r = self.relative_metrics
             lines.append("\n🎯 RELATIVE PERFORMANCE")
+            lines.append(f"  Tracking Error:      {r['tracking_error']:.2%}")
             lines.append(
                 f"  Information Ratio:   {r['information_ratio']:.3f}"
             )
-            lines.append(f"  Tracking Error:      {r['tracking_error']:.2%}")
             lines.append(f"  Beta:                {r['beta']:.3f}")
             lines.append(f"  Jensen's Alpha:      {r['jensens_alpha']:.2%}")
             lines.append(f"  Correlation:         {r['correlation']:.3f}")
