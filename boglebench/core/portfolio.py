@@ -2450,9 +2450,7 @@ class PerformanceResults:
             benchmark_name = self.config.get(
                 "settings.benchmark_ticker", "Benchmark"
             )
-            lines.append(
-                f"\n📈 {benchmark_name} PERFORMANCE (Using Adj. Close)"
-            )
+            lines.append(f"\n📈 {benchmark_name} PERFORMANCE")
             lines.append(f"  Total Return:        {b['total_return']:>+8.2%}")
             lines.append(
                 f"  Annualized Return:   {b['annualized_return']:>+8.2%}"
