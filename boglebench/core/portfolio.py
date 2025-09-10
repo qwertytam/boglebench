@@ -1223,10 +1223,63 @@ class BogleBenchAnalyzer:
         }
 
         # Get full date range for analysis
-        start_date = self.transactions["date"].min()
-        end_date = max(
-            [df["date"].dt.date.max() for df in self.market_data.values()]
-            + [self.transactions["date"].dt.date.max()]
+        # Ensure the config value is not a dict before passing to pd.Timestamp
+        config_start_date = self.config.get(
+            "analysis.default_start_date", None
+        )
+        if isinstance(config_start_date, dict):
+            config_start_date = config_start_date.get("value", None)
+
+        min_transaction_date = self.transactions["date"].min().date()
+        if config_start_date is not None:
+            start_date = min(
+                pd.Timestamp(config_start_date).date(), min_transaction_date
+            )
+        else:
+            start_date = min_transaction_date
+
+        if start_date is None:
+            raise ValueError("No valid start date provided or found.")
+
+        last_market_close_date = None
+        if self._is_market_currently_open():
+            self.logger.info("Market is currently open")
+            last_market_close_date = self._get_last_closed_market_day()
+        else:
+            self.logger.info("Market is currently closed")
+
+            # Ensure last_market_close_date is a scalar Timestamp,
+            # not a Series or None
+            dt_now = to_tz_mixed(datetime.now())
+            if isinstance(dt_now, pd.Series):
+                if not dt_now.empty:
+                    last_market_close_date = pd.to_datetime(dt_now.iloc[0])
+                else:
+                    raise ValueError("dt_now Series is empty")
+            else:
+                last_market_close_date = dt_now
+
+        # Ensure the config value is not a dict before passing to pd.Timestamp
+        config_end_date = self.config.get(
+            "analysis.default_end_date", last_market_close_date
+        )
+        if isinstance(config_end_date, dict):
+            config_end_date = config_end_date.get(
+                "value", last_market_close_date
+            )
+        if config_end_date is not None:
+            end_date = pd.Timestamp(config_end_date)
+        elif last_market_close_date is not None:
+            end_date = pd.Timestamp(last_market_close_date)
+        else:
+            raise ValueError("No valid end date provided or found.")
+
+        end_date = min(
+            end_date.date(),
+            max(
+                [df["date"].dt.date.max() for df in self.market_data.values()]
+                + [self.transactions["date"].dt.date.max()]
+            ),
         )
 
         # Default is all day between and including start and end dates that are
@@ -1244,7 +1297,12 @@ class BogleBenchAnalyzer:
         trading_dates = set(to_tz_mixed(trading_days.index))
 
         # 2. Get all unique transaction dates
-        transaction_dates = set(self.transactions["date"].dt.normalize())
+        transaction_dates_mask = self.transactions["date"].dt.date <= end_date
+        transaction_dates = set(
+            self.transactions.loc[
+                transaction_dates_mask, "date"
+            ].dt.normalize()
+        )
 
         # 3. Find transactions dates that are outside of trading days
         self.logger.debug("Checking for transactions on non-trading days")
