@@ -112,7 +112,7 @@ class BogleBenchAnalyzer:
         if not Path(file_path).exists():
             raise FileNotFoundError(f"Transaction file not found: {file_path}")
 
-        self.logger.info(f"📄 Loading transactions from: {file_path}")
+        self.logger.info("📄 Loading transactions from: %s", file_path)
 
         # Load CSV with flexible parsing
         try:
@@ -127,15 +127,16 @@ class BogleBenchAnalyzer:
         self.transactions = df
 
         self.logger.info(
-            f"✅ Loaded {len(df)} transactions for "
-            f"{df['ticker'].nunique()} unique assets"
+            "✅ Loaded %d transactions for %d unique assets",
+            len(df),
+            df["ticker"].nunique(),
         )
         self.logger.info(
-            f"📅 Date range: {df['date'].min()} to {df['date'].max()}"
+            "📅 Date range: %s to %s", df["date"].min(), df["date"].max()
         )
-        self.logger.info(f"🏦 Accounts: {', '.join(df['account'].unique())}")
+        self.logger.info("🏦 Accounts: %s", ", ".join(df["account"].unique()))
         total_invested = df[df["total_value"] > 0]["total_value"].sum()
-        self.logger.info(f"💰 Total invested: ${total_invested:,.2f}")
+        self.logger.info("💰 Total invested: $%.2f", total_invested)
 
         return df
 
@@ -673,7 +674,7 @@ class BogleBenchAnalyzer:
             self.benchmark_data = market_data[benchmark_ticker].copy()
 
         self.logger.info(
-            f"✅ Successfully downloaded data for {len(market_data)} assets"
+            "✅ Successfully downloaded data for %d assets", len(market_data)
         )
         return market_data
 
@@ -845,7 +846,9 @@ class BogleBenchAnalyzer:
                 return available_data["close"].iloc[-1]
             else:
                 self.logger.warning(
-                    f"Warning: No recent price data for {ticker} near {target_date}"
+                    "Warning: No recent price data for %s near %s",
+                    ticker,
+                    target_date,
                 )
                 return available_data["close"].iloc[
                     -1
@@ -1642,7 +1645,8 @@ class BogleBenchAnalyzer:
 
             if issues:
                 messages.append(
-                    f"Dividend mismatch for {ticker} on {row['div_pay_date'].date()}: {'; '.join(issues)} "
+                    f"Dividend mismatch for {ticker} on "
+                    f"{row['div_pay_date'].date()}: {'; '.join(issues)} "
                     f"(user total: ${row['total_value']:.2f})"
                 )
 
@@ -2371,17 +2375,16 @@ class PerformanceResults:
                         }
                     )
 
-        """Export results to CSV files."""
         output_dir = self.config.get_output_path()
         output_path = self._export_history_metrics_to_csv(output_dir)
 
-        self.logger.info(f"📁 Results exported to: {output_path}")
+        self.logger.info("📁 Results exported to: %s", output_path)
         return pd.DataFrame(holdings_data)
 
     def export_to_csv(self, output_dir: Optional[str] = None) -> str:
         """Export results to CSV files."""
         output_path = self._export_history_metrics_to_csv(output_dir)
-        self.logger.info(f"📁 Results exported to: {output_path}")
+        self.logger.info("📁 Results exported to: %s", output_path)
         return str(output_path)
 
     def _export_history_metrics_to_csv(
