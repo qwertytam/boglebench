@@ -14,7 +14,7 @@ DEFAULT_RETURN = DEFAULT_ZERO
 DEFAULT_TRADING_DAYS = 252
 
 
-def _calculate_modified_dietz_returns(portfolio_df: pd.DataFrame) -> pd.Series:
+def calculate_modified_dietz_returns(portfolio_df: pd.DataFrame) -> pd.Series:
     """Calculate portfolio returns using Modified Dietz method."""
     returns = []
 
@@ -54,7 +54,7 @@ def _calculate_modified_dietz_returns(portfolio_df: pd.DataFrame) -> pd.Series:
     return pd.Series(returns)
 
 
-def _calculate_account_modified_dietz_returns(
+def calculate_account_modified_dietz_returns(
     portfolio_df: pd.DataFrame, account: str
 ) -> pd.Series:
     """Calculate account-level returns using Modified Dietz method."""
@@ -88,7 +88,7 @@ def _calculate_account_modified_dietz_returns(
     return pd.Series(returns)
 
 
-def _calculate_twr_daily_returns(portfolio_df: pd.DataFrame) -> pd.Series:
+def calculate_twr_daily_returns(portfolio_df: pd.DataFrame) -> pd.Series:
     """
     Calculate daily portfolio returns using the Time-Weighted Return (TWR)
     method. This method removes the effects of cash flows to measure the
@@ -121,7 +121,7 @@ def _calculate_twr_daily_returns(portfolio_df: pd.DataFrame) -> pd.Series:
     return pd.Series(returns)
 
 
-def _calculate_account_twr_daily_returns(
+def calculate_account_twr_daily_returns(
     portfolio_df: pd.DataFrame, account: str
 ) -> pd.Series:
     """Calculate account-level returns using Time-Weighted Return method."""
@@ -147,7 +147,7 @@ def _calculate_account_twr_daily_returns(
     return pd.Series(returns)
 
 
-def _calculate_irr(
+def calculate_irr(
     portfolio_history: pd.DataFrame, config: ConfigManager, logger=None
 ) -> float:
     """

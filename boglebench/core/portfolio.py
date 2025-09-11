@@ -36,11 +36,11 @@ from ..utils.tools import (
 )
 from ..utils.workspace import WorkspaceContext
 from .metrics import (
-    _calculate_account_modified_dietz_returns,
-    _calculate_account_twr_daily_returns,
-    _calculate_irr,
-    _calculate_modified_dietz_returns,
-    _calculate_twr_daily_returns,
+    calculate_account_modified_dietz_returns,
+    calculate_account_twr_daily_returns,
+    calculate_irr,
+    calculate_modified_dietz_returns,
+    calculate_twr_daily_returns,
 )
 from .results import PerformanceResults
 
@@ -1388,12 +1388,12 @@ class BogleBenchAnalyzer:
 
         # Calculate Modified Dietz returns
         portfolio_df["portfolio_daily_return_mod_dietz"] = (
-            _calculate_modified_dietz_returns(portfolio_df)
+            calculate_modified_dietz_returns(portfolio_df)
         )
 
         # Calculate Time-Weighted Returns (TWR)
         portfolio_df["portfolio_daily_return_twr"] = (
-            _calculate_twr_daily_returns(portfolio_df)
+            calculate_twr_daily_returns(portfolio_df)
         )
 
         # Calculate account-specific returns
@@ -1401,13 +1401,13 @@ class BogleBenchAnalyzer:
             account_total_col = f"{account}_total"
             if account_total_col in portfolio_df.columns:
                 portfolio_df[f"{account}_mod_dietz_return"] = (
-                    _calculate_account_modified_dietz_returns(
+                    calculate_account_modified_dietz_returns(
                         portfolio_df, account
                     )
                 )
 
                 portfolio_df[f"{account}_mod_twr_return"] = (
-                    _calculate_account_twr_daily_returns(portfolio_df, account)
+                    calculate_account_twr_daily_returns(portfolio_df, account)
                 )
 
         self.portfolio_history = portfolio_df
@@ -1903,7 +1903,7 @@ class BogleBenchAnalyzer:
         )
 
         portfolio_metrics["irr"] = {
-            "annualized_return": _calculate_irr(
+            "annualized_return": calculate_irr(
                 self.portfolio_history, self.config, self.logger
             )
         }
