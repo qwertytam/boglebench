@@ -7,11 +7,7 @@ import numpy_financial as npf  # type: ignore
 import pandas as pd
 
 from ..utils.config import ConfigManager
-
-DEFAULT_VALUE = float(0.0)
-DEFAULT_ZERO = DEFAULT_VALUE
-DEFAULT_RETURN = DEFAULT_ZERO
-DEFAULT_TRADING_DAYS = 252
+from .constants import DateAndTimeConstants, Defaults
 
 
 def calculate_modified_dietz_returns(portfolio_df: pd.DataFrame) -> pd.Series:
@@ -21,7 +17,7 @@ def calculate_modified_dietz_returns(portfolio_df: pd.DataFrame) -> pd.Series:
     for i in range(len(portfolio_df)):
         if i == 0:
             # First day - beginning_value is zero
-            beginning_value = DEFAULT_ZERO
+            beginning_value = Defaults.DEFAULT_ZERO
         else:
             beginning_value = portfolio_df.iloc[i - 1]["total_value"]
 
@@ -44,7 +40,7 @@ def calculate_modified_dietz_returns(portfolio_df: pd.DataFrame) -> pd.Series:
 
         if denominator <= 0:
             # Handle edge case: no beginning value or negative denominator
-            returns.append(DEFAULT_RETURN)
+            returns.append(Defaults.ZERO_RETURN)
         else:
             daily_return = (
                 ending_value - beginning_value - external_cash_flow
@@ -65,7 +61,7 @@ def calculate_account_modified_dietz_returns(
 
     for i in range(len(portfolio_df)):
         if i == 0:
-            returns.append(DEFAULT_RETURN)
+            returns.append(Defaults.ZERO_RETURN)
             continue
 
         beginning_value = portfolio_df.iloc[i - 1][account_total_col]
@@ -78,7 +74,7 @@ def calculate_account_modified_dietz_returns(
         denominator = beginning_value + weighted_cash_flow
 
         if denominator <= 0:
-            returns.append(DEFAULT_RETURN)
+            returns.append(Defaults.ZERO_RETURN)
         else:
             daily_return = (
                 ending_value - beginning_value - net_cash_flow
@@ -98,7 +94,7 @@ def calculate_twr_daily_returns(portfolio_df: pd.DataFrame) -> pd.Series:
     for i in range(len(portfolio_df)):
         if i == 0:
             # No return can be calculated on the first day.
-            returns.append(DEFAULT_RETURN)
+            returns.append(Defaults.ZERO_RETURN)
             continue
 
         beginning_value = portfolio_df.iloc[i - 1]["total_value"]
@@ -109,7 +105,7 @@ def calculate_twr_daily_returns(portfolio_df: pd.DataFrame) -> pd.Series:
             # If the starting value is zero or negative, the return for the
             # period is considered zero as there's no initial investment
             # base to measure performance against.
-            returns.append(DEFAULT_RETURN)
+            returns.append(Defaults.ZERO_RETURN)
         else:
             # The TWR formula for a single period (in this case, one day).
             # We are using the assumption that cash flows occur just before
@@ -131,7 +127,7 @@ def calculate_account_twr_daily_returns(
 
     for i in range(len(portfolio_df)):
         if i == 0:
-            returns.append(DEFAULT_RETURN)
+            returns.append(Defaults.ZERO_RETURN)
             continue
 
         beginning_value = portfolio_df.iloc[i - 1][account_total_col]
@@ -139,7 +135,7 @@ def calculate_account_twr_daily_returns(
         net_cash_flow = portfolio_df.iloc[i][account_cash_flow_col]
 
         if beginning_value <= 0:
-            returns.append(DEFAULT_RETURN)
+            returns.append(Defaults.ZERO_RETURN)
         else:
             daily_return = (ending_value - net_cash_flow) / beginning_value - 1
             returns.append(daily_return)
@@ -154,7 +150,7 @@ def calculate_irr(
     Calculate the Internal Rate of Return (IRR) for the entire portfolio period.
     """
     if portfolio_history is None or portfolio_history.empty:
-        return DEFAULT_RETURN
+        return Defaults.ZERO_RETURN
 
     # IRR calculation requires a series of cash flows over time.
     # The convention for numpy.irr is:
@@ -182,18 +178,19 @@ def calculate_irr(
         # numpy.irr calculates the IRR for the given period (daily in this case).
         daily_irr = npf.irr(all_flows)
         if np.isnan(daily_irr) or np.isinf(daily_irr):
-            return DEFAULT_RETURN
+            return Defaults.ZERO_RETURN
 
         # Annualize the daily IRR.
         annual_trading_days = config.get(
-            "settings.annual_trading_days", DEFAULT_TRADING_DAYS
+            "settings.annual_trading_days",
+            DateAndTimeConstants.DAYS_IN_TRADING_YEAR,
         )
 
         if annual_trading_days is None:
-            annual_trading_days = DEFAULT_TRADING_DAYS
+            annual_trading_days = DateAndTimeConstants.DAYS_IN_TRADING_YEAR
         elif isinstance(annual_trading_days, dict):
             annual_trading_days = annual_trading_days.get(
-                "value", DEFAULT_TRADING_DAYS
+                "value", DateAndTimeConstants.DAYS_IN_TRADING_YEAR
             )
 
         annual_trading_days = int(annual_trading_days)
@@ -207,4 +204,4 @@ def calculate_irr(
                 "⚠️  Internal Rate of Return (IRR) calculation did not converge. "
                 "This can happen with unconventional cash flow patterns."
             )
-        return DEFAULT_RETURN
+        return Defaults.ZERO_RETURN

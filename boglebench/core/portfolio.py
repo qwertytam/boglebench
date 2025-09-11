@@ -33,6 +33,13 @@ from ..utils.tools import (
     to_tz_mixed,
 )
 from ..utils.workspace import WorkspaceContext
+from .constants import (
+    ConversionFactors,
+    DateAndTimeConstants,
+    Defaults,
+    DividendTypes,
+    TransactionTypes,
+)
 from .metrics import (
     calculate_account_modified_dietz_returns,
     calculate_account_twr_daily_returns,
@@ -42,19 +49,6 @@ from .metrics import (
 )
 from .results import PerformanceResults
 from .transaction_loader import load_validate_transactions
-
-TO_PERCENT = 100
-DEFAULT_TRADING_DAYS = 252
-DEFAULT_VALUE = float(0.0)
-DEFAULT_ZERO = DEFAULT_VALUE
-DEFAULT_RETURN = DEFAULT_ZERO
-DEFAULT_ASSET_VALUE = DEFAULT_ZERO
-DEFAULT_PRICE = DEFAULT_ZERO
-DEFAULT_CASH_FLOW = DEFAULT_ZERO
-DEFAULT_WEIGHT = DEFAULT_ZERO
-DEFAULT_RISK_FREE_RATE = 0.02
-DEFAULT_LOOK_FORWARD_PRICE_DATA = 10  # days
-DEFAULT_DIV_TYPE = "CASH"  # Default dividend type if not specified
 
 
 class BogleBenchAnalyzer:
@@ -159,7 +153,7 @@ class BogleBenchAnalyzer:
     def _is_market_currently_open(self) -> bool:
         """Check if the market is currently open."""
         nyse = mcal.get_calendar("NYSE")
-        now = datetime.now(tz=ZoneInfo("UTC"))
+        now = datetime.now(tz=ZoneInfo(DateAndTimeConstants.TZ_UTC))
         schedule = nyse.schedule(start_date=now.date(), end_date=now.date())
         if schedule.empty:
             self.logger.debug("Market is closed today (holiday or weekend)")
@@ -186,13 +180,14 @@ class BogleBenchAnalyzer:
         nyse = mcal.get_calendar("NYSE")
         today = datetime.now(tz=ZoneInfo("America/New_York"))
         schedule = nyse.schedule(
-            start_date=today - timedelta(days=DEFAULT_LOOK_FORWARD_PRICE_DATA),
+            start_date=today
+            - timedelta(days=Defaults.DEFAULT_LOOK_FORWARD_PRICE_DATA),
             end_date=today,
         )
         if schedule.empty:
             raise ValueError(
                 f"No recent market days found in the last "
-                f"{DEFAULT_LOOK_FORWARD_PRICE_DATA} days"
+                f"{Defaults.DEFAULT_LOOK_FORWARD_PRICE_DATA} days"
             )
 
         closed_days = schedule[schedule["market_close"] < today]
@@ -233,7 +228,7 @@ class BogleBenchAnalyzer:
             self.logger.debug(
                 "No start date provided. "
                 + "Defaulting to %s days before first transaction.",
-                DEFAULT_LOOK_FORWARD_PRICE_DATA,
+                Defaults.DEFAULT_LOOK_FORWARD_PRICE_DATA,
             )
             self.logger.debug(
                 "self.transactions['date'].min() is %s and type %s",
@@ -241,7 +236,7 @@ class BogleBenchAnalyzer:
                 type(self.transactions["date"].min()),
             )
             default_start_date = self.transactions["date"].min() - timedelta(
-                days=DEFAULT_LOOK_FORWARD_PRICE_DATA
+                days=Defaults.DEFAULT_LOOK_FORWARD_PRICE_DATA
             )
             self.logger.debug(
                 "default_start_date is %s",
@@ -691,15 +686,15 @@ class BogleBenchAnalyzer:
         self.logger.debug("Transactions:\n%s", day_transactions)
 
         # Investment cash flows: affect cost basis (BUY/SELL)
-        inv_cf = {"total": DEFAULT_CASH_FLOW}
+        inv_cf = {"total": Defaults.ZERO_CASH_FLOW}
 
         # Income cash flows: dividends, fees (do not affect cost basis)
-        inc_cf = {"total": DEFAULT_CASH_FLOW}
+        inc_cf = {"total": Defaults.ZERO_CASH_FLOW}
 
         # Initialize all accounts
         for account in self.transactions["account"].unique():
-            inv_cf[account] = DEFAULT_CASH_FLOW
-            inc_cf[account] = DEFAULT_CASH_FLOW
+            inv_cf[account] = Defaults.ZERO_CASH_FLOW
+            inc_cf[account] = Defaults.ZERO_CASH_FLOW
 
         # Process each transaction
         for _, trans in day_transactions.iterrows():
@@ -714,15 +709,17 @@ class BogleBenchAnalyzer:
             )
 
             self.logger.debug(
-                "  Is ttype %s in DIVIDEND? %s", ttype, ttype in ["DIVIDEND"]
+                "  Is ttype %s in DIVIDEND? %s",
+                ttype,
+                TransactionTypes.is_dividend(ttype),
             )
 
-            if ttype in ["BUY", "SELL"]:
+            if TransactionTypes.is_buy_or_sell(ttype):
                 cf = trans["total_value"]  # +ve for BUY, -ve for SELL
                 inv_cf[account] += cf
                 inv_cf["total"] += cf
 
-            elif ttype in ["DIVIDEND", "DIVIDEND_REINVEST", "FEE"]:
+            elif TransactionTypes.is_dividend(ttype):
                 cf = trans["total_value"]
                 self.logger.debug(
                     "  Processing %s of cash flow $%.2f for %s in account %s",
@@ -733,6 +730,22 @@ class BogleBenchAnalyzer:
                 )
                 inc_cf[account] += cf
                 inc_cf["total"] += cf
+
+            elif TransactionTypes.is_fee(ttype):
+                # To implement: Process fee transactions
+                continue
+
+            elif TransactionTypes.is_transfer(ttype):
+                # To implement: Process transfer transactions
+                continue
+
+            elif TransactionTypes.is_split(ttype):
+                # To implement: Process split transactions
+                continue
+
+            elif TransactionTypes.is_other(ttype):
+                # To implement: Process other transaction types
+                continue
 
         self.logger.debug("Investment cash flows: %s", inv_cf)
         self.logger.debug("Income cash flows: %s", inc_cf)
@@ -946,7 +959,7 @@ class BogleBenchAnalyzer:
                 ticker = transaction["ticker"]
                 ttype = transaction["transaction_type"]
 
-                if ttype in ["BUY", "SELL", "DIVIDEND_REINVEST"]:
+                if TransactionTypes.is_quantity_changing(ttype):
                     shares = transaction["quantity"]
 
                     self.logger.debug("Have %s shares for %s", shares, ttype)
@@ -954,10 +967,13 @@ class BogleBenchAnalyzer:
                     # Ensure account and ticker exist in our tracking
                     if account not in current_holdings:
                         current_holdings[account] = {
-                            t: DEFAULT_ASSET_VALUE for t in tickers
+                            t: Defaults.ZERO_ASSET_VALUE_ASSET_VALUE
+                            for t in tickers
                         }
                     if ticker not in current_holdings[account]:
-                        current_holdings[account][ticker] = DEFAULT_ASSET_VALUE
+                        current_holdings[account][
+                            ticker
+                        ] = Defaults.ZERO_ASSET_VALUE
 
                     # For DIVIDEND, do not adjust holdings;
                     # handled in cash flow
@@ -966,11 +982,11 @@ class BogleBenchAnalyzer:
             # Get market prices for this date
             self.logger.debug("Calculating portfolio value for %s", date)
             day_data = {"date": date}
-            total_portfolio_value = DEFAULT_ASSET_VALUE
+            total_portfolio_value = Defaults.ZERO_ASSET_VALUE
             account_totals = {}
 
             for account in accounts:
-                account_value = DEFAULT_ASSET_VALUE
+                account_value = Defaults.ZERO_ASSET_VALUE
 
                 for ticker in tickers:
                     shares = current_holdings[account][ticker]
@@ -981,7 +997,9 @@ class BogleBenchAnalyzer:
                         self.logger.error(
                             "Skipping %s on %s: %s", ticker, date, e
                         )
-                        price = DEFAULT_PRICE  # Only set to 0 if truly no data exists
+                        price = (
+                            Defaults.ZERO_PRICE
+                        )  # Only set to 0 if truly no data exists
 
                     self.logger.debug(
                         "Calculated price for %s on %s: $%.2f",
@@ -1036,9 +1054,9 @@ class BogleBenchAnalyzer:
                         if not available_data.empty:
                             price = available_data["close"].iloc[-1]
                         else:
-                            price = DEFAULT_PRICE
+                            price = Defaults.ZERO_PRICE
                 else:
-                    price = DEFAULT_PRICE
+                    price = Defaults.ZERO_PRICE
 
                 self.logger.debug(
                     "Storing total shares %.4f of %s", total_shares, ticker
@@ -1061,10 +1079,10 @@ class BogleBenchAnalyzer:
         # Ensure ascending date order
         portfolio_df = portfolio_df.sort_values("date").reset_index(drop=True)
 
-        portfolio_df["net_cash_flow"] = DEFAULT_CASH_FLOW
-        portfolio_df["weighted_cash_flow"] = DEFAULT_CASH_FLOW
-        portfolio_df["market_value_change"] = DEFAULT_ASSET_VALUE
-        portfolio_df["market_value_return"] = DEFAULT_RETURN
+        portfolio_df["net_cash_flow"] = Defaults.ZERO_CASH_FLOW
+        portfolio_df["weighted_cash_flow"] = Defaults.ZERO_CASH_FLOW
+        portfolio_df["market_value_change"] = Defaults.ZERO_ASSET_VALUE
+        portfolio_df["market_value_return"] = Defaults.ZERO_RETURN
 
         # Calculate weights by account and overall
         for account in accounts:
@@ -1077,20 +1095,21 @@ class BogleBenchAnalyzer:
                         portfolio_df[weight_col] = (
                             portfolio_df[value_col]
                             / portfolio_df[account_total_col]
-                        ).fillna(DEFAULT_WEIGHT)
+                        ).fillna(Defaults.ZERO_WEIGHT)
 
         # Calculate overall weights
         for ticker in tickers:
             portfolio_df[f"{ticker}_weight"] = (
                 portfolio_df[f"{ticker}_total_value"]
                 / portfolio_df["total_value"]
-            ).fillna(DEFAULT_WEIGHT)
+            ).fillna(Defaults.ZERO_WEIGHT)
 
         # Calculate daily cash flow adjust returns
         # Calculate cash flows for each day using helper function
         period_cash_flow_weight = float(
             self.config.get(
-                "advanced.performance.period_cash_flow_weight", DEFAULT_WEIGHT
+                "advanced.performance.period_cash_flow_weight",
+                Defaults.ZERO_WEIGHT,
             )
         )
         for i, row in portfolio_df.iterrows():
@@ -1111,8 +1130,8 @@ class BogleBenchAnalyzer:
             # Store ALL account cash flows
             for account in accounts:
                 total_account_cf = inv_cf.get(
-                    account, DEFAULT_CASH_FLOW
-                ) + inc_cf.get(account, DEFAULT_CASH_FLOW)
+                    account, Defaults.ZERO_CASH_FLOW
+                ) + inc_cf.get(account, Defaults.ZERO_CASH_FLOW)
 
                 portfolio_df.at[i, f"{account}_cash_flow"] = total_account_cf
                 portfolio_df.at[i, f"{account}_weighted_cash_flow"] = (
@@ -1122,7 +1141,7 @@ class BogleBenchAnalyzer:
         # Calculate market value change (pure investment performance)
         for i in range(0, len(portfolio_df)):
             if i == 0:
-                prev_value = DEFAULT_ZERO
+                prev_value = Defaults.DEFAULT_ZERO
             else:
                 prev_value = portfolio_df.iloc[i - 1]["total_value"]
 
@@ -1205,7 +1224,7 @@ class BogleBenchAnalyzer:
         self.logger.debug("Extracting dividend data for %s", ticker)
         dividend_df = df[df["dividend"] > 0][["date", "dividend"]].copy()
         dividend_df["value_per_share"] = dividend_df["dividend"]
-        dividend_df["div_type"] = DEFAULT_DIV_TYPE
+        dividend_df["div_type"] = DividendTypes.CASH
 
         # Normalize date for merging
         dividend_df["date"] = pd.to_datetime(
@@ -1274,7 +1293,7 @@ class BogleBenchAnalyzer:
                 account,
                 target_date.date(),
             )
-            return DEFAULT_ZERO
+            return Defaults.DEFAULT_ZERO
 
         # Sum all share changes (SELL transactions already have negative shares)
         total_shares = relevant_transactions["quantity"].sum()
@@ -1470,7 +1489,7 @@ class BogleBenchAnalyzer:
         error_margin: float = 0.01,
         auto_calculate_div_per_share: bool = True,
         warn_missing_dividends: bool = True,
-        default_div_type: str = DEFAULT_DIV_TYPE,
+        default_div_type: str = DividendTypes.CASH,
     ) -> List[str]:
         """
         Compare user-provided dividend and dividend reinvestment transactions
@@ -1496,8 +1515,8 @@ class BogleBenchAnalyzer:
         user_dividends = self.transactions[
             (self.transactions["ticker"] == ticker)
             & (
-                self.transactions["transaction_type"].isin(
-                    ["DIVIDEND", "DIVIDEND_REINVEST"]
+                TransactionTypes.is_dividend(
+                    self.transactions["transaction_type"]
                 )
             )
         ].copy()
@@ -1513,13 +1532,13 @@ class BogleBenchAnalyzer:
             return ["No user dividends found to compare."]
 
         if "div_type" not in user_dividends.columns:
-            user_dividends["div_type"] = DEFAULT_DIV_TYPE
+            user_dividends["div_type"] = DividendTypes.CASH
 
         if "div_pay_date" not in user_dividends.columns:
             user_dividends["div_pay_date"] = user_dividends["date"]
 
         if "value_per_share" not in user_dividends.columns:
-            user_dividends["value_per_share"] = DEFAULT_ZERO
+            user_dividends["value_per_share"] = Defaults.ZERO_DIVIDEND
 
         # Process dividends per account first ---
         all_enhanced_dividends = []
@@ -1577,7 +1596,7 @@ class BogleBenchAnalyzer:
         ticker: str,
         account: str,
         auto_calculate_div_per_share: bool = True,
-        default_div_type: str = DEFAULT_DIV_TYPE,
+        default_div_type: str = DividendTypes.CASH,
     ) -> Tuple[pd.DataFrame, List[str]]:
         """
         Validate and enhance a specific group of user dividend transactions
@@ -1685,7 +1704,8 @@ class BogleBenchAnalyzer:
             self.logger.debug(
                 "Aligned benchmark %s returns:\n%s",
                 len(benchmark_returns),
-                benchmark_returns.head(n=10) * TO_PERCENT,
+                benchmark_returns.head(n=10)
+                * ConversionFactors.DECIMAL_TO_PERCENT,
             )
 
             self.portfolio_history = pd.merge(
@@ -1766,7 +1786,7 @@ class BogleBenchAnalyzer:
         )
 
         # The first return is NaN after reindexing, fill with 0
-        aligned_returns.iloc[0] = DEFAULT_RETURN
+        aligned_returns.iloc[0] = Defaults.ZERO_RETURN
 
         aligned_df = aligned_returns.reset_index()
         aligned_df.rename(columns={"index": "date"}, inplace=True)
@@ -1792,13 +1812,13 @@ class BogleBenchAnalyzer:
         self.logger.debug(
             "%s: First 10 daily returns:\n%s",
             name,
-            returns.head(n=10) * TO_PERCENT,
+            returns.head(n=10) * ConversionFactors.DECIMAL_TO_PERCENT,
         )
 
         total_return = float((1 + returns).prod() - 1)
         self.logger.debug(
             "Calculating CAGR with total_return=%.6f%%, year_fraction=%.6f",
-            total_return * TO_PERCENT,
+            total_return * ConversionFactors.DECIMAL_TO_PERCENT,
             year_fraction,
         )
         annualized_return = cagr(1, 1 + total_return, year_fraction)
@@ -1820,8 +1840,8 @@ class BogleBenchAnalyzer:
         self.logger.debug(
             "%s: Total Return: %.2f%%, Annualized Return: %.2f%%",
             name,
-            total_return * TO_PERCENT,
-            annualized_return * TO_PERCENT,
+            total_return * ConversionFactors.DECIMAL_TO_PERCENT,
+            annualized_return * ConversionFactors.DECIMAL_TO_PERCENT,
         )
 
         volatility = returns.std(ddof=1)  # Daily volatility, sample stddev
@@ -1832,13 +1852,15 @@ class BogleBenchAnalyzer:
         self.logger.debug(
             "%s: Volatility: %.2f%% (period) %.2f%% (annualized)",
             name,
-            volatility * TO_PERCENT,
-            annual_volatility * TO_PERCENT,
+            volatility * ConversionFactors.DECIMAL_TO_PERCENT,
+            annual_volatility * ConversionFactors.DECIMAL_TO_PERCENT,
         )
 
         # Risk-adjusted metrics
         annual_risk_free_rate = float(
-            self.config.get("settings.risk_free_rate", DEFAULT_RISK_FREE_RATE)
+            self.config.get(
+                "settings.risk_free_rate", Defaults.DEFAULT_RISK_FREE_RATE
+            )
         )
         daily_risk_free_rate = cagr(
             1, 1 + annual_risk_free_rate, annual_trading_days
@@ -1887,14 +1909,15 @@ class BogleBenchAnalyzer:
             return {}
 
         annual_trading_days = self.config.get(
-            "settings.annual_trading_days", DEFAULT_TRADING_DAYS
+            "settings.annual_trading_days",
+            DateAndTimeConstants.DAYS_IN_TRADING_YEAR,
         )
         if isinstance(annual_trading_days, Dict):
             annual_trading_days = annual_trading_days.get(
-                "value", DEFAULT_TRADING_DAYS
+                "value", DateAndTimeConstants.DAYS_IN_TRADING_YEAR
             )
         if annual_trading_days is None:
-            annual_trading_days = DEFAULT_TRADING_DAYS
+            annual_trading_days = DateAndTimeConstants.DAYS_IN_TRADING_YEAR
         annual_trading_days = int(annual_trading_days)
 
         # Align the series by index. This is crucial for non-continuous date
@@ -1933,14 +1956,14 @@ class BogleBenchAnalyzer:
 
         # Jensen's Alpha (risk-adjusted excess return)
         risk_free_rate = self.config.get(
-            "settings.risk_free_rate", DEFAULT_RISK_FREE_RATE
+            "settings.risk_free_rate", Defaults.DEFAULT_RISK_FREE_RATE
         )
         if isinstance(risk_free_rate, Dict):
             risk_free_rate = risk_free_rate.get(
-                "value", DEFAULT_RISK_FREE_RATE
+                "value", Defaults.DEFAULT_RISK_FREE_RATE
             )
         if risk_free_rate is None:
-            risk_free_rate = DEFAULT_RISK_FREE_RATE
+            risk_free_rate = Defaults.DEFAULT_RISK_FREE_RATE
 
         daily_risk_free_rate = cagr(1, 1 + risk_free_rate, annual_trading_days)
         portfolio_excess = aligned_portfolio.mean() - daily_risk_free_rate

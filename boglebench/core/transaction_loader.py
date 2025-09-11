@@ -10,11 +10,9 @@ import pandas as pd
 
 from ..utils.logging_config import get_logger
 from ..utils.tools import to_tz_mixed
+from .constants import Defaults, DividendTypes, TransactionTypes
 
 logger = get_logger()
-DEFAULT_DIV_TYPE = "CASH"  # Default dividend type if not specified
-DEFAULT_VALUE = float(0.0)
-DEFAULT_ZERO = DEFAULT_VALUE
 
 
 def _is_iso8601_date(date_str: str) -> bool:
@@ -24,6 +22,38 @@ def _is_iso8601_date(date_str: str) -> bool:
     iso_pattern = r"^\d{4}-\d{2}-\d{2}"
 
     return bool(re.match(iso_pattern, date_str))
+
+
+def get_valid_transactions(series: pd.Series) -> pd.Series:
+    """
+    Identifies transactions in a Series with valid types.
+
+    Args:
+        series: A pandas Series containing transaction type strings.
+
+    Returns:
+        A Series of booleans indicating which transactions are valid.
+    """
+    # Get the set of all valid transaction type strings from our Enum
+    valid_types = TransactionTypes.all_types()
+
+    # Return the unique values from the original series that were invalid
+    return series.isin(valid_types)
+
+
+def is_series_valid(series: pd.Series) -> bool:
+    """
+    Checks if all transaction types in a Series are valid.
+
+    Args:
+        series: A pandas Series containing transaction type strings.
+
+    Returns:
+        True if all types are valid, False otherwise.
+    """
+    valid_transactions_mask = get_valid_transactions(series)
+    invalid_transactions = series[~valid_transactions_mask]
+    return len(invalid_transactions) == 0
 
 
 def _clean_transaction_data(
@@ -100,13 +130,13 @@ def _clean_transaction_data(
             elif col == "notes":
                 df[col] = ""
             elif col == "div_type":
-                df[col] = DEFAULT_DIV_TYPE
+                df[col] = DividendTypes.CASH
             elif col == "div_pay_date":
                 df[col] = df["date"]
             elif col in ["div_record_date", "div_ex_date"]:
                 df[col] = pd.NaT
             elif col == "split_ratio":
-                df[col] = DEFAULT_ZERO
+                df[col] = Defaults.DEFAULT_ZERO
 
             logger.debug("ℹ️  No '%s' column found. Added default values.", col)
 
@@ -133,18 +163,8 @@ def _clean_transaction_data(
     if "notes" in df.columns:
         df["notes"] = df["notes"].fillna("").astype(str).str.strip()
 
-    # Validate transaction types
-    valid_types = [
-        "BUY",
-        "SELL",
-        "DIVIDEND",
-        "DIVIDEND_REINVEST",
-        "SPLIT",
-        "MERGER",
-        "FEE",
-    ]
     df["transaction_type"] = df["transaction_type"].str.upper().str.strip()
-    invalid_types = df[~df["transaction_type"].isin(valid_types)]
+    invalid_types = df[~get_valid_transactions(df["transaction_type"])]
     if not invalid_types.empty:
         invalid_type_list = invalid_types["transaction_type"].unique()
         raise ValueError(
@@ -159,7 +179,7 @@ def _clean_transaction_data(
             raise ValueError(f"Invalid numeric values in column: {col}")
         if col in ["quantity", "value_per_share"]:
             is_dividend_or_fee = df["transaction_type"].isin(
-                ["DIVIDEND", "FEE"]
+                [TransactionTypes.DIVIDEND, TransactionTypes.FEE]
             )
             if (df[col] < 0).any() or (
                 (df[col] == 0) & ~is_dividend_or_fee
@@ -174,7 +194,11 @@ def _clean_transaction_data(
     df["total_value"] = np.abs(df["total_value"])
 
     error_limit = 0.01  # In dollars; allow small rounding errors
-    exclude_ttype = ["DIVIDEND", "DIVIDEND_REINVEST", "FEE"]
+    exclude_ttype = [
+        TransactionTypes.DIVIDEND,
+        TransactionTypes.DIVIDEND_REINVEST,
+        TransactionTypes.FEE,
+    ]
     df.loc[
         ~df["transaction_type"].isin(exclude_ttype),
         "total_value_check",
@@ -217,12 +241,16 @@ def _clean_transaction_data(
         ]
 
     # For SELL transactions, make shares negative for easier calculations
-    df.loc[df["transaction_type"] == "SELL", "quantity"] *= -1
-    df.loc[df["transaction_type"] == "SELL", "total_value"] *= -1
+    df.loc[df["transaction_type"] == TransactionTypes.SELL, "quantity"] *= -1
+    df.loc[
+        df["transaction_type"] == TransactionTypes.SELL, "total_value"
+    ] *= -1
 
     # For DIVIDEND transactions, make quantity zero and total value negative
-    df.loc[df["transaction_type"] == "DIVIDEND", "quantity"] = 0
-    df.loc[df["transaction_type"] == "DIVIDEND", "total_value"] *= -1
+    df.loc[df["transaction_type"] == TransactionTypes.DIVIDEND, "quantity"] = 0
+    df.loc[
+        df["transaction_type"] == TransactionTypes.DIVIDEND, "total_value"
+    ] *= -1
 
     # Sort by date
     df = df.sort_values("date").reset_index(drop=True)

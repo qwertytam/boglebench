@@ -8,10 +8,7 @@ import pandas as pd
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger
 from ..utils.tools import cagr
-
-DEFAULT_VALUE = float(0.0)
-DEFAULT_ZERO = DEFAULT_VALUE
-DEFAULT_RETURN = DEFAULT_ZERO
+from .constants import Defaults
 
 
 class PerformanceResults:
@@ -134,7 +131,7 @@ class PerformanceResults:
 
         annual_trading_days = int(
             self.config.get(
-                "settings.annual_trading_days", DEFAULT_TRADING_DAYS
+                "settings.annual_trading_days", Defaults.DAYS_IN_TRADING_YEAR
             )
         )
 
@@ -173,8 +170,8 @@ class PerformanceResults:
                         1, 1 + total_return, year_fraction
                     )
                 else:
-                    total_return = DEFAULT_RETURN
-                    annualized_return = DEFAULT_RETURN
+                    total_return = Defaults.ZERO_RETURN
+                    annualized_return = Defaults.ZERO_RETURN
 
                 account_data.append(
                     {
