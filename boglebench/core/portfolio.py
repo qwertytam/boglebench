@@ -15,7 +15,7 @@ and long-term focus.
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
 import numpy as np
@@ -81,9 +81,9 @@ class BogleBenchAnalyzer:
 
         self.transactions = pd.DataFrame()
         self.market_data: Dict[str, pd.DataFrame] = {}
-        self.portfolio_history = None
+        self.portfolio_history = pd.DataFrame()
         self.benchmark_data = pd.DataFrame()
-        self.performance_results = None
+        self.performance_results = pd.DataFrame()
 
         # Suppress warnings for cleaner output
         warnings.filterwarnings("ignore", category=FutureWarning)
@@ -1180,12 +1180,18 @@ class BogleBenchAnalyzer:
 
         # Calculate daily cash flow adjust returns
         # Calculate cash flows for each day using helper function
-        period_cash_flow_weight = float(
-            self.config.get(
-                "advanced.performance.period_cash_flow_weight",
-                Defaults.DEFAULT_CASH_FLOW_WEIGHT,
-            )
+        period_cash_flow_weight = self.config.get(
+            "advanced.performance.period_cash_flow_weight",
+            Defaults.DEFAULT_CASH_FLOW_WEIGHT,
         )
+        if isinstance(period_cash_flow_weight, dict):
+            period_cash_flow_weight = period_cash_flow_weight.get(
+                "value", Defaults.DEFAULT_CASH_FLOW_WEIGHT
+            )
+        if period_cash_flow_weight is None:
+            period_cash_flow_weight = Defaults.DEFAULT_CASH_FLOW_WEIGHT
+        period_cash_flow_weight = float(period_cash_flow_weight)
+
         for i, row in portfolio_df.iterrows():
             date = row["date"]
             if isinstance(date, str):
@@ -1235,11 +1241,11 @@ class BogleBenchAnalyzer:
             else:
                 market_return = market_change / prev_value
 
-            portfolio_df.iloc[
+            portfolio_df.at[
                 i, portfolio_df.columns.get_loc("market_value_change")
             ] = market_change
 
-            portfolio_df.iloc[
+            portfolio_df.at[
                 i, portfolio_df.columns.get_loc("market_value_return")
             ] = market_return
 
@@ -1436,7 +1442,9 @@ class BogleBenchAnalyzer:
         self.logger.debug("Market dividends:\n%s", market_dividends)
 
         # Use outer join to catch missing dividends if warn_missing_dividends is True
-        how_merge = "outer" if warn_missing_dividends else "left"
+        how_merge: Literal["left", "outer"] = (
+            "outer" if warn_missing_dividends else "left"
+        )
         self.logger.debug(
             "Merging user and market dividends for %s with '%s' join with date columns %s and %s",
             ticker,
@@ -1744,11 +1752,13 @@ class BogleBenchAnalyzer:
         Returns:
             PerformanceResults object containing all metrics and analysis
         """
-        if self.portfolio_history is None:
+        if self.portfolio_history.empty:
             self.build_portfolio_history()
 
         self.logger.info("📊 Calculating performance metrics...")
-
+        self.logger.debug(
+            "Portfolio history columns:\n%s", self.portfolio_history.columns
+        )
         self.portfolio_history["date"] = pd.to_datetime(
             self.portfolio_history["date"], utc=True
         ).dt.normalize()

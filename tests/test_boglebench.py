@@ -77,7 +77,7 @@ class TestBogleBenchAnalyzer:
         assert analyzer.config is not None
         assert analyzer.transactions.empty is True
         assert not analyzer.market_data
-        assert analyzer.portfolio_history is None
+        assert analyzer.portfolio_history.empty is True
 
     def test_load_transactions_success(self, temp_config, sample_transactions):
         """Test successful transaction loading."""
