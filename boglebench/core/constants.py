@@ -82,6 +82,11 @@ class TransactionTypes(str, Enum):
         return [item.value for item in cls]
 
     @classmethod
+    def all_dividend_types(cls) -> list[str]:
+        """Return a list of all dividend-related transaction types."""
+        return [cls.DIVIDEND, cls.DIVIDEND_REINVEST]
+
+    @classmethod
     def is_valid(cls, tx_type: str) -> bool:
         """Check if a transaction type is valid."""
         return tx_type in cls.all_types()
