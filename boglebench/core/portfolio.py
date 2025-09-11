@@ -15,7 +15,7 @@ and long-term focus.
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
 import numpy as np
@@ -542,15 +542,35 @@ class BogleBenchAnalyzer:
                 type(cached_end),
             )
 
+            # Ensure all compared values are not None and are scalars
             if (
-                cached_start <= first_trading_day
+                cached_start is not None
+                and first_trading_day is not None
+                and cached_end is not None
+                and last_trading_day is not None
+                and not isinstance(cached_start, pd.Series)
+                and not isinstance(first_trading_day, pd.Series)
+                and not isinstance(cached_end, pd.Series)
+                and not isinstance(last_trading_day, pd.Series)
+                and cached_start <= first_trading_day
                 and cached_end >= last_trading_day
             ):
                 self.logger.debug("Cache is valid for requested range")
                 # Filter to requested date range
-                mask = cached_df["date"].isin(
-                    to_tz_mixed(requested_schedule.index)
-                )
+                tz_index = to_tz_mixed(requested_schedule.index)
+                if isinstance(
+                    tz_index, (pd.Series, pd.Index, list, np.ndarray)
+                ):
+                    date_list = list(tz_index)
+                elif tz_index is not None:
+                    date_list = (
+                        [tz_index.timestamp()]
+                        if hasattr(tz_index, "timestamp")
+                        else [float(tz_index)]
+                    )
+                else:
+                    date_list = []
+                mask = cached_df["date"].isin(date_list)
                 self.logger.debug(
                     "Cache valid for %s from %s to %s",
                     ticker,
@@ -566,7 +586,7 @@ class BogleBenchAnalyzer:
                 return cached_df[mask].copy()
             else:
                 self.logger.debug(
-                    "Cache for %s is out of range (%s to %s)",
+                    "Cache for %s is invalid or out of range (%s to %s)",
                     ticker,
                     cached_start,
                     cached_end,
@@ -607,7 +627,7 @@ class BogleBenchAnalyzer:
         try:
             data.to_parquet(cache_file, index=False)
             self.logger.debug("Cache saved for %s", ticker)
-        except Exception as e:
+        except ValueError as e:
             self.logger.warning(
                 "⚠️  Warning: Could not cache data for %s: %s", ticker, e
             )
@@ -745,8 +765,8 @@ class BogleBenchAnalyzer:
                 # To implement: Process fee transactions
                 continue
 
-            elif TransactionTypes.is_transfer(ttype):
-                # To implement: Process transfer transactions
+            elif TransactionTypes.is_share_transfer(ttype):
+                # To implement: Process share transfer transactions
                 continue
 
             elif TransactionTypes.is_split(ttype):
@@ -881,12 +901,17 @@ class BogleBenchAnalyzer:
         else:
             raise ValueError("No valid end date provided or found.")
 
-        end_date = min(
-            end_date.date(),
-            max(
-                [df["date"].dt.date.max() for df in self.market_data.values()]
-                + [self.transactions["date"].dt.date.max()]
-            ),
+        end_date = pd.Timestamp(
+            min(
+                end_date.date(),
+                max(
+                    [
+                        df["date"].dt.date.max()
+                        for df in self.market_data.values()
+                    ]
+                    + [self.transactions["date"].dt.date.max()]
+                ),
+            )
         )
 
         # Default is all day between and including start and end dates that are
@@ -900,23 +925,49 @@ class BogleBenchAnalyzer:
             "Getting NYSE trading days from %s to %s", start_date, end_date
         )
         nyse = mcal.get_calendar("NYSE")
-        trading_days = nyse.schedule(start_date=start_date, end_date=end_date)
-        trading_dates = set(to_tz_mixed(trading_days.index))
-
-        # 2. Get all unique transaction dates
-        transaction_dates_mask = self.transactions["date"].dt.date <= end_date
-        transaction_dates = set(
-            self.transactions.loc[
-                transaction_dates_mask, "date"
-            ].dt.normalize()
+        trading_days = nyse.schedule(
+            start_date=start_date, end_date=end_date.date()
         )
 
-        self.logger.debug("Trading days:\n%s", trading_days)
-        self.logger.debug("Transaction dates:\n%s", transaction_dates)
+        self.logger.debug("trading_days:\n%s", trading_days)
+        self.logger.debug("type of trading_days:\n%s", trading_days.dtypes)
+        self.logger.debug(
+            "type of trading_days index:\n%s", trading_days.index.dtype
+        )
+
+        trading_dates_set = set(
+            [pd.to_datetime(date).normalize() for date in trading_days.index]
+        )
+        trading_dates = pd.to_datetime(list(trading_dates_set)).tz_localize(
+            DateAndTimeConstants.TZ_UTC.value
+        )
+
+        self.logger.debug("trading_dates:\n%s", trading_dates)
+
+        # 2. Get all unique transaction dates
+        transaction_dates_mask = (
+            self.transactions["date"].dt.date <= end_date.date()
+        )
+        transaction_dates = list(
+            set(
+                pd.to_datetime(
+                    self.transactions.loc[
+                        transaction_dates_mask, "date"
+                    ].dt.normalize()
+                )
+            )
+        )
+
+        self.logger.debug("Trading days sample:\n%s", trading_days.head(10))
+        self.logger.debug(
+            "Transaction dates sample:\n%s", transaction_dates[:10]
+        )
 
         # 3. Find transactions dates that are outside of trading days
         self.logger.debug("Checking for transactions on non-trading days")
-        non_trading_transaction_dates = transaction_dates - trading_dates
+        non_trading_transaction_dates = set(transaction_dates) - set(
+            trading_dates
+        )
 
         if non_trading_transaction_dates:
             self.logger.warning(
@@ -925,8 +976,13 @@ class BogleBenchAnalyzer:
                 "\n".join(str(date) for date in non_trading_transaction_dates),
             )
 
+        self.logger.info("trading_dates:\n%s", trading_dates)
+        self.logger.info(
+            "non_trading_transaction_dates:\n%s", non_trading_transaction_dates
+        )
+
         all_dates_to_process = sorted(
-            list(trading_dates.union(non_trading_transaction_dates))
+            list(trading_dates.union(list(non_trading_transaction_dates)))
         )
 
         date_range = pd.to_datetime(all_dates_to_process, utc=True)
@@ -980,8 +1036,7 @@ class BogleBenchAnalyzer:
                     # Ensure account and ticker exist in our tracking
                     if account not in current_holdings:
                         current_holdings[account] = {
-                            t: Defaults.ZERO_ASSET_VALUE_ASSET_VALUE
-                            for t in tickers
+                            t: Defaults.ZERO_ASSET_VALUE for t in tickers
                         }
                     if ticker not in current_holdings[account]:
                         current_holdings[account][
@@ -994,7 +1049,7 @@ class BogleBenchAnalyzer:
 
             # Get market prices for this date
             self.logger.debug("Calculating portfolio value for %s", date)
-            day_data = {"date": date}
+            day_data: Dict[str, Any] = {"date": date}
             total_portfolio_value = Defaults.ZERO_ASSET_VALUE
             account_totals = {}
 
