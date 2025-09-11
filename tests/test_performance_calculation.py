@@ -101,30 +101,7 @@ class TestPerformanceCalculation:
         assert "max_drawdown" in portfolio_twr_metrics
         assert "win_rate" in portfolio_twr_metrics
 
-        # Verify expected calculations for one week
-        # Portfolio: Buy at 180 -> End at 184.92
-        expected_total_return = (184.92 - 180.00) / 180.00
-        accuracy = 0.001 / 100  # 0.001% accuracy
-
-        assert (
-            abs(
-                portfolio_mod_dietz_metrics["total_return"]
-                - expected_total_return
-            )
-            < accuracy
-        )
-
-        # Verify portfolio history was built correctly
-        portfolio_history = results.portfolio_history
-        assert len(portfolio_history) == 10  # 10 trading days
-        assert "total_value" in portfolio_history.columns
-        assert "portfolio_daily_return_mod_dietz" in portfolio_history.columns
-        assert "portfolio_daily_return_twr" in portfolio_history.columns
-
         # Check initial and final portfolio values
-        initial_value = portfolio_history["total_value"].iloc[0]
-        final_value = portfolio_history["total_value"].iloc[-1]
-
         purchase_price = 180.00
         start_price = 179.58  # price at close on first trading day
         final_price = 184.92  # price at close on final trading day
@@ -134,6 +111,48 @@ class TestPerformanceCalculation:
 
         initial_expected = purchase_qty * start_price
         final_expected = final_qty * final_price
+
+        # Verify expected calculations for one week
+        # Portfolio: Buy at 180 -> End at 184.92
+        expected_total_return = (final_price - purchase_price) / purchase_price
+        accuracy = 0.001 / 100  # 0.001% accuracy
+
+        expected_daily_returns = np.array(
+            [
+                179.58 / purchase_price - 1,
+                179.21 / 179.58 - 1,
+                177.82 / 179.21 - 1,
+                180.57 / 177.82 - 1,
+                180.96 / 180.57 - 1,
+                183.79 / 180.96 - 1,
+                183.31 / 183.79 - 1,
+                183.95 / 183.31 - 1,
+                186.01 / 183.95 - 1,
+                final_price / 186.01 - 1,
+            ]
+        )
+
+        # Verify portfolio history was built correctly
+        portfolio_history = results.portfolio_history
+
+        print(portfolio_history)
+
+        assert len(portfolio_history) == 10  # 10 trading days
+        assert "total_value" in portfolio_history.columns
+        assert "portfolio_daily_return_mod_dietz" in portfolio_history.columns
+        assert "portfolio_daily_return_twr" in portfolio_history.columns
+
+        assert (
+            abs(
+                portfolio_mod_dietz_metrics["total_return"]
+                - expected_total_return
+            )
+            < accuracy
+        )
+
+        # Initial and final values
+        initial_value = portfolio_history["total_value"].iloc[0]
+        final_value = portfolio_history["total_value"].iloc[-1]
 
         assert abs(initial_value - initial_expected) < accuracy
         assert abs(final_value - final_expected) < accuracy
@@ -163,20 +182,6 @@ class TestPerformanceCalculation:
             < accuracy
         )
 
-        expected_daily_returns = np.array(
-            [
-                179.58 / purchase_price - 1,
-                179.21 / 179.58 - 1,
-                177.82 / 179.21 - 1,
-                180.57 / 177.82 - 1,
-                180.96 / 180.57 - 1,
-                183.79 / 180.96 - 1,
-                183.31 / 183.79 - 1,
-                183.95 / 183.31 - 1,
-                186.01 / 183.95 - 1,
-                final_price / 186.01 - 1,
-            ]
-        )
         expected_daily_mean_returns = np.mean(expected_daily_returns)
 
         # Volatility
