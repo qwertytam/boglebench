@@ -10,7 +10,12 @@ import pandas as pd
 
 from ..utils.logging_config import get_logger
 from ..utils.tools import to_tz_mixed
-from .constants import Defaults, DividendTypes, TransactionTypes
+from .constants import (
+    DateAndTimeConstants,
+    Defaults,
+    DividendTypes,
+    TransactionTypes,
+)
 
 logger = get_logger()
 
@@ -58,7 +63,7 @@ def is_series_valid(series: pd.Series) -> bool:
 
 def _clean_transaction_data(
     df: pd.DataFrame,
-    default_tz: Union[str, tzinfo] = "America/New_York",
+    default_tz: Union[str, tzinfo] = DateAndTimeConstants.TZ_UTC.value,
 ) -> pd.DataFrame:
     """Clean and validate transaction data."""
     # Make a copy to avoid modifying original
@@ -298,8 +303,8 @@ def load_validate_transactions(file_path: Path) -> pd.DataFrame:
     )
     logger.debug(
         "📅 Date range: %s to %s",
-        df["date"].min().date(),
-        df["date"].max().date(),
+        df["date"].min(),
+        df["date"].max(),
     )
 
     return df
