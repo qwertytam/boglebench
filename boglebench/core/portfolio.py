@@ -23,32 +23,29 @@ import pandas as pd
 import pandas_market_calendars as mcal  # type: ignore
 from alpha_vantage.timeseries import TimeSeries  # type: ignore
 
-from ..utils.config import ConfigManager
-from ..utils.logging_config import get_logger, setup_logging
-from ..utils.timing import timed_operation
-from ..utils.tools import (
-    aggregate_dividends,
-    cagr,
-    ensure_timestamp,
-    to_tz_mixed,
-)
-from ..utils.workspace import WorkspaceContext
-from .constants import (
+from ..core.constants import (
     ConversionFactors,
     DateAndTimeConstants,
     Defaults,
     DividendTypes,
     TransactionTypes,
 )
-from .metrics import (
+from ..core.metrics import (
     calculate_account_modified_dietz_returns,
     calculate_account_twr_daily_returns,
     calculate_irr,
+    calculate_metrics,
     calculate_modified_dietz_returns,
+    calculate_relative_metrics,
     calculate_twr_daily_returns,
 )
-from .results import PerformanceResults
-from .transaction_loader import load_validate_transactions
+from ..core.results import PerformanceResults
+from ..core.transaction_loader import load_validate_transactions
+from ..utils.config import ConfigManager
+from ..utils.logging_config import get_logger, setup_logging
+from ..utils.timing import timed_operation
+from ..utils.tools import aggregate_dividends, ensure_timestamp, to_tz_mixed
+from ..utils.workspace import WorkspaceContext
 
 
 class BogleBenchAnalyzer:
@@ -123,8 +120,8 @@ class BogleBenchAnalyzer:
         )
         self.logger.info(
             "📅 Date range: %s to %s",
-            self.transactions["date"].min().date(),
-            self.transactions["date"].max().date(),
+            self.transactions["date"].min(),
+            self.transactions["date"].max(),
         )
         self.logger.info(
             "🏦 Accounts: %s", ", ".join(self.transactions["account"].unique())
@@ -242,7 +239,11 @@ class BogleBenchAnalyzer:
                 "default_start_date is %s",
                 default_start_date,
             )
-        start_date = ensure_timestamp(start_date, default_start_date)
+        start_date = ensure_timestamp(
+            start_date,
+            default_start_date,
+            tz=DateAndTimeConstants.TZ_UTC.value,
+        )
         self.logger.debug(
             "start_date after ensure_timestamp is %s",
             start_date,
@@ -286,6 +287,10 @@ class BogleBenchAnalyzer:
                 "⚠️  No valid end date provided or found. Defaulting to %s",
                 str(last_market_close_date),
             )
+
+        self.logger.info(
+            "Using start date: %s and end date %s", start_date, end_date
+        )
 
         # Get list of all tickers (portfolio + benchmark)
         portfolio_tickers = self.transactions["ticker"].unique().tolist()
@@ -420,7 +425,12 @@ class BogleBenchAnalyzer:
 
                     hist = hist[
                         (hist["date"] >= start_date)
-                        & (hist["date"] <= end_date)
+                        & (
+                            hist["date"]
+                            <= pd.to_datetime(end_date).tz_localize(
+                                DateAndTimeConstants.TZ_UTC.value
+                            )
+                        )
                     ]
                     self.logger.debug(
                         "Data range for %s: %s to %s "
@@ -886,7 +896,7 @@ class BogleBenchAnalyzer:
         # Get actual NYSE trading days (excludes weekends AND holidays)
 
         # 1. Get all trading days in the period
-        self.logger.debug(
+        self.logger.info(
             "Getting NYSE trading days from %s to %s", start_date, end_date
         )
         nyse = mcal.get_calendar("NYSE")
@@ -900,6 +910,9 @@ class BogleBenchAnalyzer:
                 transaction_dates_mask, "date"
             ].dt.normalize()
         )
+
+        self.logger.debug("Trading days:\n%s", trading_days)
+        self.logger.debug("Transaction dates:\n%s", transaction_dates)
 
         # 3. Find transactions dates that are outside of trading days
         self.logger.debug("Checking for transactions on non-trading days")
@@ -921,8 +934,8 @@ class BogleBenchAnalyzer:
         self.logger.info(
             "📅 Processing %d trading days from %s to %s",
             len(date_range),
-            pd.Timestamp(date_range[0]).date(),
-            pd.Timestamp(date_range[-1]).date(),
+            pd.Timestamp(date_range[0]),
+            pd.Timestamp(date_range[-1]),
         )
 
         self.logger.debug(
@@ -1076,6 +1089,12 @@ class BogleBenchAnalyzer:
         self.logger.debug("Converting portfolio data to DataFrame")
         portfolio_df = pd.DataFrame(portfolio_data)
 
+        self.logger.debug(
+            "Portfolio DataFrame sample:\n%s", portfolio_df.head(10)
+        )
+        self.logger.debug(
+            "Portfolio dates sample:\n%s", portfolio_df["date"].head(10)
+        )
         # Ensure ascending date order
         portfolio_df = portfolio_df.sort_values("date").reset_index(drop=True)
 
@@ -1095,21 +1114,21 @@ class BogleBenchAnalyzer:
                         portfolio_df[weight_col] = (
                             portfolio_df[value_col]
                             / portfolio_df[account_total_col]
-                        ).fillna(Defaults.ZERO_WEIGHT)
+                        ).fillna(Defaults.DEFAULT_CASH_FLOW_WEIGHT)
 
         # Calculate overall weights
         for ticker in tickers:
             portfolio_df[f"{ticker}_weight"] = (
                 portfolio_df[f"{ticker}_total_value"]
                 / portfolio_df["total_value"]
-            ).fillna(Defaults.ZERO_WEIGHT)
+            ).fillna(Defaults.DEFAULT_CASH_FLOW_WEIGHT)
 
         # Calculate daily cash flow adjust returns
         # Calculate cash flows for each day using helper function
         period_cash_flow_weight = float(
             self.config.get(
                 "advanced.performance.period_cash_flow_weight",
-                Defaults.ZERO_WEIGHT,
+                Defaults.DEFAULT_CASH_FLOW_WEIGHT,
             )
         )
         for i, row in portfolio_df.iterrows():
@@ -1483,6 +1502,12 @@ class BogleBenchAnalyzer:
 
         self.logger.info("✅ Dividend validation complete")
 
+    def _find_dividend_transactions(self, series: pd.Series) -> pd.Series:
+        """Helper function to identify dividend transactions in a Series."""
+
+        valid_types = TransactionTypes.all_dividend_types()
+        return series.isin(valid_types)
+
     def compare_user_dividends_to_market(
         self,
         ticker: str,
@@ -1515,7 +1540,7 @@ class BogleBenchAnalyzer:
         user_dividends = self.transactions[
             (self.transactions["ticker"] == ticker)
             & (
-                TransactionTypes.is_dividend(
+                self._find_dividend_transactions(
                     self.transactions["transaction_type"]
                 )
             )
@@ -1675,17 +1700,47 @@ class BogleBenchAnalyzer:
 
         portfolio_metrics = {}
 
+        self.logger.debug(
+            "Portfolio history sample:\n%s", self.portfolio_history.head(n=10)
+        )
+
+        annual_trading_days = self.config.get(
+            "settings.annual_trading_days",
+            DateAndTimeConstants.DAYS_IN_TRADING_YEAR,
+        )
+        if isinstance(annual_trading_days, Dict):
+            annual_trading_days = annual_trading_days.get(
+                "value", DateAndTimeConstants.DAYS_IN_TRADING_YEAR
+            )
+        if annual_trading_days is None:
+            annual_trading_days = DateAndTimeConstants.DAYS_IN_TRADING_YEAR
+        annual_trading_days = int(annual_trading_days)
+
+        annual_risk_free_rate = self.config.get(
+            "settings.risk_free_rate", Defaults.DEFAULT_RISK_FREE_RATE
+        )
+        if isinstance(annual_risk_free_rate, Dict):
+            annual_risk_free_rate = annual_risk_free_rate.get(
+                "value", Defaults.DEFAULT_RISK_FREE_RATE
+            )
+        if annual_risk_free_rate is None:
+            annual_risk_free_rate = Defaults.DEFAULT_RISK_FREE_RATE
+
         # Calculate portfolio performance metrics
-        portfolio_metrics["mod_dietz"] = self._calculate_metrics(
+        portfolio_metrics["mod_dietz"] = calculate_metrics(
             self.portfolio_history[
                 "portfolio_daily_return_mod_dietz"
             ].dropna(),
             "Portfolio (Modified Dietz)",
+            annual_trading_days,
+            annual_risk_free_rate,
         )
 
-        portfolio_metrics["twr"] = self._calculate_metrics(
+        portfolio_metrics["twr"] = calculate_metrics(
             self.portfolio_history["portfolio_daily_return_twr"].dropna(),
             "Portfolio (TWR)",
+            annual_trading_days,
+            annual_risk_free_rate,
         )
 
         portfolio_metrics["irr"] = {
@@ -1708,6 +1763,11 @@ class BogleBenchAnalyzer:
                 * ConversionFactors.DECIMAL_TO_PERCENT,
             )
 
+            self.logger.debug(
+                "portfolio_history before merging benchmark:\n%s",
+                self.portfolio_history.head(n=10),
+            )
+
             self.portfolio_history = pd.merge(
                 self.portfolio_history,
                 aligned_benchmark_df,
@@ -1715,11 +1775,19 @@ class BogleBenchAnalyzer:
                 how="left",
             )
 
+            self.logger.debug(
+                "portfolio_history after merging benchmark:\n%s",
+                self.portfolio_history.head(n=10),
+            )
+
             benchmark_returns = self.portfolio_history[
                 "Benchmark_Returns"
             ].copy()
-            benchmark_metrics = self._calculate_metrics(
-                benchmark_returns[1:], "Benchmark"
+            benchmark_metrics = calculate_metrics(
+                benchmark_returns[1:],
+                "Benchmark",
+                annual_trading_days,
+                annual_risk_free_rate,
             )
 
         # Calculate relative performance metrics
@@ -1727,21 +1795,36 @@ class BogleBenchAnalyzer:
             "portfolio_daily_return_twr"
         ].copy()
 
+        self.logger.debug(
+            "Portfolio returns sample:\n%s",
+            portfolio_returns.head(n=10)
+            * ConversionFactors.DECIMAL_TO_PERCENT,
+        )
+
         portfolio_returns.index = pd.to_datetime(
             self.portfolio_history["date"]
         )
+
+        self.logger.debug(
+            "Portfolio returns after index update:\n%s",
+            portfolio_returns.head(n=10)
+            * ConversionFactors.DECIMAL_TO_PERCENT,
+        )
+
         if benchmark_returns.any():
             benchmark_returns.index = pd.to_datetime(
                 self.portfolio_history["date"]
             )
 
-        relative_metrics = self._calculate_relative_metrics(
+        relative_metrics = calculate_relative_metrics(
             portfolio_returns.dropna()[1:],
             (
                 benchmark_returns.dropna()[1:]
                 if benchmark_returns.any()
                 else None
             ),
+            annual_trading_days,
+            annual_risk_free_rate,
         )
 
         # Create results object
@@ -1792,191 +1875,3 @@ class BogleBenchAnalyzer:
         aligned_df.rename(columns={"index": "date"}, inplace=True)
 
         return aligned_df
-
-    def _calculate_metrics(self, returns: pd.Series, name: str) -> Dict:
-        """Calculate performance metrics for a return series."""
-        if returns.empty or returns.isna().all():
-            return {}
-
-        # Basic statistics
-        total_periods = len(returns)
-        annual_trading_days = int(
-            self.config.get(
-                "settings.annual_trading_days", DEFAULT_TRADING_DAYS
-            )
-        )
-        year_fraction = total_periods / annual_trading_days
-
-        returns = pd.to_numeric(returns, errors="coerce").dropna()
-
-        self.logger.debug(
-            "%s: First 10 daily returns:\n%s",
-            name,
-            returns.head(n=10) * ConversionFactors.DECIMAL_TO_PERCENT,
-        )
-
-        total_return = float((1 + returns).prod() - 1)
-        self.logger.debug(
-            "Calculating CAGR with total_return=%.6f%%, year_fraction=%.6f",
-            total_return * ConversionFactors.DECIMAL_TO_PERCENT,
-            year_fraction,
-        )
-        annualized_return = cagr(1, 1 + total_return, year_fraction)
-
-        self.logger.debug(
-            "%s: Periods: %d, Years: %.2f",
-            name,
-            total_periods,
-            year_fraction,
-        )
-
-        self.logger.debug(
-            "%s: First date: %s, Last date: %s",
-            name,
-            returns.index[0] if len(returns) > 0 else "N/A",
-            returns.index[-1] if len(returns) > 0 else "N/A",
-        )
-
-        self.logger.debug(
-            "%s: Total Return: %.2f%%, Annualized Return: %.2f%%",
-            name,
-            total_return * ConversionFactors.DECIMAL_TO_PERCENT,
-            annualized_return * ConversionFactors.DECIMAL_TO_PERCENT,
-        )
-
-        volatility = returns.std(ddof=1)  # Daily volatility, sample stddev
-        annual_volatility = volatility * np.sqrt(
-            annual_trading_days
-        )  # Annualized volatility
-
-        self.logger.debug(
-            "%s: Volatility: %.2f%% (period) %.2f%% (annualized)",
-            name,
-            volatility * ConversionFactors.DECIMAL_TO_PERCENT,
-            annual_volatility * ConversionFactors.DECIMAL_TO_PERCENT,
-        )
-
-        # Risk-adjusted metrics
-        annual_risk_free_rate = float(
-            self.config.get(
-                "settings.risk_free_rate", Defaults.DEFAULT_RISK_FREE_RATE
-            )
-        )
-        daily_risk_free_rate = cagr(
-            1, 1 + annual_risk_free_rate, annual_trading_days
-        )
-        excess_returns = returns - daily_risk_free_rate
-        excess_mean_returns = excess_returns.mean()
-        sharpe_ratio = (
-            excess_mean_returns / volatility * np.sqrt(annual_trading_days)
-            if returns.std() > 0
-            else 0
-        )
-
-        # Drawdown analysis
-        cumulative_returns = (1 + returns).cumprod()
-        running_max = cumulative_returns.expanding().max()
-        drawdown = (cumulative_returns - running_max) / running_max
-        max_drawdown = drawdown.min()
-
-        # Additional metrics
-        positive_periods = (returns > 0).sum()
-        win_rate = positive_periods / total_periods if total_periods > 0 else 0
-
-        return {
-            "name": name,
-            "total_return": total_return,
-            "annualized_return": annualized_return,
-            "volatility": annual_volatility,
-            "sharpe_ratio": sharpe_ratio,
-            "max_drawdown": max_drawdown,
-            "win_rate": win_rate,
-            "total_periods": total_periods,
-            "start_date": returns.index[0] if len(returns) > 0 else None,
-            "end_date": returns.index[-1] if len(returns) > 0 else None,
-        }
-
-    def _calculate_relative_metrics(
-        self,
-        portfolio_returns: pd.Series,
-        benchmark_returns: Optional[pd.Series],
-    ) -> Dict:
-        """Calculate relative performance metrics vs benchmark."""
-        if benchmark_returns is None or portfolio_returns.empty:
-            self.logger.warning(
-                "⚠️  No benchmark data available for relative metrics."
-            )
-            return {}
-
-        annual_trading_days = self.config.get(
-            "settings.annual_trading_days",
-            DateAndTimeConstants.DAYS_IN_TRADING_YEAR,
-        )
-        if isinstance(annual_trading_days, Dict):
-            annual_trading_days = annual_trading_days.get(
-                "value", DateAndTimeConstants.DAYS_IN_TRADING_YEAR
-            )
-        if annual_trading_days is None:
-            annual_trading_days = DateAndTimeConstants.DAYS_IN_TRADING_YEAR
-        annual_trading_days = int(annual_trading_days)
-
-        # Align the series by index. This is crucial for non-continuous date
-        # ranges.
-        self.logger.debug("Aligning portfolio and benchmark returns...")
-        self.logger.debug("Portfolio returns:\n%s", portfolio_returns.head(10))
-        self.logger.debug("Benchmark returns:\n%s", benchmark_returns.head(10))
-
-        aligned_portfolio, aligned_benchmark = portfolio_returns.align(
-            benchmark_returns, join="inner"
-        )
-
-        if aligned_portfolio.empty:
-            self.logger.warning(
-                "⚠️  No overlapping dates between portfolio and benchmark returns."
-            )
-            return {}
-
-        # Calculate excess returns (alpha)
-        excess_returns = aligned_portfolio - aligned_benchmark
-
-        # Tracking error (volatility of excess returns)
-        tracking_error = excess_returns.std() * np.sqrt(annual_trading_days)
-
-        # Information ratio (excess return / tracking error)
-        information_ratio = (
-            (excess_returns.mean() * annual_trading_days) / tracking_error
-            if tracking_error > 0
-            else 0
-        )
-
-        # Beta calculation
-        covariance = np.cov(aligned_portfolio, aligned_benchmark, ddof=1)[0, 1]
-        benchmark_variance = np.var(aligned_benchmark, ddof=1)
-        beta = covariance / benchmark_variance if benchmark_variance > 0 else 0
-
-        # Jensen's Alpha (risk-adjusted excess return)
-        risk_free_rate = self.config.get(
-            "settings.risk_free_rate", Defaults.DEFAULT_RISK_FREE_RATE
-        )
-        if isinstance(risk_free_rate, Dict):
-            risk_free_rate = risk_free_rate.get(
-                "value", Defaults.DEFAULT_RISK_FREE_RATE
-            )
-        if risk_free_rate is None:
-            risk_free_rate = Defaults.DEFAULT_RISK_FREE_RATE
-
-        daily_risk_free_rate = cagr(1, 1 + risk_free_rate, annual_trading_days)
-        portfolio_excess = aligned_portfolio.mean() - daily_risk_free_rate
-        benchmark_excess = aligned_benchmark.mean() - daily_risk_free_rate
-        jensens_alpha = portfolio_excess - (beta * benchmark_excess)
-        jensens_alpha_annualized = jensens_alpha * annual_trading_days
-
-        return {
-            "tracking_error": tracking_error,
-            "information_ratio": information_ratio,
-            "beta": beta,
-            "jensens_alpha": jensens_alpha_annualized,
-            "correlation": np.corrcoef(aligned_portfolio, aligned_benchmark)[
-                0, 1
-            ],
-        }
