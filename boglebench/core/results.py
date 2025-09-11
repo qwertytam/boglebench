@@ -16,11 +16,11 @@ class PerformanceResults:
 
     def __init__(
         self,
-        portfolio_metrics: Dict,
-        benchmark_metrics: Dict,
-        relative_metrics: Dict,
-        portfolio_history: pd.DataFrame,
-        config: ConfigManager,
+        portfolio_metrics: Optional[Dict] = None,
+        benchmark_metrics: Optional[Dict] = None,
+        relative_metrics: Optional[Dict] = None,
+        portfolio_history: Optional[pd.DataFrame] = None,
+        config: Optional[ConfigManager] = None,
     ):
         self.portfolio_metrics = portfolio_metrics
         self.benchmark_metrics = benchmark_metrics

@@ -83,7 +83,7 @@ class BogleBenchAnalyzer:
         self.market_data: Dict[str, pd.DataFrame] = {}
         self.portfolio_history = pd.DataFrame()
         self.benchmark_data = pd.DataFrame()
-        self.performance_results = pd.DataFrame()
+        self.performance_results = PerformanceResults()
 
         # Suppress warnings for cleaner output
         warnings.filterwarnings("ignore", category=FutureWarning)
@@ -797,7 +797,7 @@ class BogleBenchAnalyzer:
         self.logger.info("🏗️  Building portfolio history...")
 
         # Get all unique tickers and accounts
-        tickers = self.transactions["ticker"].unique()
+        tickers = self.transactions["ticker"].unique().tolist()
         accounts = self.transactions["account"].unique()
 
         # Validate dividend data for all tickers before building portfolio
@@ -976,8 +976,8 @@ class BogleBenchAnalyzer:
                 "\n".join(str(date) for date in non_trading_transaction_dates),
             )
 
-        self.logger.info("trading_dates:\n%s", trading_dates)
-        self.logger.info(
+        self.logger.debug("trading_dates:\n%s", trading_dates)
+        self.logger.debug(
             "non_trading_transaction_dates:\n%s", non_trading_transaction_dates
         )
 
@@ -1545,7 +1545,12 @@ class BogleBenchAnalyzer:
             raise ValueError("Must load transactions first")
 
         if tickers is None:
-            tickers = self.transactions["ticker"].unique()
+            tickers = self.transactions["ticker"].unique().tolist()
+
+            if tickers is None or len(tickers) == 0:
+                raise ValueError(
+                    "No tickers found in transactions to validate."
+                )
 
         self.logger.info(
             "🔍 Validating dividend data for %d tickers...", len(tickers or [])
@@ -1558,7 +1563,7 @@ class BogleBenchAnalyzer:
                     auto_calculate_div_per_share=auto_calculate_div_per_share,
                     warn_missing_dividends=warn_missing_dividends,
                 )
-            except Exception as e:
+            except ValueError as e:
                 self.logger.error(
                     "Error validating dividends for %s: %s", ticker, e
                 )
@@ -1650,7 +1655,6 @@ class BogleBenchAnalyzer:
                     ticker,
                     account,
                     auto_calculate_div_per_share,
-                    default_div_type,
                 )
             )
             all_enhanced_dividends.append(enhanced_group)
@@ -1676,7 +1680,7 @@ class BogleBenchAnalyzer:
         self.logger.debug("Completed dividend comparison for %s", ticker)
         self.logger.debug(comparison_messages)
 
-        return validation_messages + comparison_messages
+        return all_validation_messages + comparison_messages
 
     def _validate_and_enhance_dividend_data(
         self,
@@ -1684,7 +1688,6 @@ class BogleBenchAnalyzer:
         ticker: str,
         account: str,
         auto_calculate_div_per_share: bool = True,
-        default_div_type: str = DividendTypes.CASH,
     ) -> Tuple[pd.DataFrame, List[str]]:
         """
         Validate and enhance a specific group of user dividend transactions
@@ -1866,8 +1869,9 @@ class BogleBenchAnalyzer:
             * ConversionFactors.DECIMAL_TO_PERCENT,
         )
 
-        portfolio_returns.index = pd.to_datetime(
-            self.portfolio_history["date"]
+        portfolio_returns = pd.Series(
+            portfolio_returns.values,
+            index=pd.to_datetime(self.portfolio_history["date"]),
         )
 
         self.logger.debug(
@@ -1877,8 +1881,9 @@ class BogleBenchAnalyzer:
         )
 
         if benchmark_returns.any():
-            benchmark_returns.index = pd.to_datetime(
-                self.portfolio_history["date"]
+            benchmark_returns = pd.Series(
+                benchmark_returns.values,
+                index=pd.to_datetime(self.portfolio_history["date"]),
             )
 
         relative_metrics = calculate_relative_metrics(
@@ -1906,7 +1911,7 @@ class BogleBenchAnalyzer:
         self.logger.info("✅ Performance analysis complete!")
         return results
 
-    def _align_benchmark_returns(self) -> pd.Series:
+    def _align_benchmark_returns(self) -> pd.DataFrame:
         """Align benchmark returns with portfolio dates."""
         portfolio_dates = pd.to_datetime(
             self.portfolio_history["date"], utc=True
