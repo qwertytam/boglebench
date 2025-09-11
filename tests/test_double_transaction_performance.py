@@ -580,9 +580,14 @@ class TestMultiTransactionPerformance:
             ]
         )
 
+        assert portfolio_history["Benchmark_Returns"].notna().all()
+        assert (
+            portfolio_history["Benchmark_Returns"] == expected_bm_daily_returns
+        ).all()
+
         # Tracking error
         expected_excess_returns = (
-            expected_asset_daily_mod_dietz_returns[1:]
+            expected_asset_daily_twr_returns[1:]
             - expected_bm_daily_returns[1:]
         )
         expected_tracking_error = np.std(expected_excess_returns, ddof=1)
@@ -610,7 +615,7 @@ class TestMultiTransactionPerformance:
 
         # Beta
         covariance_matrix = np.cov(
-            expected_asset_daily_mod_dietz_returns[1:],
+            expected_asset_daily_twr_returns[1:],
             expected_bm_daily_returns[1:],
             ddof=1,
         )  # Sample covariance so ddof=1
@@ -623,7 +628,7 @@ class TestMultiTransactionPerformance:
         ) - 1
 
         expected_jensens_alpha = (
-            np.mean(expected_asset_daily_mod_dietz_returns[1:])
+            np.mean(expected_asset_daily_twr_returns[1:])
             - daily_risk_free_rate
             - expected_beta
             * (np.mean(expected_bm_daily_returns[1:]) - daily_risk_free_rate)

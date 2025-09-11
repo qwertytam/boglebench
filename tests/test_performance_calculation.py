@@ -213,10 +213,6 @@ class TestPerformanceCalculation:
         expected_irr = npf.irr(irr_daily_cash_flows)
         expected_annual_irr = (1 + expected_irr) ** annual_trading_days - 1
 
-        print(irr_daily_cash_flows)
-
-        print(portfolio_history["net_cash_flow"].values * -1)
-
         assert abs(
             results.portfolio_metrics["irr"]["annualized_return"]
             - expected_annual_irr

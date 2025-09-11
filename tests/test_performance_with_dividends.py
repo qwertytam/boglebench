@@ -179,8 +179,6 @@ class TestPerformanceWithDividends:
             expected_total_return = (102.00 - 100.00) / 100.00
             accuracy = 0.001 / 100  # 0.001% accuracy)
 
-            print(results.portfolio_history)
-
             assert (
                 abs(
                     portfolio_mod_dietz_metrics["total_return"]
