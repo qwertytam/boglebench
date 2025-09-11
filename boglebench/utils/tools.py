@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 from pandas import Timedelta
 
+from ..core.constants import DateAndTimeConstants
 from ..utils.logging_config import get_logger
 
 # Custom type aliases
@@ -98,7 +99,7 @@ def ensure_timestamp(
 
 def to_tz_mixed(
     x: Union[DateLike, SeqLike],
-    tz: Union[str, tzinfo] = "America/New_York",
+    tz: Union[str, tzinfo] = DateAndTimeConstants.TZ_UTC.value,
     *,
     nonexistent: NonExistentTime = "shift_forward",  # DST spring-forward gaps
     ambiguous: Any = "NaT",  # DST fall-back duplicates
