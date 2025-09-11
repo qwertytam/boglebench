@@ -7,7 +7,10 @@ import numpy_financial as npf  # type: ignore
 import pandas as pd
 
 from ..utils.config import ConfigManager
+from ..utils.logging_config import get_logger
 from .constants import DateAndTimeConstants, Defaults
+
+logger = get_logger()
 
 
 def calculate_modified_dietz_returns(portfolio_df: pd.DataFrame) -> pd.Series:
@@ -144,7 +147,7 @@ def calculate_account_twr_daily_returns(
 
 
 def calculate_irr(
-    portfolio_history: pd.DataFrame, config: ConfigManager, logger=None
+    portfolio_history: pd.DataFrame, config: ConfigManager
 ) -> float:
     """
     Calculate the Internal Rate of Return (IRR) for the entire portfolio period.

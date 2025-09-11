@@ -28,7 +28,7 @@ class PerformanceResults:
         self.portfolio_history = portfolio_history
         self.config = config
 
-        self.logger = get_logger("core.portfolio")
+        self.logger = get_logger("core.results")
 
     def summary(self) -> str:
         """Generate a summary report of the performance analysis."""

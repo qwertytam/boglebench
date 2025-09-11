@@ -1690,7 +1690,7 @@ class BogleBenchAnalyzer:
 
         portfolio_metrics["irr"] = {
             "annualized_return": calculate_irr(
-                self.portfolio_history, self.config, self.logger
+                self.portfolio_history, self.config
             )
         }
 
