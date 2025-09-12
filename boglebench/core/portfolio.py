@@ -212,14 +212,6 @@ class BogleBenchAnalyzer:
         if ticker not in self.market_data:
             raise ValueError(f"No market data available for {ticker}")
 
-        self.logger.debug("Using market data for %s", ticker)
-        self.logger.debug("Market data is:\n%s", self.market_data)
-        self.logger.debug(
-            "Market data for ticker %s is:\n%s",
-            ticker,
-            self.market_data[ticker],
-        )
-
         ticker_data = self.market_data[ticker]
         target_date = ensure_timestamp(target_date)
 
@@ -234,9 +226,11 @@ class BogleBenchAnalyzer:
         self.logger.debug(
             "Forward-filling price for %s on %s", ticker, target_date
         )
+
         available_data = ticker_data[
             ticker_data["date"].dt.date <= target_date.date()
         ]
+
         if not available_data.empty:
             days_back = (
                 target_date.date() - available_data["date"].iloc[-1].date()
@@ -586,6 +580,20 @@ class BogleBenchAnalyzer:
                 end_date_str=end_date.strftime("%Y-%m-%d"),
             )
 
+            benchmark_ticker = self.config.get(
+                "settings.benchmark_ticker", Defaults.DEFAULT_BENCHMARK_TICKER
+            )
+            if isinstance(benchmark_ticker, dict):
+                benchmark_ticker = benchmark_ticker.get(
+                    "value", Defaults.DEFAULT_BENCHMARK_TICKER
+                )
+            if benchmark_ticker is None or benchmark_ticker.strip() == "":
+                benchmark_ticker = Defaults.DEFAULT_BENCHMARK_TICKER
+
+            # Separate benchmark data for easy access
+            if benchmark_ticker in self.market_data:
+                self.benchmark_data = self.market_data[benchmark_ticker].copy()
+
         for date in date_range:
             # Process any transactions on this date
             self.logger.debug(
@@ -882,10 +890,7 @@ class BogleBenchAnalyzer:
         Returns a DataFrame with columns: 'date', 'dividend'
         """
         if ticker not in self.market_data:
-            raise ValueError(
-                f"Market data for ticker {ticker} not found. "
-                f"Did you run fetch_market_data()?"
-            )
+            raise ValueError(f"Market data for ticker {ticker} not found. ")
 
         df = self.market_data[ticker]
         # Only consider days where a dividend was paid
@@ -1407,7 +1412,7 @@ class BogleBenchAnalyzer:
         # Calculate benchmark performance metrics
         benchmark_metrics = {}
         benchmark_returns = pd.Series(dtype=float)
-        if self.benchmark_data is not None:
+        if not self.benchmark_data.empty:
             # Align benchmark data with portfolio dates
             aligned_benchmark_df = self._align_benchmark_returns()
 

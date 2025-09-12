@@ -181,8 +181,8 @@ def run_analysis(
         logger.info("Loading transaction data...")
         analyzer.load_transactions()
 
-        logger.info("Fetching market data...")
-        analyzer.fetch_market_data()
+        logger.info("Building portfolio history...")
+        analyzer.build_portfolio_history()
 
         logger.info("Calculating performance metrics...")
         results = analyzer.calculate_performance()
@@ -231,7 +231,6 @@ def show_holdings(config: str, account: str):
     try:
         analyzer = BogleBenchAnalyzer(config_path=config)
         analyzer.load_transactions()
-        analyzer.fetch_market_data()
         analyzer.build_portfolio_history()
         results = analyzer.calculate_performance()
 

@@ -505,7 +505,7 @@ class TestPerformanceCalculation:
 
         # Only provide portfolio data, no benchmark
         analyzer.market_data = {"AAPL": simple_market_data["AAPL"]}
-        analyzer.benchmark_data = None
+        analyzer.benchmark_data = pd.DataFrame()  # Empty benchmark
 
         results = analyzer.calculate_performance()
 
