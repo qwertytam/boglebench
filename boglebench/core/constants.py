@@ -65,6 +65,8 @@ class Defaults:
     DEFAULT_API_KEY = "YOUR_API_KEY"
     DEFAULT_CACHE_DIR = "market_data/"
 
+    DEFAULT_BENCHMARK_TICKER = "SPY"  # S&P 500 ETF as default benchmark
+
 
 class TransactionTypes(str, Enum):
     """Enumeration for transaction types."""
