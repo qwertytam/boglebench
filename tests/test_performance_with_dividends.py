@@ -14,7 +14,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from boglebench.core.portfolio import BogleBenchAnalyzer, PerformanceResults
+from boglebench.core.market_data import MarketDataProvider
+from boglebench.core.portfolio import BogleBenchAnalyzer
+from boglebench.core.results import PerformanceResults
 from boglebench.utils.config import ConfigManager
 
 
@@ -28,11 +30,8 @@ def create_mock_market_data(workspace: Path, market_data_dict: dict):
         df["date"] = pd.to_datetime(df["date"])
         # Add required columns if they don't exist
         for col in [
-            "open",
-            "high",
-            "low",
+            "close",
             "adj_close",
-            "volume",
             "split_coefficient",
         ]:
             if col not in df.columns:
@@ -40,6 +39,7 @@ def create_mock_market_data(workspace: Path, market_data_dict: dict):
                     df[col] = df["close"]
                 else:
                     df[col] = 0
+
         df.to_parquet(market_data_dir / f"{ticker}.parquet")
 
 
@@ -67,6 +67,9 @@ class TestPerformanceWithDividends:
             config.config["api"]["alpha_vantage_key"] = "DUMMY_KEY"
             config.config["data"]["transactions_file"] = "transactions.csv"
 
+            config.config["analysis"]["default_start_date"] = "2023-01-03"
+            config.config["analysis"]["default_end_date"] = "2023-01-05"
+
             yield config
 
     def _setup_scenario(
@@ -78,8 +81,8 @@ class TestPerformanceWithDividends:
         """
         # Patch the analyzer's fetch method to prevent live API calls
         with patch.object(
-            BogleBenchAnalyzer,
-            "fetch_market_data",
+            MarketDataProvider,
+            "get_market_data",
             return_value=market_data_dict,
         ) as mock_fetch:
             analyzer = BogleBenchAnalyzer()
@@ -135,7 +138,6 @@ class TestPerformanceWithDividends:
         for analyzer, _ in self._setup_scenario(
             temp_config, transactions, market_data
         ):
-
             analyzer.load_transactions()
             analyzer.build_portfolio_history()
             results = analyzer.calculate_performance()

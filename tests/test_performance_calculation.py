@@ -35,6 +35,9 @@ class TestPerformanceCalculation:
                 "period_cash_flow_weight"
             ] = 1.0
 
+            config.config["analysis"]["default_start_date"] = "2023-06-05"
+            config.config["analysis"]["default_end_date"] = "2023-06-16"
+
             yield config
 
     @pytest.fixture
@@ -135,7 +138,7 @@ class TestPerformanceCalculation:
         # Verify portfolio history was built correctly
         portfolio_history = results.portfolio_history
 
-        print(portfolio_history)
+        print(f"Portfolio History:\n{portfolio_history}")
 
         assert len(portfolio_history) == 10  # 10 trading days
         assert "total_value" in portfolio_history.columns
