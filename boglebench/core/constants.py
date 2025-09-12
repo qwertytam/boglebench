@@ -34,8 +34,8 @@ class DateAndTimeConstants(str, Enum):
     HOURS_IN_DAY = 24  # Hours in a day
     MINUTES_IN_HOUR = 60  # Minutes in an hour
     SECONDS_IN_MINUTE = 60  # Seconds in a minute
-    SECONDS_IN_HOUR = 3600  # Seconds in an hour
-    SECONDS_IN_DAY = 86400  # Seconds in a
+    SECONDS_IN_HOUR = MINUTES_IN_HOUR * SECONDS_IN_MINUTE  # Seconds in an hour
+    SECONDS_IN_DAY = SECONDS_IN_HOUR * HOURS_IN_DAY  # Seconds in a day
 
 
 class ConversionFactors(float, Enum):
@@ -61,6 +61,9 @@ class Defaults:
     DEFAULT_RISK_FREE_RATE = float(0.02)  # 2% risk-free rate
 
     DEFAULT_LOOK_FORWARD_PRICE_DATA = 10  # days
+
+    DEFAULT_API_KEY = "YOUR_API_KEY"
+    DEFAULT_CACHE_DIR = "market_data/"
 
 
 class TransactionTypes(str, Enum):
