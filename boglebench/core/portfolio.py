@@ -15,13 +15,12 @@ and long-term focus.
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple
 from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
 import numpy as np
 import pandas as pd
 import pandas_market_calendars as mcal  # type: ignore
-from alpha_vantage.timeseries import TimeSeries  # type: ignore
 
 from ..core.constants import (
     ConversionFactors,
@@ -30,6 +29,7 @@ from ..core.constants import (
     DividendTypes,
     TransactionTypes,
 )
+from ..core.market_data import MarketDataProvider
 from ..core.metrics import (
     calculate_account_modified_dietz_returns,
     calculate_account_twr_daily_returns,
@@ -43,7 +43,6 @@ from ..core.results import PerformanceResults
 from ..core.transaction_loader import load_validate_transactions
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
-from ..utils.timing import timed_operation
 from ..utils.tools import aggregate_dividends, ensure_timestamp, to_tz_mixed
 from ..utils.workspace import WorkspaceContext
 
@@ -84,6 +83,30 @@ class BogleBenchAnalyzer:
         self.portfolio_history = pd.DataFrame()
         self.benchmark_data = pd.DataFrame()
         self.performance_results = PerformanceResults()
+
+        # Set up market data provider
+        self.api_key = self.config.get(
+            "api.alpha_vantage_key", Defaults.DEFAULT_API_KEY
+        )
+        if isinstance(self.api_key, dict):
+            self.api_key = self.api_key.get("value", Defaults.DEFAULT_API_KEY)
+        if self.api_key is None or str(self.api_key).strip() == "":
+            self.api_key = Defaults.DEFAULT_API_KEY
+
+        cache_enabled = self.config.get("settings.cache_market_data", True)
+        if isinstance(cache_enabled, dict):
+            cache_enabled = cache_enabled.get("value", True)
+        if cache_enabled is None:
+            cache_enabled = True
+
+        cache_dir = self.config.get_market_data_path()
+
+        self.market_data_provider = MarketDataProvider(
+            api_key=self.api_key,
+            cache_dir=cache_dir,
+            cache_enabled=cache_enabled,
+            force_cache_refresh=False,
+        )
 
         # Suppress warnings for cleaner output
         warnings.filterwarnings("ignore", category=FutureWarning)
@@ -134,19 +157,6 @@ class BogleBenchAnalyzer:
 
         return self.transactions
 
-    def _validate_api_key(self):
-        """Validate that required API keys are configured."""
-        provider = self.config.get("api.data_provider", "alpha_vantage")
-
-        if provider == "alpha_vantage":
-            api_key = self.config.get("api.alpha_vantage_key")
-            if not api_key:
-                raise ValueError(
-                    "Alpha Vantage API key required. "
-                    "Add 'alpha_vantage_key' to your config.yaml under 'api' section. "
-                    "Get free key: https://www.alphavantage.co/support/#api-key"
-                )
-
     def _is_market_currently_open(self) -> bool:
         """Check if the market is currently open."""
         nyse = mcal.get_calendar("NYSE")
@@ -195,449 +205,20 @@ class BogleBenchAnalyzer:
         )
         return pd.to_datetime(last_closed_market_day)
 
-    def fetch_market_data(
-        self,
-        start_date: Optional[Union[str, pd.Timestamp]] = None,
-        end_date: Optional[Union[str, pd.Timestamp]] = None,
-        force_refresh: bool = False,
-    ) -> Dict[str, pd.DataFrame]:
-        """
-        Fetch daily market data for all assets in portfolio plus benchmark.
-
-        Args:
-            start_date: Start date for market data (YYYY-MM-DD).
-                       If None, uses first transaction date.
-            end_date: End date for market data (YYYY-MM-DD).
-                     If None, uses today.
-            force_refresh: If True, refresh data even if cached.
-
-        Returns:
-            Dictionary mapping ticker symbols to price DataFrames
-        """
-        if self.transactions.empty:
-            raise ValueError(
-                "Must load transactions first using load_transactions()"
-            )
-
-        # Ensure start_dt and end_dt are pd.Timestamp and not None
-        default_start_date = None
-        if start_date is None:
-            self.logger.debug(
-                "No start date provided. "
-                + "Defaulting to %s days before first transaction.",
-                Defaults.DEFAULT_LOOK_FORWARD_PRICE_DATA,
-            )
-            self.logger.debug(
-                "self.transactions['date'].min() is %s and type %s",
-                self.transactions["date"].min(),
-                type(self.transactions["date"].min()),
-            )
-            default_start_date = self.transactions["date"].min() - timedelta(
-                days=Defaults.DEFAULT_LOOK_FORWARD_PRICE_DATA
-            )
-            self.logger.debug(
-                "default_start_date is %s",
-                default_start_date,
-            )
-        start_date = ensure_timestamp(
-            start_date,
-            default_start_date,
-            tz=DateAndTimeConstants.TZ_UTC.value,
-        )
-        self.logger.debug(
-            "start_date after ensure_timestamp is %s",
-            start_date,
-        )
-
-        last_market_close_date = None
-        if self._is_market_currently_open():
-            self.logger.info("Market is currently open")
-            last_market_close_date = self._get_last_closed_market_day()
-        else:
-            self.logger.info("Market is currently closed")
-
-            # Ensure last_market_close_date is a scalar Timestamp,
-            # not a Series or None
-            dt_now = to_tz_mixed(datetime.now())
-            if isinstance(dt_now, pd.Series):
-                if not dt_now.empty:
-                    last_market_close_date = pd.to_datetime(dt_now.iloc[0])
-                else:
-                    raise ValueError("dt_now Series is empty")
-            else:
-                last_market_close_date = dt_now
-
-        # Ensure the config value is not a dict before passing to pd.Timestamp
-        config_end_date = self.config.get(
-            "analysis.default_end_date", last_market_close_date
-        )
-        if isinstance(config_end_date, dict):
-            config_end_date = config_end_date.get(
-                "value", last_market_close_date
-            )
-        if config_end_date is not None:
-            end_date = pd.Timestamp(config_end_date)
-        elif last_market_close_date is not None:
-            end_date = pd.Timestamp(last_market_close_date)
-        else:
-            raise ValueError("No valid end date provided or found.")
-
-        if end_date is None:
-            self.logger.warning(
-                "⚠️  No valid end date provided or found. Defaulting to %s",
-                str(last_market_close_date),
-            )
-
-        self.logger.info(
-            "Using start date: %s and end date %s", start_date, end_date
-        )
-
-        # Get list of all tickers (portfolio + benchmark)
-        portfolio_tickers = self.transactions["ticker"].unique().tolist()
-        benchmark_ticker = self.config.get("settings.benchmark_ticker", "SPY")
-        if isinstance(benchmark_ticker, dict):
-            benchmark_ticker = benchmark_ticker.get("value", "SPY")
-        if benchmark_ticker is None or benchmark_ticker.strip() == "":
-            benchmark_ticker = "SPY"
-
-        all_tickers = portfolio_tickers + [benchmark_ticker]
-        all_tickers = list(set(all_tickers))  # Remove duplicates
-
-        self.logger.info(
-            "📊 Fetching market data for %s assets...", len(all_tickers)
-        )
-
-        self.logger.info("Using ticker %s for benchmark", benchmark_ticker)
-
-        self.logger.info(
-            "📅 Date range: %s to %s",
-            start_date.strftime("%Y-%m-%d"),
-            end_date.strftime("%Y-%m-%d"),
-        )
-
-        # Fetch data for each ticker
-        market_data = {}
-        failed_tickers = []
-
-        # Checking if caching is enabled
-        cache_enabled = self.config.get("settings.cache_market_data", True)
-        cache_dir = self.config.get_market_data_path()
-        self.logger.debug("Cache enabled: %s", cache_enabled)
-        self.logger.debug("Cache directory: %s", cache_dir)
-        self.logger.debug("Cache directory exists: %s", cache_dir.exists())
-
-        for ticker in all_tickers:
-            try:
-                with timed_operation("Fetching market data", self.logger):
-                    self.logger.info("  Fetching market data for %s", ticker)
-
-                    # Check cache first (if enabled and not forcing refresh)
-                    cached_data = self._get_cached_data(
-                        ticker, start_date, end_date
-                    )
-                    if cached_data is not None and not force_refresh:
-                        self.logger.debug(
-                            "Cache HIT for %s - using cached data", ticker
-                        )
-                        market_data[ticker] = cached_data
-                        continue
-                    else:
-                        self.logger.debug(
-                            "cached_data is None: %s", cached_data is None
-                        )
-                        self.logger.debug("Force refresh: %s", force_refresh)
-                        self.logger.debug(
-                            "Cache MISS for %s - downloading from API", ticker
-                        )
-
-                    # Get Alpha Vantage API key
-                    api_key = self.config.get("api.alpha_vantage_key")
-                    if not api_key:
-                        raise ValueError(
-                            "Alpha Vantage API key required. "
-                            "Get free key at https://www.alphavantage.co/support/#api-key"
-                        )
-
-                    # Download from Alpha Vantage
-                    ts = TimeSeries(key=api_key, output_format="pandas")
-                    # pylint: disable-next=unbalanced-tuple-unpacking
-                    hist, _ = ts.get_daily_adjusted(  # type: ignore
-                        symbol=ticker, outputsize="full"
-                    )
-
-                    if hist.empty:  # pylint: disable=no-member # type: ignore
-                        failed_tickers.append(ticker)
-                        continue
-
-                    # Rename columns
-                    hist = (
-                        # pylint: disable-next=no-member
-                        hist.rename(  # type: ignore
-                            columns={
-                                "1. open": "open",
-                                "2. high": "high",
-                                "3. low": "low",
-                                "4. close": "close",
-                                "5. adjusted close": "adj_close",
-                                "6. volume": "volume",
-                                "7. dividend amount": "dividend",
-                                "8. split coefficient": "split_coefficient",
-                            }
-                        )
-                    )
-                    hist = hist[
-                        [
-                            "open",
-                            "high",
-                            "low",
-                            "close",
-                            "adj_close",
-                            "volume",
-                            "dividend",
-                            "split_coefficient",
-                        ]
-                    ]
-                    hist.index.name = "date"
-                    hist = hist.reset_index()
-
-                    # Ensure data is sorted date ascending
-                    hist = hist.sort_values("date").reset_index(drop=True)
-
-                    # Filter date range
-                    hist["date"] = to_tz_mixed(hist["date"])
-                    self.logger.debug(
-                        "Data range for %s: %s to %s before filtering",
-                        ticker,
-                        hist["date"].min(),
-                        hist["date"].max(),
-                    )
-
-                    self.logger.debug(
-                        "start_date is %s and end_date is %s",
-                        start_date,
-                        end_date,
-                    )
-                    self.logger.debug(
-                        "hist['date'] is %s and type %s",
-                        hist["date"].head(),
-                        type(hist["date"]),
-                    )
-
-                    hist = hist[
-                        (hist["date"] >= start_date)
-                        & (
-                            hist["date"]
-                            <= pd.to_datetime(end_date).tz_localize(
-                                DateAndTimeConstants.TZ_UTC.value
-                            )
-                        )
-                    ]
-                    self.logger.debug(
-                        "Data range for %s: %s to %s "
-                        + "AFTER filtering against %s to %s",
-                        ticker,
-                        hist["date"].min(),
-                        hist["date"].max(),
-                        start_date.strftime("%Y-%m-%d"),
-                        end_date.strftime("%Y-%m-%d"),
-                    )
-
-                    # Cache the data
-                    self._cache_data(ticker, hist)
-
-                    market_data[ticker] = hist
-
-            except (OSError, ValueError) as e:
-                self.logger.error("  ❌ Failed to download %s: %s", ticker, e)
-                failed_tickers.append(ticker)
-
-        if failed_tickers:
-            self.logger.error(
-                "⚠️  Failed to download data for: %s", failed_tickers
-            )
-            if benchmark_ticker in failed_tickers:
-                self.logger.warning(
-                    "❌ Warning: Benchmark %s data unavailable",
-                    benchmark_ticker,
-                )
-
-        # Store market data
-        self.logger.debug(
-            "Fetched market data for %s tickers", len(market_data)
-        )
-        self.market_data = market_data
-
-        # Separate benchmark data for easy access
-        if benchmark_ticker in market_data:
-            self.benchmark_data = market_data[benchmark_ticker].copy()
-
-        self.logger.info(
-            "✅ Successfully downloaded data for %d assets", len(market_data)
-        )
-        return market_data
-
-    def _get_cached_data(
-        self, ticker: str, start_date: pd.Timestamp, end_date: pd.Timestamp
-    ) -> Optional[pd.DataFrame]:
-        """Check if we have cached data for the ticker and date range."""
-        cache_dir = self.config.get_market_data_path()
-        cache_file = cache_dir / f"{ticker}.parquet"
-
-        self.logger.debug("Checking cache for %s at %s", ticker, cache_file)
-        self.logger.debug("Cache file exists: %s", cache_file.exists())
-
-        if not cache_file.exists():
-            self.logger.debug("No cache file for %s", ticker)
-            return None
-
-        try:
-            cached_df = pd.read_parquet(cache_file)
-            cached_df["date"] = to_tz_mixed(cached_df["date"])
-
-            # Ensure ascending date order
-            cached_df = cached_df.sort_values("date").reset_index(drop=True)
-
-            # Check if cached data covers our date range
-            cached_start = to_tz_mixed(cached_df["date"].min())
-            cached_end = to_tz_mixed(cached_df["date"].max())
-
-            self.logger.debug(
-                "Cached data for %s from %s to %s with start %s and end %s",
-                ticker,
-                cached_start,
-                cached_end,
-                start_date,
-                end_date,
-            )
-
-            # Matching dates to trading days only
-            nyse = mcal.get_calendar("NYSE")
-
-            requested_schedule = nyse.schedule(
-                start_date=start_date, end_date=end_date
-            )
-
-            if requested_schedule.empty:
-                self.logger.debug(
-                    "No trading days in requested range %s to %s",
-                    start_date,
-                    end_date,
-                )
-                return None
-            first_trading_day = to_tz_mixed(requested_schedule.index.min())
-            last_trading_day = to_tz_mixed(requested_schedule.index.max())
-
-            self.logger.debug(
-                "Comparing requested trading days from %s %s to %s %s",
-                first_trading_day,
-                type(first_trading_day),
-                last_trading_day,
-                type(last_trading_day),
-            )
-            self.logger.debug(
-                "With cached data from %s %s to %s %s",
-                cached_start,
-                type(cached_start),
-                cached_end,
-                type(cached_end),
-            )
-
-            # Ensure all compared values are not None and are scalars
-            if (
-                cached_start is not None
-                and first_trading_day is not None
-                and cached_end is not None
-                and last_trading_day is not None
-                and not isinstance(cached_start, pd.Series)
-                and not isinstance(first_trading_day, pd.Series)
-                and not isinstance(cached_end, pd.Series)
-                and not isinstance(last_trading_day, pd.Series)
-                and cached_start <= first_trading_day
-                and cached_end >= last_trading_day
-            ):
-                self.logger.debug("Cache is valid for requested range")
-                # Filter to requested date range
-                tz_index = to_tz_mixed(requested_schedule.index)
-                if isinstance(
-                    tz_index, (pd.Series, pd.Index, list, np.ndarray)
-                ):
-                    date_list = list(tz_index)
-                elif tz_index is not None:
-                    date_list = (
-                        [tz_index.timestamp()]
-                        if hasattr(tz_index, "timestamp")
-                        else [float(tz_index)]
-                    )
-                else:
-                    date_list = []
-                mask = cached_df["date"].isin(date_list)
-                self.logger.debug(
-                    "Cache valid for %s from %s to %s",
-                    ticker,
-                    cached_start,
-                    cached_end,
-                )
-                self.logger.debug(
-                    "Head and tail of cached data for %s:\n%s\n%s",
-                    ticker,
-                    cached_df.head(n=5),
-                    cached_df.tail(n=5),
-                )
-                return cached_df[mask].copy()
-            else:
-                self.logger.debug(
-                    "Cache for %s is invalid or out of range (%s to %s)",
-                    ticker,
-                    cached_start,
-                    cached_end,
-                )
-                return None
-
-        except (OSError, ValueError) as e:
-            # If there's any issue with cached data, ignore it
-            self.logger.warning(
-                (
-                    "⚠️  Invalid cache for %s, with start date %s and "
-                    "end date %s; ignoring error: %s"
-                ),
-                ticker,
-                start_date.strftime("%Y-%m-%d"),
-                end_date.strftime("%Y-%m-%d"),
-                e,
-            )
-
-        return None
-
-    def _cache_data(self, ticker: str, data: pd.DataFrame) -> None:
-        """Cache market data to disk."""
-        if not self.config.get("settings.cache_market_data", True):
-            self.logger.debug(
-                "Caching disabled, skipping cache for %s", ticker
-            )
-            return
-
-        cache_dir = self.config.get_market_data_path()
-        cache_dir.mkdir(parents=True, exist_ok=True)
-
-        cache_file = cache_dir / f"{ticker}.parquet"
-
-        self.logger.debug("Caching data for %s at %s", ticker, cache_file)
-        self.logger.debug("Data shape: %s", data.shape)
-
-        try:
-            data.to_parquet(cache_file, index=False)
-            self.logger.debug("Cache saved for %s", ticker)
-        except ValueError as e:
-            self.logger.warning(
-                "⚠️  Warning: Could not cache data for %s: %s", ticker, e
-            )
-
     def _get_price_for_date(
         self, ticker: str, target_date: pd.Timestamp
     ) -> float:
         """Get price for ticker on specific date with forward-fill logic."""
         if ticker not in self.market_data:
             raise ValueError(f"No market data available for {ticker}")
+
+        self.logger.debug("Using market data for %s", ticker)
+        self.logger.debug("Market data is:\n%s", self.market_data)
+        self.logger.debug(
+            "Market data for ticker %s is:\n%s",
+            ticker,
+            self.market_data[ticker],
+        )
 
         ticker_data = self.market_data[ticker]
         target_date = ensure_timestamp(target_date)
@@ -791,8 +372,6 @@ class BogleBenchAnalyzer:
         """
         if self.transactions.empty:
             raise ValueError("Must load transactions first")
-        if not self.market_data:
-            raise ValueError("Must fetch market data first")
 
         self.logger.info("🏗️  Building portfolio history...")
 
@@ -901,19 +480,6 @@ class BogleBenchAnalyzer:
         else:
             raise ValueError("No valid end date provided or found.")
 
-        end_date = pd.Timestamp(
-            min(
-                end_date.date(),
-                max(
-                    [
-                        df["date"].dt.date.max()
-                        for df in self.market_data.values()
-                    ]
-                    + [self.transactions["date"].dt.date.max()]
-                ),
-            )
-        )
-
         # Default is all day between and including start and end dates that are
         # trading days.
         # However, will also include any transaction dates that fall outside
@@ -921,7 +487,7 @@ class BogleBenchAnalyzer:
         # Get actual NYSE trading days (excludes weekends AND holidays)
 
         # 1. Get all trading days in the period
-        self.logger.info(
+        self.logger.debug(
             "Getting NYSE trading days from %s to %s", start_date, end_date
         )
         nyse = mcal.get_calendar("NYSE")
@@ -998,6 +564,27 @@ class BogleBenchAnalyzer:
             "Starting to process %d transactions by date",
             len(self.transactions),
         )
+
+        self.logger.debug(
+            "Fetching market data for portfolio tickers: %s", tickers
+        )
+
+        force_refresh_market_data = self.config.get(
+            "settings.force_refresh_market_data", False
+        )
+        self.logger.debug(
+            "Force refresh of market data: %s", force_refresh_market_data
+        )
+        if (
+            force_refresh_market_data
+            or self.market_data is None
+            or not self.market_data
+        ):
+            self.market_data = self.market_data_provider.get_market_data(
+                tickers=tickers,
+                start_date_str=start_date.strftime("%Y-%m-%d"),
+                end_date_str=end_date.strftime("%Y-%m-%d"),
+            )
 
         for date in date_range:
             # Process any transactions on this date
@@ -1107,6 +694,7 @@ class BogleBenchAnalyzer:
                 total_shares = sum(
                     current_holdings[account][ticker] for account in accounts
                 )
+
                 # Use the same price as calculated above
                 if ticker in self.market_data:
                     ticker_data = self.market_data[ticker]
@@ -1582,7 +1170,6 @@ class BogleBenchAnalyzer:
         error_margin: float = 0.01,
         auto_calculate_div_per_share: bool = True,
         warn_missing_dividends: bool = True,
-        default_div_type: str = DividendTypes.CASH,
     ) -> List[str]:
         """
         Compare user-provided dividend and dividend reinvestment transactions
