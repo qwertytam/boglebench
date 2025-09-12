@@ -59,7 +59,7 @@ class MarketDataProvider:
         try:
             cached_df = pd.read_parquet(cache_file)
 
-            logger.info("✅ Loaded market data from cache for %s.", ticker)
+            logger.debug("✅ Loaded market data from cache for %s.", ticker)
             return cached_df
 
         except (pd.errors.EmptyDataError, ValueError) as e:
@@ -181,19 +181,20 @@ class MarketDataProvider:
                     "dividend",
                     "split_coefficient",
                 ]
+
                 data = data[keep_cols]
                 data.index = pd.to_datetime(data.index)
-                data = data.sort_values(by="date").reset_index(drop=True)
-                data.set_index("date", inplace=True)
+                data.sort_index(inplace=True)
+                data.reset_index(inplace=True, names="date")
 
                 # Filter by date range
-                data_start_mask = data.index >= pd.to_datetime(start_date)
+                data_start_mask = data["date"] >= pd.to_datetime(start_date)
                 if not data_start_mask.any():
                     msg = f"No market data available on or after start date: {start_date}"
                     logger.error(msg)
                     raise ValueError(msg)
 
-                data_end_mask = data.index <= pd.to_datetime(end_date)
+                data_end_mask = data["date"] <= pd.to_datetime(end_date)
                 if not data_end_mask.any():
                     msg = f"No market data available on or before end date: {end_date}"
                     logger.error(msg)
