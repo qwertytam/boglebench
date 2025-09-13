@@ -104,7 +104,7 @@ class DividendValidator:
     def _get_market_dividends_for_ticker(self, ticker: str) -> pd.DataFrame:
         """Extracts market dividends for a specific ticker."""
 
-        logger.info("Starting market dividend extraction for %s.", ticker)
+        logger.debug("Starting market dividend extraction for %s.", ticker)
 
         data_df = self.market_data_df.get(ticker)
         if data_df is None or data_df.empty:
@@ -158,7 +158,7 @@ class DividendValidator:
         Returns:
             The number of shares held on the specified date.
         """
-        logger.info(
+        logger.debug(
             "Retrieving shares held for %s on %s in account %s.",
             ticker,
             date,
