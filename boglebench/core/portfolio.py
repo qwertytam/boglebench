@@ -15,10 +15,9 @@ and long-term focus.
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
-import numpy as np
 import pandas as pd
 import pandas_market_calendars as mcal  # type: ignore
 
@@ -26,8 +25,11 @@ from ..core.constants import (
     ConversionFactors,
     DateAndTimeConstants,
     Defaults,
-    DividendTypes,
     TransactionTypes,
+)
+from ..core.dividend_validator import (
+    DividendValidator,
+    identify_any_dividend_transactions,
 )
 from ..core.market_data import MarketDataProvider
 from ..core.metrics import (
@@ -43,7 +45,7 @@ from ..core.results import PerformanceResults
 from ..core.transaction_loader import load_validate_transactions
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
-from ..utils.tools import aggregate_dividends, ensure_timestamp, to_tz_mixed
+from ..utils.tools import ensure_timestamp, to_tz_mixed
 from ..utils.workspace import WorkspaceContext
 
 
@@ -239,7 +241,7 @@ class BogleBenchAnalyzer:
                 return available_data["close"].iloc[-1]
             else:
                 self.logger.warning(
-                    "Warning: No recent price data for %s near %s",
+                    "⚠️  Warning: No recent price data for %s near %s",
                     ticker,
                     target_date,
                 )
@@ -324,7 +326,7 @@ class BogleBenchAnalyzer:
                 inv_cf[account] += cf
                 inv_cf["total"] += cf
 
-            elif TransactionTypes.is_dividend(ttype):
+            elif TransactionTypes.is_any_dividend(ttype):
                 cf = trans["total_value"]
                 self.logger.debug(
                     "  Processing %s of cash flow $%.2f for %s in account %s",
@@ -373,45 +375,39 @@ class BogleBenchAnalyzer:
         tickers = self.transactions["ticker"].unique().tolist()
         accounts = self.transactions["account"].unique()
 
-        # Validate dividend data for all tickers before building portfolio
-        if self.config.get("dividend.auto_validate", True):
-            self.logger.debug(
-                "🔍 Validating dividend data against market data..."
-            )
+        # for ticker in tickers:
+        #     try:
+        #         auto_calc_div_per_share = self.config.get(
+        #             "dividend.auto_calculate_div_per_share", True
+        #         )
+        #         if not isinstance(auto_calc_div_per_share, bool):
+        #             auto_calc_div_per_share = True
 
-            for ticker in tickers:
-                try:
-                    auto_calc_div_per_share = self.config.get(
-                        "dividend.auto_calculate_div_per_share", True
-                    )
-                    if not isinstance(auto_calc_div_per_share, bool):
-                        auto_calc_div_per_share = True
+        #         warn_missing_dividends = self.config.get(
+        #             "dividend.warn_missing_dividends", True
+        #         )
+        #         if not isinstance(warn_missing_dividends, bool):
+        #             warn_missing_dividends = True
 
-                    warn_missing_dividends = self.config.get(
-                        "dividend.warn_missing_dividends", True
-                    )
-                    if not isinstance(warn_missing_dividends, bool):
-                        warn_missing_dividends = True
+        #         messages = self.compare_user_dividends_to_market(
+        #             ticker,
+        #             auto_calculate_div_per_share=auto_calc_div_per_share,
+        #             warn_missing_dividends=warn_missing_dividends,
+        #         )
 
-                    messages = self.compare_user_dividends_to_market(
-                        ticker,
-                        auto_calculate_div_per_share=auto_calc_div_per_share,
-                        warn_missing_dividends=warn_missing_dividends,
-                    )
+        #         for msg in messages:
+        #             if (
+        #                 "mismatch" in msg.lower()
+        #                 or "warning" in msg.lower()
+        #             ):
+        #                 self.logger.warning("⚠️  %s", msg)
+        #             else:
+        #                 self.logger.info("ℹ️  %s", msg)
 
-                    for msg in messages:
-                        if (
-                            "mismatch" in msg.lower()
-                            or "warning" in msg.lower()
-                        ):
-                            self.logger.warning("⚠️  %s", msg)
-                        else:
-                            self.logger.info("ℹ️  %s", msg)
-
-                except ValueError as e:
-                    self.logger.error(
-                        "Could not validate dividends for %s: %s", ticker, e
-                    )
+        #     except ValueError as e:
+        #         self.logger.error(
+        #             "Could not validate dividends for %s: %s", ticker, e
+        #         )
 
         # Initialize portfolio tracking by account and ticker
         portfolio_data = []
@@ -593,6 +589,132 @@ class BogleBenchAnalyzer:
             # Separate benchmark data for easy access
             if benchmark_ticker in self.market_data:
                 self.benchmark_data = self.market_data[benchmark_ticker].copy()
+
+        # Validate dividend data for all tickers before building portfolio
+        if self.config.get("dividend.auto_validate", True):
+            self.logger.debug(
+                "🔍 Validating dividend data against market data..."
+            )
+
+            if self.market_data is None or not self.market_data:
+                self.logger.warning(
+                    "⚠️  No market data available for dividend validation"
+                )
+            else:
+                validator = DividendValidator(
+                    transactions_df=self.transactions,
+                    market_data_df=self.market_data,
+                )
+
+                messages, div_differences = validator.validate()
+
+                warn_missing_dividends = self.config.get(
+                    "dividend.warn_missing_dividends", True
+                )
+                if not isinstance(warn_missing_dividends, bool):
+                    warn_missing_dividends = True
+                if warn_missing_dividends:
+                    for msg in messages:
+                        if (
+                            "mismatch" in msg.lower()
+                            or "warning" in msg.lower()
+                            or "missing" in msg.lower()
+                            or "extra" in msg.lower()
+                        ):
+                            self.logger.warning("⚠️  %s", msg)
+                        else:
+                            self.logger.info("ℹ️  %s", msg)
+
+                auto_calc_div_per_share = self.config.get(
+                    "dividend.auto_calculate_div_per_share", True
+                )
+                if not isinstance(auto_calc_div_per_share, bool):
+                    auto_calc_div_per_share = True
+
+                if auto_calc_div_per_share and div_differences:
+                    self.logger.debug(
+                        "Automatically adjusting user dividends "
+                        + "based on market data..."
+                    )
+                    for ticker, df in div_differences.items():
+                        for _, row in df.iterrows():
+                            date = row["date"]
+                            new_div_per_share = row["value_per_share_market"]
+                            mask = (
+                                (self.transactions["ticker"] == ticker)
+                                & (
+                                    self.transactions["date"].dt.date
+                                    == date.date()
+                                )
+                                & (
+                                    identify_any_dividend_transactions(
+                                        self.transactions["transaction_type"]
+                                    )
+                                )
+                            )
+
+                            if not self.transactions.loc[mask].empty:
+                                shares = self.transactions.loc[
+                                    mask, "quantity"
+                                ]
+                                if isinstance(shares, pd.Series):
+                                    shares_sum = shares.sum()
+                                else:
+                                    shares_sum = (
+                                        shares
+                                        if isinstance(shares, (int, float))
+                                        else 0
+                                    )
+
+                                old_value_per_share = self.transactions.loc[
+                                    mask, "value_per_share"
+                                ]
+                                if isinstance(old_value_per_share, pd.Series):
+                                    old_value_per_share = (
+                                        old_value_per_share.iloc[0]
+                                    )
+                                elif not isinstance(
+                                    old_value_per_share, (int, float)
+                                ):
+                                    old_value_per_share = 0
+
+                                old_total_value = self.transactions.loc[
+                                    mask, "total_value"
+                                ]
+                                if isinstance(old_total_value, pd.Series):
+                                    old_total_value = old_total_value.sum()
+                                elif not isinstance(
+                                    old_total_value, (int, float)
+                                ):
+                                    old_total_value = 0
+
+                                new_total_value = (
+                                    shares_sum * new_div_per_share
+                                )
+                                self.logger.info(
+                                    "Updating %s dividend on %s: "
+                                    "per share from %.4f to %.4f, "
+                                    "total from $%.2f to $%.2f",
+                                    ticker,
+                                    date.date(),
+                                    old_value_per_share,
+                                    new_div_per_share,
+                                    old_total_value,
+                                    new_total_value,
+                                )
+                                self.transactions.loc[
+                                    mask, "value_per_share"
+                                ] = new_div_per_share
+                                self.transactions.loc[mask, "total_value"] = (
+                                    new_total_value
+                                )
+                            else:
+                                self.logger.warning(
+                                    "No matching transaction found to"
+                                    + " update for %s on %s",
+                                    ticker,
+                                    date.date(),
+                                )
 
         for date in date_range:
             # Process any transactions on this date
@@ -883,461 +1005,461 @@ class BogleBenchAnalyzer:
 
         return portfolio_df
 
-    def fetch_dividend_data(self, ticker: str) -> pd.DataFrame:
-        """
-        Extracts dividend data for a given ticker from already-fetched
-        self.market_data.
-        Returns a DataFrame with columns: 'date', 'dividend'
-        """
-        if ticker not in self.market_data:
-            raise ValueError(f"Market data for ticker {ticker} not found. ")
+    # def fetch_dividend_data(self, ticker: str) -> pd.DataFrame:
+    #     """
+    #     Extracts dividend data for a given ticker from already-fetched
+    #     self.market_data.
+    #     Returns a DataFrame with columns: 'date', 'dividend'
+    #     """
+    #     if ticker not in self.market_data:
+    #         raise ValueError(f"Market data for ticker {ticker} not found. ")
 
-        df = self.market_data[ticker]
-        # Only consider days where a dividend was paid
-        self.logger.debug("Extracting dividend data for %s", ticker)
-        dividend_df = df[df["dividend"] > 0][["date", "dividend"]].copy()
-        dividend_df["value_per_share"] = dividend_df["dividend"]
-        dividend_df["div_type"] = DividendTypes.CASH
+    #     df = self.market_data[ticker]
+    #     # Only consider days where a dividend was paid
+    #     self.logger.debug("Extracting dividend data for %s", ticker)
+    #     dividend_df = df[df["dividend"] > 0][["date", "dividend"]].copy()
+    #     dividend_df["value_per_share"] = dividend_df["dividend"]
+    #     dividend_df["div_type"] = DividendTypes.CASH
 
-        # Normalize date for merging
-        dividend_df["date"] = pd.to_datetime(
-            dividend_df["date"], utc=True
-        ).dt.normalize()
-        dividend_df = dividend_df.rename(columns={"date": "div_pay_date"})
+    #     # Normalize date for merging
+    #     dividend_df["date"] = pd.to_datetime(
+    #         dividend_df["date"], utc=True
+    #     ).dt.normalize()
+    #     dividend_df = dividend_df.rename(columns={"date": "div_pay_date"})
 
-        dividend_df["div_ex_date"] = pd.NaT
-        dividend_df["div_record_date"] = pd.NaT
+    #     dividend_df["div_ex_date"] = pd.NaT
+    #     dividend_df["div_record_date"] = pd.NaT
 
-        return_columns = [
-            "div_pay_date",
-            "value_per_share",
-            "div_type",
-            "div_ex_date",
-            "div_record_date",
-        ]
+    #     return_columns = [
+    #         "div_pay_date",
+    #         "value_per_share",
+    #         "div_type",
+    #         "div_ex_date",
+    #         "div_record_date",
+    #     ]
 
-        return dividend_df[return_columns]
+    #     return dividend_df[return_columns]
 
-    def _get_shares_held_on_date(
-        self, ticker: str, account: str, target_date: pd.Timestamp
-    ) -> float:
-        """
-        Calculate shares held for a specific ticker and account on a given date.
-        Looks at all BUY/SELL/DIVIDEND_REINVEST transactions up to target_date.
-        Note: DIVIDEND_REINVEST increases shares held only up to one day before
-        the dividend pay date.
-        """
-        if self.transactions.empty:
-            raise ValueError("Must load transactions first")
-        if ticker not in self.transactions["ticker"].values:
-            raise ValueError(f"No transactions found for ticker {ticker}")
-        if account not in self.transactions["account"].values:
-            raise ValueError(f"No transactions found for account {account}")
-        if isinstance(target_date, str):
-            target_date = pd.to_datetime(target_date)
+    # def _get_shares_held_on_date(
+    #     self, ticker: str, account: str, target_date: pd.Timestamp
+    # ) -> float:
+    #     """
+    #     Calculate shares held for a specific ticker and account on a given date.
+    #     Looks at all BUY/SELL/DIVIDEND_REINVEST transactions up to target_date.
+    #     Note: DIVIDEND_REINVEST increases shares held only up to one day before
+    #     the dividend pay date.
+    #     """
+    #     if self.transactions.empty:
+    #         raise ValueError("Must load transactions first")
+    #     if ticker not in self.transactions["ticker"].values:
+    #         raise ValueError(f"No transactions found for ticker {ticker}")
+    #     if account not in self.transactions["account"].values:
+    #         raise ValueError(f"No transactions found for account {account}")
+    #     if isinstance(target_date, str):
+    #         target_date = pd.to_datetime(target_date)
 
-        # Up to and including target_date for BUY/SELL
-        relevant_transactions_buy_sell = self.transactions[
-            (self.transactions["ticker"] == ticker)
-            & (self.transactions["account"] == account)
-            & (self.transactions["date"] <= target_date)
-            & (self.transactions["transaction_type"].isin(["BUY", "SELL"]))
-        ].copy()
+    #     # Up to and including target_date for BUY/SELL
+    #     relevant_transactions_buy_sell = self.transactions[
+    #         (self.transactions["ticker"] == ticker)
+    #         & (self.transactions["account"] == account)
+    #         & (self.transactions["date"] <= target_date)
+    #         & (self.transactions["transaction_type"].isin(["BUY", "SELL"]))
+    #     ].copy()
 
-        # Only before target_date for DIVIDEND_REINVEST
-        relevant_transactions_div_reinvest = self.transactions[
-            (self.transactions["ticker"] == ticker)
-            & (self.transactions["account"] == account)
-            & (self.transactions["date"] < target_date)
-            & (self.transactions["transaction_type"] == "DIVIDEND_REINVEST")
-        ].copy()
+    #     # Only before target_date for DIVIDEND_REINVEST
+    #     relevant_transactions_div_reinvest = self.transactions[
+    #         (self.transactions["ticker"] == ticker)
+    #         & (self.transactions["account"] == account)
+    #         & (self.transactions["date"] < target_date)
+    #         & (self.transactions["transaction_type"] == "DIVIDEND_REINVEST")
+    #     ].copy()
 
-        relevant_transactions = pd.concat(
-            [
-                relevant_transactions_buy_sell,
-                relevant_transactions_div_reinvest,
-            ]
-        )
+    #     relevant_transactions = pd.concat(
+    #         [
+    #             relevant_transactions_buy_sell,
+    #             relevant_transactions_div_reinvest,
+    #         ]
+    #     )
 
-        if relevant_transactions.empty:
-            self.logger.warning(
-                "⚠️  No transactions found for %s in %s before %s",
-                ticker,
-                account,
-                target_date.date(),
-            )
-            return Defaults.DEFAULT_ZERO
+    #     if relevant_transactions.empty:
+    #         self.logger.warning(
+    #             "⚠️  No transactions found for %s in %s before %s",
+    #             ticker,
+    #             account,
+    #             target_date.date(),
+    #         )
+    #         return Defaults.DEFAULT_ZERO
 
-        # Sum all share changes (SELL transactions already have negative shares)
-        total_shares = relevant_transactions["quantity"].sum()
-        # Ensure non-negative
-        result = max(0.0, total_shares)
+    #     # Sum all share changes (SELL transactions already have negative shares)
+    #     total_shares = relevant_transactions["quantity"].sum()
+    #     # Ensure non-negative
+    #     result = max(0.0, total_shares)
 
-        self.logger.debug(
-            "Shares held for %s in %s on %s: %s",
-            ticker,
-            account,
-            target_date.date(),
-            result,
-        )
-        return result
+    #     self.logger.debug(
+    #         "Shares held for %s in %s on %s: %s",
+    #         ticker,
+    #         account,
+    #         target_date.date(),
+    #         result,
+    #     )
+    #     return result
 
-    def _perform_dividend_comparison(
-        self,
-        ticker: str,
-        user_dividends: pd.DataFrame,
-        error_margin: float,
-        warn_missing_dividends: bool = True,
-    ) -> List[str]:
-        """Perform the actual dividend comparison with flexible matching."""
+    # def _perform_dividend_comparison(
+    #     self,
+    #     ticker: str,
+    #     user_dividends: pd.DataFrame,
+    #     error_margin: float,
+    #     warn_missing_dividends: bool = True,
+    # ) -> List[str]:
+    #     """Perform the actual dividend comparison with flexible matching."""
 
-        messages: list[str] = []
-        if user_dividends.empty:
-            return messages
+    #     messages: list[str] = []
+    #     if user_dividends.empty:
+    #         return messages
 
-        # Group by date and sum amounts in case both cash+reinvest are logged
-        # separately
-        self.logger.debug("Grouping user dividends for %s by pay date", ticker)
-        self.logger.debug(
-            "User dividends before grouping:\n%s", user_dividends
-        )
-        self.logger.debug(
-            "User dividends columns: %s", user_dividends.columns.tolist()
-        )
-        user_divs_grouped = user_dividends.groupby(
-            "div_pay_date", as_index=False
-        ).apply(aggregate_dividends)
+    #     # Group by date and sum amounts in case both cash+reinvest are logged
+    #     # separately
+    #     self.logger.debug("Grouping user dividends for %s by pay date", ticker)
+    #     self.logger.debug(
+    #         "User dividends before grouping:\n%s", user_dividends
+    #     )
+    #     self.logger.debug(
+    #         "User dividends columns: %s", user_dividends.columns.tolist()
+    #     )
+    #     user_divs_grouped = user_dividends.groupby(
+    #         "div_pay_date", as_index=False
+    #     ).apply(aggregate_dividends)
 
-        self.logger.debug(
-            "User dividends grouped by pay date:\n%s", user_divs_grouped
-        )
-        user_divs_grouped["div_pay_date"] = user_divs_grouped[
-            "div_pay_date"
-        ].dt.normalize()
+    #     self.logger.debug(
+    #         "User dividends grouped by pay date:\n%s", user_divs_grouped
+    #     )
+    #     user_divs_grouped["div_pay_date"] = user_divs_grouped[
+    #         "div_pay_date"
+    #     ].dt.normalize()
 
-        self.logger.debug("Fetching market dividends for %s", ticker)
-        market_dividends = self.fetch_dividend_data(ticker)
+    #     self.logger.debug("Fetching market dividends for %s", ticker)
+    #     market_dividends = self.fetch_dividend_data(ticker)
 
-        self.logger.debug(
-            "Market dividends fetched for %s:\n%s", ticker, market_dividends
-        )
-        market_dividends["div_pay_date"] = market_dividends[
-            "div_pay_date"
-        ].dt.normalize()
+    #     self.logger.debug(
+    #         "Market dividends fetched for %s:\n%s", ticker, market_dividends
+    #     )
+    #     market_dividends["div_pay_date"] = market_dividends[
+    #         "div_pay_date"
+    #     ].dt.normalize()
 
-        self.logger.debug(
-            "Comparing %d user dividends to %d market dividends for %s",
-            len(user_divs_grouped),
-            len(market_dividends),
-            ticker,
-        )
-        self.logger.debug("User dividends:\n%s", user_divs_grouped)
-        self.logger.debug("Market dividends:\n%s", market_dividends)
+    #     self.logger.debug(
+    #         "Comparing %d user dividends to %d market dividends for %s",
+    #         len(user_divs_grouped),
+    #         len(market_dividends),
+    #         ticker,
+    #     )
+    #     self.logger.debug("User dividends:\n%s", user_divs_grouped)
+    #     self.logger.debug("Market dividends:\n%s", market_dividends)
 
-        # Use outer join to catch missing dividends if warn_missing_dividends is True
-        how_merge: Literal["left", "outer"] = (
-            "outer" if warn_missing_dividends else "left"
-        )
-        self.logger.debug(
-            "Merging user and market dividends for %s with '%s' join with date columns %s and %s",
-            ticker,
-            how_merge,
-            user_divs_grouped["div_pay_date"].head(),
-            market_dividends["div_pay_date"].head(),
-        )
-        merged = pd.merge(
-            user_divs_grouped,
-            market_dividends,
-            on="div_pay_date",
-            how=how_merge,
-            suffixes=("_user", "_mkt"),
-        )
+    #     # Use outer join to catch missing dividends if warn_missing_dividends is True
+    #     how_merge: Literal["left", "outer"] = (
+    #         "outer" if warn_missing_dividends else "left"
+    #     )
+    #     self.logger.debug(
+    #         "Merging user and market dividends for %s with '%s' join with date columns %s and %s",
+    #         ticker,
+    #         how_merge,
+    #         user_divs_grouped["div_pay_date"].head(),
+    #         market_dividends["div_pay_date"].head(),
+    #     )
+    #     merged = pd.merge(
+    #         user_divs_grouped,
+    #         market_dividends,
+    #         on="div_pay_date",
+    #         how=how_merge,
+    #         suffixes=("_user", "_mkt"),
+    #     )
 
-        self.logger.debug("user_divs head:\n%s", user_divs_grouped.head())
-        self.logger.debug("mkt_divs head:\n%s", market_dividends.head())
-        self.logger.debug(
-            "Merged user and market dividends for %s:\n%s", ticker, merged
-        )
+    #     self.logger.debug("user_divs head:\n%s", user_divs_grouped.head())
+    #     self.logger.debug("mkt_divs head:\n%s", market_dividends.head())
+    #     self.logger.debug(
+    #         "Merged user and market dividends for %s:\n%s", ticker, merged
+    #     )
 
-        # Check for missing user dividends
-        if warn_missing_dividends:
-            missing_user_divs = merged[
-                (merged["total_value"].isna())
-                & (merged["value_per_share_mkt"].notna())
-            ]
+    #     # Check for missing user dividends
+    #     if warn_missing_dividends:
+    #         missing_user_divs = merged[
+    #             (merged["total_value"].isna())
+    #             & (merged["value_per_share_mkt"].notna())
+    #         ]
 
-            for _, row in missing_user_divs.iterrows():
-                msg = (
-                    f"Missing user dividend for {ticker} "
-                    f"on {row['div_pay_date'].date()}: "
-                    f"Market shows ${row['value_per_share_mkt']:.4f} per share"
-                )
-                messages.append(msg)
+    #         for _, row in missing_user_divs.iterrows():
+    #             msg = (
+    #                 f"Missing user dividend for {ticker} "
+    #                 f"on {row['div_pay_date'].date()}: "
+    #                 f"Market shows ${row['value_per_share_mkt']:.4f} per share"
+    #             )
+    #             messages.append(msg)
 
-        # Check for mismatches in recorded dividends
-        recorded_dividends = merged[
-            (merged["total_value"].notna())
-            & (merged["value_per_share_mkt"].notna())
-        ]
+    #     # Check for mismatches in recorded dividends
+    #     recorded_dividends = merged[
+    #         (merged["total_value"].notna())
+    #         & (merged["value_per_share_mkt"].notna())
+    #     ]
 
-        for _, row in recorded_dividends.iterrows():
-            issues = []
+    #     for _, row in recorded_dividends.iterrows():
+    #         issues = []
 
-            # Compare per-share amounts if user div_per_share is available
-            if (
-                pd.notna(row["value_per_share_user"])
-                and row["value_per_share_user"] > 0
-            ):
-                self.logger.debug("Found valid dividend row to compare")
-                self.logger.debug("Row data: %s", row.to_dict())
-                if (
-                    abs(
-                        row["value_per_share_user"]
-                        - row["value_per_share_mkt"]
-                    )
-                    > error_margin
-                ):
-                    issues.append(
-                        f"per-share mismatch (user: "
-                        f"${row['value_per_share_user']:.4f}, "
-                        f"market: ${row['value_per_share_mkt']:.4f})"
-                    )
+    #         # Compare per-share amounts if user div_per_share is available
+    #         if (
+    #             pd.notna(row["value_per_share_user"])
+    #             and row["value_per_share_user"] > 0
+    #         ):
+    #             self.logger.debug("Found valid dividend row to compare")
+    #             self.logger.debug("Row data: %s", row.to_dict())
+    #             if (
+    #                 abs(
+    #                     row["value_per_share_user"]
+    #                     - row["value_per_share_mkt"]
+    #                 )
+    #                 > error_margin
+    #             ):
+    #                 issues.append(
+    #                     f"per-share mismatch (user: "
+    #                     f"${row['value_per_share_user']:.4f}, "
+    #                     f"market: ${row['value_per_share_mkt']:.4f})"
+    #                 )
 
-            # Compare div_type if provided
-            if pd.notna(row["div_type_user"]) and row["div_type_user"] != "":
-                if row["div_type_user"] != row["div_type_mkt"]:
-                    issues.append(
-                        f"type mismatch (user: {row['div_type_user']}, "
-                        f"market: {row['div_type_mkt']})"
-                    )
+    #         # Compare div_type if provided
+    #         if pd.notna(row["div_type_user"]) and row["div_type_user"] != "":
+    #             if row["div_type_user"] != row["div_type_mkt"]:
+    #                 issues.append(
+    #                     f"type mismatch (user: {row['div_type_user']}, "
+    #                     f"market: {row['div_type_mkt']})"
+    #                 )
 
-            if issues:
-                messages.append(
-                    f"Dividend mismatch for {ticker} on "
-                    f"{row['div_pay_date'].date()}: {'; '.join(issues)} "
-                    f"(user total: ${row['total_value']:.2f})"
-                )
+    #         if issues:
+    #             messages.append(
+    #                 f"Dividend mismatch for {ticker} on "
+    #                 f"{row['div_pay_date'].date()}: {'; '.join(issues)} "
+    #                 f"(user total: ${row['total_value']:.2f})"
+    #             )
 
-        return messages
+    #     return messages
 
-    def validate_dividend_data(
-        self,
-        tickers: Optional[list] = None,
-        auto_calculate_div_per_share: bool = True,
-        warn_missing_dividends: bool = True,
-    ) -> None:
-        """
-        Validate dividend data for specified tickers or all tickers in portfolio.
+    # def validate_dividend_data(
+    #     self,
+    #     tickers: Optional[list] = None,
+    #     auto_calculate_div_per_share: bool = True,
+    #     warn_missing_dividends: bool = True,
+    # ) -> None:
+    #     """
+    #     Validate dividend data for specified tickers or all tickers in portfolio.
 
-        Args:
-            tickers: List of tickers to validate. If None, validates all tickers.
-            auto_calculate_div_per_share: Whether to auto-calculate missing div_per_share
-            warn_missing_dividends: Whether to warn about missing dividend entries
-        """
-        if self.transactions.empty:
-            raise ValueError("Must load transactions first")
+    #     Args:
+    #         tickers: List of tickers to validate. If None, validates all tickers.
+    #         auto_calculate_div_per_share: Whether to auto-calculate missing div_per_share
+    #         warn_missing_dividends: Whether to warn about missing dividend entries
+    #     """
+    #     if self.transactions.empty:
+    #         raise ValueError("Must load transactions first")
 
-        if tickers is None:
-            tickers = self.transactions["ticker"].unique().tolist()
+    #     if tickers is None:
+    #         tickers = self.transactions["ticker"].unique().tolist()
 
-            if tickers is None or len(tickers) == 0:
-                raise ValueError(
-                    "No tickers found in transactions to validate."
-                )
+    #         if tickers is None or len(tickers) == 0:
+    #             raise ValueError(
+    #                 "No tickers found in transactions to validate."
+    #             )
 
-        self.logger.info(
-            "🔍 Validating dividend data for %d tickers...", len(tickers or [])
-        )
+    #     self.logger.info(
+    #         "🔍 Validating dividend data for %d tickers...", len(tickers or [])
+    #     )
 
-        for ticker in tickers:
-            try:
-                self.compare_user_dividends_to_market(
-                    ticker,
-                    auto_calculate_div_per_share=auto_calculate_div_per_share,
-                    warn_missing_dividends=warn_missing_dividends,
-                )
-            except ValueError as e:
-                self.logger.error(
-                    "Error validating dividends for %s: %s", ticker, e
-                )
+    #     for ticker in tickers:
+    #         try:
+    #             self.compare_user_dividends_to_market(
+    #                 ticker,
+    #                 auto_calculate_div_per_share=auto_calculate_div_per_share,
+    #                 warn_missing_dividends=warn_missing_dividends,
+    #             )
+    #         except ValueError as e:
+    #             self.logger.error(
+    #                 "Error validating dividends for %s: %s", ticker, e
+    #             )
 
-        self.logger.info("✅ Dividend validation complete")
+    #     self.logger.info("✅ Dividend validation complete")
 
-    def _find_dividend_transactions(self, series: pd.Series) -> pd.Series:
-        """Helper function to identify dividend transactions in a Series."""
+    # def _find_dividend_transactions(self, series: pd.Series) -> pd.Series:
+    #     """Helper function to identify dividend transactions in a Series."""
 
-        valid_types = TransactionTypes.all_dividend_types()
-        return series.isin(valid_types)
+    #     valid_types = TransactionTypes.all_dividend_types()
+    #     return series.isin(valid_types)
 
-    def compare_user_dividends_to_market(
-        self,
-        ticker: str,
-        error_margin: float = 0.01,
-        auto_calculate_div_per_share: bool = True,
-        warn_missing_dividends: bool = True,
-    ) -> List[str]:
-        """
-        Compare user-provided dividend and dividend reinvestment transactions
-        with market dividend data. Prints a warning if values differ by more
-        than the error margin. Sums amounts for the same date.
+    # def compare_user_dividends_to_market(
+    #     self,
+    #     ticker: str,
+    #     error_margin: float = 0.01,
+    #     auto_calculate_div_per_share: bool = True,
+    #     warn_missing_dividends: bool = True,
+    # ) -> List[str]:
+    #     """
+    #     Compare user-provided dividend and dividend reinvestment transactions
+    #     with market dividend data. Prints a warning if values differ by more
+    #     than the error margin. Sums amounts for the same date.
 
-        Args:
-            ticker: Stock ticker symbol
-            error_margin: Acceptable difference for matching dividends
-            auto_calculate_div_per_share: If True, calculate missing
-                div_per_share from holdings
-            warn_missing_dividends: If True, warn about market dividends not
-                in user data
-            default_div_type: Default dividend type when not specified by user
-        Returns:
-            A list of strings, where each string is a message about a
-            mismatch or calculation.
-        """
+    #     Args:
+    #         ticker: Stock ticker symbol
+    #         error_margin: Acceptable difference for matching dividends
+    #         auto_calculate_div_per_share: If True, calculate missing
+    #             div_per_share from holdings
+    #         warn_missing_dividends: If True, warn about market dividends not
+    #             in user data
+    #         default_div_type: Default dividend type when not specified by user
+    #     Returns:
+    #         A list of strings, where each string is a message about a
+    #         mismatch or calculation.
+    #     """
 
-        if self.transactions.empty:
-            raise ValueError("No transactions loaded to compare against.")
+    #     if self.transactions.empty:
+    #         raise ValueError("No transactions loaded to compare against.")
 
-        user_dividends = self.transactions[
-            (self.transactions["ticker"] == ticker)
-            & (
-                self._find_dividend_transactions(
-                    self.transactions["transaction_type"]
-                )
-            )
-        ].copy()
+    #     user_dividends = self.transactions[
+    #         (self.transactions["ticker"] == ticker)
+    #         & (
+    #             self._find_dividend_transactions(
+    #                 self.transactions["transaction_type"]
+    #             )
+    #         )
+    #     ].copy()
 
-        self.logger.debug(
-            "Comparing user dividends for %s:\n%s", ticker, user_dividends
-        )
+    #     self.logger.debug(
+    #         "Comparing user dividends for %s:\n%s", ticker, user_dividends
+    #     )
 
-        if user_dividends.empty:
-            self.logger.debug(
-                "No user dividends found for %s to compare.", ticker
-            )
-            return ["No user dividends found to compare."]
+    #     if user_dividends.empty:
+    #         self.logger.debug(
+    #             "No user dividends found for %s to compare.", ticker
+    #         )
+    #         return ["No user dividends found to compare."]
 
-        if "div_type" not in user_dividends.columns:
-            user_dividends["div_type"] = DividendTypes.CASH
+    #     if "div_type" not in user_dividends.columns:
+    #         user_dividends["div_type"] = DividendTypes.CASH
 
-        if "div_pay_date" not in user_dividends.columns:
-            user_dividends["div_pay_date"] = user_dividends["date"]
+    #     if "div_pay_date" not in user_dividends.columns:
+    #         user_dividends["div_pay_date"] = user_dividends["date"]
 
-        if "value_per_share" not in user_dividends.columns:
-            user_dividends["value_per_share"] = Defaults.ZERO_DIVIDEND
+    #     if "value_per_share" not in user_dividends.columns:
+    #         user_dividends["value_per_share"] = Defaults.ZERO_DIVIDEND
 
-        # Process dividends per account first ---
-        all_enhanced_dividends = []
-        all_validation_messages = []
+    #     # Process dividends per account first ---
+    #     all_enhanced_dividends = []
+    #     all_validation_messages = []
 
-        # Group by account AND date to handle each dividend event individually
-        grouped_by_account_and_date = user_dividends.groupby(
-            ["account", "date"]
-        )
+    #     # Group by account AND date to handle each dividend event individually
+    #     grouped_by_account_and_date = user_dividends.groupby(
+    #         ["account", "date"]
+    #     )
 
-        for (account, date), group in grouped_by_account_and_date:
-            self.logger.debug(
-                "Validating dividend for %s in account %s on %s",
-                ticker,
-                account,
-                date.date(),
-            )
-            enhanced_group, validation_messages = (
-                self._validate_and_enhance_dividend_data(
-                    group,
-                    ticker,
-                    account,
-                    auto_calculate_div_per_share,
-                )
-            )
-            all_enhanced_dividends.append(enhanced_group)
-            all_validation_messages.extend(validation_messages)
+    #     for (account, date), group in grouped_by_account_and_date:
+    #         self.logger.debug(
+    #             "Validating dividend for %s in account %s on %s",
+    #             ticker,
+    #             account,
+    #             date.date(),
+    #         )
+    #         enhanced_group, validation_messages = (
+    #             self._validate_and_enhance_dividend_data(
+    #                 group,
+    #                 ticker,
+    #                 account,
+    #                 auto_calculate_div_per_share,
+    #             )
+    #         )
+    #         all_enhanced_dividends.append(enhanced_group)
+    #         all_validation_messages.extend(validation_messages)
 
-        if not all_enhanced_dividends:
-            return all_validation_messages
+    #     if not all_enhanced_dividends:
+    #         return all_validation_messages
 
-        final_user_dividends = pd.concat(all_enhanced_dividends)
-        final_user_dividends["div_pay_date"] = pd.to_datetime(
-            final_user_dividends["div_pay_date"], utc=True
-        )
+    #     final_user_dividends = pd.concat(all_enhanced_dividends)
+    #     final_user_dividends["div_pay_date"] = pd.to_datetime(
+    #         final_user_dividends["div_pay_date"], utc=True
+    #     )
 
-        self.logger.debug(
-            "final_user_dividends:\n%s", final_user_dividends.head()
-        )
+    #     self.logger.debug(
+    #         "final_user_dividends:\n%s", final_user_dividends.head()
+    #     )
 
-        # Perform the comparison
-        comparison_messages = self._perform_dividend_comparison(
-            ticker, final_user_dividends, error_margin, warn_missing_dividends
-        )
+    #     # Perform the comparison
+    #     comparison_messages = self._perform_dividend_comparison(
+    #         ticker, final_user_dividends, error_margin, warn_missing_dividends
+    #     )
 
-        self.logger.debug("Completed dividend comparison for %s", ticker)
-        self.logger.debug(comparison_messages)
+    #     self.logger.debug("Completed dividend comparison for %s", ticker)
+    #     self.logger.debug(comparison_messages)
 
-        return all_validation_messages + comparison_messages
+    #     return all_validation_messages + comparison_messages
 
-    def _validate_and_enhance_dividend_data(
-        self,
-        dividend_group: pd.DataFrame,
-        ticker: str,
-        account: str,
-        auto_calculate_div_per_share: bool = True,
-    ) -> Tuple[pd.DataFrame, List[str]]:
-        """
-        Validate and enhance a specific group of user dividend transactions
-        (for a single account and date).
-        """
-        enhanced_group = dividend_group.copy()
-        info_messages = []
+    # def _validate_and_enhance_dividend_data(
+    #     self,
+    #     dividend_group: pd.DataFrame,
+    #     ticker: str,
+    #     account: str,
+    #     auto_calculate_div_per_share: bool = True,
+    # ) -> Tuple[pd.DataFrame, List[str]]:
+    #     """
+    #     Validate and enhance a specific group of user dividend transactions
+    #     (for a single account and date).
+    #     """
+    #     enhanced_group = dividend_group.copy()
+    #     info_messages = []
 
-        # Consolidate the group first (e.g., partial reinvest)
-        total_amount = enhanced_group["total_value"].sum()
-        div_date = enhanced_group["date"].iloc[0]
-        pay_date = (
-            enhanced_group["div_pay_date"].dropna().iloc[0]
-            if not enhanced_group["div_pay_date"].dropna().empty
-            else div_date
-        )
+    #     # Consolidate the group first (e.g., partial reinvest)
+    #     total_amount = enhanced_group["total_value"].sum()
+    #     div_date = enhanced_group["date"].iloc[0]
+    #     pay_date = (
+    #         enhanced_group["div_pay_date"].dropna().iloc[0]
+    #         if not enhanced_group["div_pay_date"].dropna().empty
+    #         else div_date
+    #     )
 
-        # Calculate div_per_share if needed
-        # Use the first non-zero div_per_share provided, otherwise calculate
-        provided_dps = enhanced_group[enhanced_group["value_per_share"] > 0][
-            "value_per_share"
-        ]
-        final_dps = 0.0
+    #     # Calculate div_per_share if needed
+    #     # Use the first non-zero div_per_share provided, otherwise calculate
+    #     provided_dps = enhanced_group[enhanced_group["value_per_share"] > 0][
+    #         "value_per_share"
+    #     ]
+    #     final_dps = 0.0
 
-        self.logger.debug(
-            "Validating dividend for %s in %s on %s and auto calculate %s",
-            ticker,
-            account,
-            pay_date.date(),
-            auto_calculate_div_per_share,
-        )
+    #     self.logger.debug(
+    #         "Validating dividend for %s in %s on %s and auto calculate %s",
+    #         ticker,
+    #         account,
+    #         pay_date.date(),
+    #         auto_calculate_div_per_share,
+    #     )
 
-        if not provided_dps.empty:
-            final_dps = provided_dps.iloc[0]
-        elif auto_calculate_div_per_share:
-            shares_held = self._get_shares_held_on_date(
-                ticker, account, pay_date
-            )
-            if shares_held > 0 and total_amount != 0:
-                final_dps = total_amount / shares_held
-                info_messages.append(
-                    f"Calculated div/share for {ticker} in {account} "
-                    f"on {pay_date.date()} "
-                    f"as ${np.abs(final_dps):.4f} (${np.abs(total_amount):.2f} / "
-                    f"{shares_held:.4f} shares)"
-                )
-            else:
-                info_messages.append(
-                    f"Warning: Could not calculate div/share for {ticker} in "
-                    f"{account} on {pay_date.date()} "
-                    f"(shares={shares_held}, amount=${total_amount})"
-                )
+    #     if not provided_dps.empty:
+    #         final_dps = provided_dps.iloc[0]
+    #     elif auto_calculate_div_per_share:
+    #         shares_held = self._get_shares_held_on_date(
+    #             ticker, account, pay_date
+    #         )
+    #         if shares_held > 0 and total_amount != 0:
+    #             final_dps = total_amount / shares_held
+    #             info_messages.append(
+    #                 f"Calculated div/share for {ticker} in {account} "
+    #                 f"on {pay_date.date()} "
+    #                 f"as ${np.abs(final_dps):.4f} (${np.abs(total_amount):.2f} / "
+    #                 f"{shares_held:.4f} shares)"
+    #             )
+    #         else:
+    #             info_messages.append(
+    #                 f"Warning: Could not calculate div/share for {ticker} in "
+    #                 f"{account} on {pay_date.date()} "
+    #                 f"(shares={shares_held}, amount=${total_amount})"
+    #             )
 
-            # Apply the final calculated/validated DPS to all rows in the group
-            enhanced_group["value_per_share"] = final_dps
-            enhanced_group["div_pay_date"] = pd.to_datetime(pay_date)
+    #         # Apply the final calculated/validated DPS to all rows in the group
+    #         enhanced_group["value_per_share"] = final_dps
+    #         enhanced_group["div_pay_date"] = pd.to_datetime(pay_date)
 
-        return enhanced_group, info_messages
+    #     return enhanced_group, info_messages
 
     def calculate_performance(self) -> "PerformanceResults":
         """

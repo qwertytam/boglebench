@@ -324,6 +324,8 @@ class TestPerformanceWithDividends:
             results = analyzer.calculate_performance()
 
             assert results is not None
+            assert results.portfolio_history is not None
+
             final_day = results.portfolio_history.iloc[-1]
             dividend_day = results.portfolio_history[
                 results.portfolio_history["date"].dt.day == 5
