@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 from alpha_vantage.timeseries import TimeSeries  # type: ignore
 
-from ..core.constants import Defaults
+from ..core.constants import DateAndTimeConstants, Defaults
 from ..utils.logging_config import get_logger
 
 logger = get_logger()
@@ -183,24 +183,39 @@ class MarketDataProvider:
                 ]
 
                 data = data[keep_cols]
-                data.index = pd.to_datetime(data.index)
+                data.index = pd.to_datetime(data.index, utc=True)
                 data.sort_index(inplace=True)
                 data.reset_index(inplace=True, names="date")
+                data["date"] = data["date"].dt.tz_localize(
+                    DateAndTimeConstants.TZ_UTC.value
+                )
 
                 # Filter by date range
-                data_start_mask = data["date"] >= pd.to_datetime(start_date)
+                data_start_mask = data["date"] >= pd.to_datetime(
+                    start_date
+                ).tz_localize(DateAndTimeConstants.TZ_UTC.value)
                 if not data_start_mask.any():
                     msg = f"No market data available on or after start date: {start_date}"
                     logger.error(msg)
                     raise ValueError(msg)
 
-                data_end_mask = data["date"] <= pd.to_datetime(end_date)
+                data_end_mask = data["date"] <= pd.to_datetime(
+                    end_date
+                ).tz_localize(DateAndTimeConstants.TZ_UTC.value)
                 if not data_end_mask.any():
                     msg = f"No market data available on or before end date: {end_date}"
                     logger.error(msg)
                     raise ValueError(msg)
 
                 data = data[data_start_mask & data_end_mask]
+
+                logger.info(
+                    "✅ Downloaded market data for %s: %d rows from %s to %s.",
+                    ticker,
+                    len(data),
+                    data["date"].min(),
+                    data["date"].max(),
+                )
 
                 self._cache_data(data, ticker)
 
