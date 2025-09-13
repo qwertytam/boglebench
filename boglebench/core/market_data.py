@@ -186,9 +186,27 @@ class MarketDataProvider:
                 data.index = pd.to_datetime(data.index, utc=True)
                 data.sort_index(inplace=True)
                 data.reset_index(inplace=True, names="date")
-                data["date"] = data["date"].dt.tz_localize(
-                    DateAndTimeConstants.TZ_UTC.value
-                )
+
+                try:
+                    logger.debug("data column dtypes:\n%s", data.dtypes)
+                    date_tz = data["date"].dt.tz
+                    logger.debug(
+                        "Market data 'date' column tz info: %s", date_tz
+                    )
+                except TypeError as e:
+                    logger.debug(
+                        "Market data 'date' column tz info could not be determined: %s",
+                        e,
+                    )
+                    date_tz = None
+
+                if date_tz is None:
+                    data["date"] = data["date"].dt.tz_localize(
+                        DateAndTimeConstants.TZ_UTC.value
+                    )
+                    logger.debug(
+                        "Localized 'date' column to %s.", data["date"].dt.tz
+                    )
 
                 # Filter by date range
                 data_start_mask = data["date"] >= pd.to_datetime(
