@@ -75,18 +75,18 @@ def transactions_perfect_match() -> pd.DataFrame:
             "date": "2023-03-20",
             "ticker": "BND",
             "transaction_type": "DIVIDEND",
-            "quantity": 50.0,
-            "value_per_share": 0.20,
-            "total_value": -10.00,
+            "quantity": 0,  # Cash dividend, no shares involved
+            "value_per_share": 0,  # Not used for cash dividend
+            "total_value": 10.00,
             "account": "Taxable",
         },
         {
             "date": "2023-03-25",
             "ticker": "VTI",
             "transaction_type": "DIVIDEND",
-            "quantity": 20.0,
-            "value_per_share": 0.50,
-            "total_value": -10.00,
+            "quantity": 0,  # Cash dividend, no shares involved
+            "value_per_share": 0,  # Not used for cash dividend
+            "total_value": 10.00,
             "account": "Taxable",
         },
     ]
@@ -117,18 +117,18 @@ def transactions_with_discrepancies() -> pd.DataFrame:
             "date": "2023-03-25",  # Mismatch
             "ticker": "VTI",
             "transaction_type": "DIVIDEND",
-            "quantity": 20.0,
-            "value_per_share": 0.45,  # Should be $0.50
-            "total_value": -9.00,  # Should be $10.00
+            "quantity": 0,  # Cash dividend, no shares involved
+            "value_per_share": 0,  # Not used for cash dividend
+            "total_value": 9.00,  # Should be $10.00
             "account": "Taxable",
         },
         {
             "date": "2023-03-26",  # Extra dividend
             "ticker": "VTI",
             "transaction_type": "DIVIDEND",
-            "quantity": 20.0,
-            "value_per_share": 0.25,  # Extra dividend
-            "total_value": -5.00,
+            "quantity": 0,  # Cash dividend, no shares involved
+            "value_per_share": 0,  # Not used for cash dividend
+            "total_value": 5.00,
             "account": "Taxable",
         },
         {

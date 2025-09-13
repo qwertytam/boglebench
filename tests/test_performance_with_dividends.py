@@ -297,8 +297,8 @@ class TestPerformanceWithDividends:
                 "date": "2023-01-05",
                 "ticker": "VTI",
                 "transaction_type": "DIVIDEND",
-                "quantity": 0,
-                "value_per_share": 0,
+                "quantity": 0,  # Cash dividend, no shares involved
+                "value_per_share": 0,  # Not used for cash dividend
                 "total_value": 75.0,
                 "account": "IRA",
             },
@@ -470,8 +470,8 @@ class TestPerformanceWithDividends:
                 "date": "2023-01-05",
                 "ticker": "VXUS",
                 "transaction_type": "DIVIDEND",
-                "quantity": 0.0,
-                "value_per_share": 0.0,
+                "quantity": 0,  # Cash dividend, no shares involved
+                "value_per_share": 0,  # Not used for cash dividend
                 "total_value": 82.0,
                 "account": "Taxable",
             },
@@ -481,7 +481,7 @@ class TestPerformanceWithDividends:
                 "transaction_type": "DIVIDEND_REINVEST",
                 "quantity": 2.0,
                 "value_per_share": 41.0,
-                "total_value": -82.0,
+                "total_value": -82.0,  # Reinvest are given as negative values
                 "account": "Taxable",
             },
         ]
@@ -671,8 +671,8 @@ class TestPerformanceWithDividends:
                 "date": "2023-01-05",
                 "ticker": "BND",
                 "transaction_type": "DIVIDEND",
-                "quantity": 0,
-                "value_per_share": 0,
+                "quantity": 0,  # Cash dividend, no shares involved
+                "value_per_share": 0,  # Not used for cash dividend
                 "total_value": total_div_amount,
                 "account": "Roth",
             },
@@ -682,7 +682,7 @@ class TestPerformanceWithDividends:
                 "transaction_type": "DIVIDEND_REINVEST",
                 "quantity": drp_quantity,
                 "value_per_share": reinvest_div_per_share,
-                "total_value": -total_div_reinvest,
+                "total_value": -total_div_reinvest,  # Reinvest is negative
                 "account": "Roth",
             },
         ]
