@@ -116,7 +116,6 @@ class DividendValidator:
 
         try:
             logger.debug("data_df column dtypes:\n%s", data_df.dtypes)
-
             date_tz = data_df["date"].dt.tz
             logger.debug("Market data 'date' column tz info: %s", date_tz)
         except TypeError as e:
@@ -215,21 +214,10 @@ class DividendValidator:
             ", ".join(all_tickers),
         )
 
-        # if user_dividends.empty:
-        #     logger.info("No user-recorded dividends to compare.")
-        #     return messages, dividend_differences
-
         for ticker in all_tickers:
             user_ticker_dividends = user_dividends[
                 user_dividends["ticker"] == ticker
             ]
-
-            # user_ticker_dividends = user_ticker_dividends.groupby("date").agg(
-            #     {
-            #         "total_value": "sum",
-            #         "quantity": "sum",
-            #     }
-            # )
 
             user_divs_grouped = user_ticker_dividends.groupby(
                 ["date", "account"],
@@ -237,10 +225,6 @@ class DividendValidator:
             ).apply(aggregate_dividends)
 
             user_divs_grouped.reset_index(drop=True, inplace=True)
-
-            # user_ticker_dividends.index = pd.to_datetime(
-            #     user_ticker_dividends.index
-            # ).date()
 
             market_ticker_dividends = self._get_market_dividends_for_ticker(
                 ticker
@@ -257,36 +241,6 @@ class DividendValidator:
                         "value_per_share_market": [],
                     }
                 )
-
-            # TO DEBUG
-            logger.debug(
-                "Comparing dividends for %s: "
-                "%d user dividends vs %d market dividends.",
-                ticker,
-                len(user_divs_grouped),
-                len(market_ticker_dividends),
-            )
-
-            logger.debug(
-                "User dividends columns:\n%s", user_divs_grouped.columns
-            )
-            logger.debug(
-                "User dividends column types:\n%s",
-                user_divs_grouped.dtypes,
-            )
-            logger.debug("User dividends head:\n%s", user_divs_grouped.head())
-
-            logger.debug(
-                "Market dividends columns:\n%s",
-                market_ticker_dividends.columns,
-            )
-            logger.debug(
-                "Market dividends column types:\n%s",
-                market_ticker_dividends.dtypes,
-            )
-            logger.debug(
-                "Market dividends head:\n%s", market_ticker_dividends.head()
-            )
 
             comparison_df = pd.merge(
                 user_divs_grouped,
@@ -309,6 +263,7 @@ class DividendValidator:
                     value_per_share_market
                 ):
                     # Case 1: Both user and market have a dividend on this day
+                    # Dividends are treated as cash outflows (hence negative)
                     expected_total = -shares * value_per_share_market
                     if not np.isclose(
                         total_value_user,
