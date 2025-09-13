@@ -11,12 +11,16 @@ import logging
 import logging.config
 import logging.handlers
 import os
+import shutil
+import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
 
+from .config import ConfigManager
 from .workspace import WorkspaceContext
 
 
@@ -82,7 +86,6 @@ class BogleBenchLogger:
     def _get_default_config_path(self) -> str:
         """Get default path for logging configuration."""
         # Check workspace context first
-        from .workspace import WorkspaceContext
 
         workspace = WorkspaceContext.get_workspace()
         if workspace:
@@ -96,8 +99,6 @@ class BogleBenchLogger:
             return str(Path(env_path) / "config" / "logging.yaml")
 
         # Fallback to config manager
-        from .config import ConfigManager
-
         config_manager = ConfigManager()
         config_dir = config_manager.get_data_path("config")
         return str(config_dir / "logging.yaml")
@@ -131,27 +132,22 @@ class BogleBenchLogger:
 
     def _update_config_paths(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Update relative paths in config to absolute paths."""
-        from .workspace import WorkspaceContext
 
         workspace = WorkspaceContext.get_workspace()
         if workspace:
             log_dir = workspace / "logs"
         else:
             try:
-                from .config import ConfigManager
-
                 config_manager = ConfigManager()
                 log_dir = config_manager.get_data_path("logs")
-            except Exception:
-                import tempfile
-
+            except ValueError:
                 log_dir = Path(tempfile.gettempdir())
 
         log_dir.mkdir(exist_ok=True)
 
         # Update handler file paths
         handlers = config.get("handlers", {})
-        for handler_name, handler_config in handlers.items():
+        for _, handler_config in handlers.items():
             if "filename" in handler_config:
                 original_filename = handler_config["filename"]
                 if not Path(original_filename).is_absolute():
@@ -163,16 +159,10 @@ class BogleBenchLogger:
     def _get_log_file_path(self) -> str:
         """Get path for log file."""
         # Skip file logging during tests
-        import sys
-
         if "pytest" in sys.modules:
-            import tempfile
-
             return str(Path(tempfile.gettempdir()) / "boglebench_test.log")
 
         # Use workspace context
-        from .workspace import WorkspaceContext
-
         workspace = WorkspaceContext.get_workspace()
         if workspace:
             log_dir = workspace / "logs"
@@ -181,15 +171,11 @@ class BogleBenchLogger:
 
         # Fallback through config manager
         try:
-            from .config import ConfigManager
-
             config_manager = ConfigManager()
             log_dir = config_manager.get_data_path("logs")
             log_dir.mkdir(exist_ok=True)
             return str(log_dir / "boglebench.log")
-        except Exception:
-            import tempfile
-
+        except ValueError:
             return str(Path(tempfile.gettempdir()) / "boglebench.log")
 
     def get_logger(self, name: str) -> logging.Logger:
@@ -221,8 +207,6 @@ class BogleBenchLogger:
 
         if template_path.exists():
             # Copy template file
-            import shutil
-
             shutil.copy2(template_path, output_file)
             print(f"Created logging configuration: {output_file}")
         else:
@@ -258,16 +242,26 @@ class BogleBenchLogger:
     ) -> logging.Handler:
         """Create a rotating file handler with configuration
         from config file."""
-        from .config import ConfigManager
+
+        default_max_size_mb = 10
+        default_backup_count = 5
 
         try:
             config_manager = ConfigManager()
             max_size_mb = config_manager.get(
-                "logging.rotation.max_file_size_mb", 10
+                "logging.rotation.max_file_size_mb"
             )
-            backup_count = config_manager.get(
-                "logging.rotation.backup_count", 5
-            )
+            if isinstance(max_size_mb, dict):
+                max_size_mb = max_size_mb.get("value", default_max_size_mb)
+
+            if max_size_mb is None or max_size_mb <= 0:
+                max_size_mb = default_max_size_mb
+
+            backup_count = config_manager.get("logging.rotation.backup_count")
+            if isinstance(backup_count, dict):
+                backup_count = backup_count.get("value", default_backup_count)
+            if backup_count is None or backup_count < 0:
+                backup_count = default_backup_count
 
             max_bytes = max_size_mb * 1024 * 1024  # Convert MB to bytes
 
@@ -353,10 +347,22 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
         _logger_instance = BogleBenchLogger()
 
     if name is None:
-        frame = inspect.currentframe().f_back
-        name = frame.f_globals.get("__name__", "unknown")
-        # Remove 'boglebench.' prefix if present
-        name = name.replace("boglebench.", "")
+        frame = inspect.currentframe()
+        if frame is None:
+            name = "unknown"
+        else:
+            frame = frame.f_back
+
+        if frame is None:
+            name = "unknown"
+        else:
+            name = frame.f_globals.get("__name__", "unknown")
+
+        if name is None:
+            name = "unknown"
+
+    # Remove 'boglebench.' prefix if present
+    name = name.replace("boglebench.", "")
 
     return _logger_instance.get_logger(name)
 

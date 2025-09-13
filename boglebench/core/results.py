@@ -1,14 +1,14 @@
 """Results container and reporting for portfolio performance analysis."""
 
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 import pandas as pd
 
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger
 from ..utils.tools import cagr
-from .constants import Defaults
+from .constants import DateAndTimeConstants, Defaults
 
 
 class PerformanceResults:
@@ -16,12 +16,14 @@ class PerformanceResults:
 
     def __init__(
         self,
+        transactions: Optional[pd.DataFrame] = None,
         portfolio_metrics: Optional[Dict] = None,
         benchmark_metrics: Optional[Dict] = None,
         relative_metrics: Optional[Dict] = None,
         portfolio_history: Optional[pd.DataFrame] = None,
         config: Optional[ConfigManager] = None,
     ):
+        self.transactions = transactions
         self.portfolio_metrics = portfolio_metrics
         self.benchmark_metrics = benchmark_metrics
         self.relative_metrics = relative_metrics
@@ -74,9 +76,13 @@ class PerformanceResults:
                 f"  Win Rate:            {p['mod_dietz']['win_rate']:>+8.2%}"
             )
 
+        if self.config is None:
+            raise ValueError("ConfigManager is required for summary report.")
+
         # Benchmark metrics
         if self.benchmark_metrics:
             b = self.benchmark_metrics
+
             benchmark_name = self.config.get(
                 "settings.benchmark_ticker", "Benchmark"
             )
@@ -115,6 +121,9 @@ class PerformanceResults:
 
     def get_portfolio_returns(self) -> pd.Series:
         """Get portfolio return series."""
+        if self.portfolio_history is None:
+            return pd.Series(dtype=float)
+
         return self.portfolio_history[
             "portfolio_daily_return_mod_dietz"
         ].dropna()
@@ -122,27 +131,35 @@ class PerformanceResults:
     def get_cumulative_returns(self) -> pd.Series:
         """Get cumulative portfolio returns."""
         returns = self.get_portfolio_returns()
-        return (1 + returns).cumprod() - 1
+        returns = (1 + returns).cumprod()
+        return returns - 1
 
     def get_account_summary(self) -> pd.DataFrame:
         """Get summary of portfolio value by account."""
         if self.portfolio_history is None:
             return pd.DataFrame()
 
-        annual_trading_days = int(
-            self.config.get(
-                "settings.annual_trading_days", Defaults.DAYS_IN_TRADING_YEAR
+        if self.config is None:
+            raise ValueError("ConfigManager is required for account summary.")
+
+        annual_trading_days = self.config.get("settings.annual_trading_days")
+        if isinstance(annual_trading_days, dict):
+            annual_trading_days = annual_trading_days.get("value")
+        if annual_trading_days is None:
+            annual_trading_days = (
+                DateAndTimeConstants.DAYS_IN_TRADING_YEAR.value
             )
-        )
+        annual_trading_days = int(annual_trading_days)
 
         # Get the latest date data
         latest_data = self.portfolio_history.iloc[-1]
 
-        accounts = (
-            self.config.transactions["account"].unique()
-            if hasattr(self.config, "transactions")
+        accounts: list[str] = (
+            self.transactions["account"].unique().tolist()
+            if self.transactions is not None
             else []
         )
+
         if not accounts and hasattr(self, "portfolio_history"):
             # Extract account names from column names
             account_cols = [
@@ -165,7 +182,19 @@ class PerformanceResults:
                 if len(account_returns) > 0:
                     total_periods = len(account_returns)
                     year_fraction = total_periods / annual_trading_days
-                    total_return = (1 + account_returns).prod() - 1
+                    total_return = (1 + account_returns).prod()
+
+                    if not isinstance(total_return, (float, int)):
+                        self.logger.warning(
+                            "Non-numeric total_return for account %s: %s"
+                            + " setting to 0",
+                            account,
+                            total_return,
+                        )
+                        total_return = Defaults.ZERO_RETURN
+                    else:
+                        total_return -= 1
+
                     annualized_return = cagr(
                         1, 1 + total_return, year_fraction
                     )
@@ -189,7 +218,9 @@ class PerformanceResults:
 
         return pd.DataFrame(account_data)
 
-    def get_account_holdings(self, account_name: str = None) -> pd.DataFrame:
+    def get_account_holdings(
+        self, account_name: Optional[str | None] = None
+    ) -> pd.DataFrame:
         """Get current holdings for a specific account or all accounts."""
         if self.portfolio_history is None:
             return pd.DataFrame()
@@ -242,8 +273,12 @@ class PerformanceResults:
                         }
                     )
 
+        if self.config is None:
+            raise ValueError(
+                "ConfigManager is required for exporting results."
+            )
         output_dir = self.config.get_output_path()
-        output_path = self._export_history_metrics_to_csv(output_dir)
+        output_path = self._export_history_metrics_to_csv(str(output_dir))
 
         self.logger.info("📁 Results exported to: %s", output_path)
         return pd.DataFrame(holdings_data)
@@ -258,15 +293,25 @@ class PerformanceResults:
         self, output_dir: Optional[str] = None
     ) -> str:
         """Export metrics and history to csv file"""
+
+        if self.config is None:
+            raise ValueError(
+                "ConfigManager is required for exporting results."
+            )
+
         if output_dir is None:
-            output_dir = self.config.get_output_path()
+            output_dir = str(self.config.get_output_path())
 
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
         # Export portfolio history
         history_file = output_path / "portfolio_history.csv"
-        self.portfolio_history.to_csv(history_file, index=False)
+
+        if self.portfolio_history is not None:
+            self.portfolio_history.to_csv(history_file, index=False)
+        else:
+            self.logger.error("No portfolio history to export.")
 
         # Export performance metrics
         metrics_data = []

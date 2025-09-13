@@ -8,6 +8,8 @@ import time
 from contextlib import contextmanager
 from typing import Optional
 
+from .logging_config import get_logger
+
 
 @contextmanager
 def timed_operation(
@@ -21,27 +23,24 @@ def timed_operation(
         logger: Logger instance. If None, uses module logger.
     """
     if logger is None:
-        from .logging_config import get_logger
 
         logger = get_logger("timing")
 
     start_time = time.perf_counter()
-    logger.debug(f"Starting {operation_name}")
+    logger.debug("Starting %s", operation_name)
 
     try:
         yield
     finally:
         end_time = time.perf_counter()
         elapsed = end_time - start_time
-        logger.debug(f"{operation_name} completed in {elapsed:.4f} seconds")
+        logger.debug("%s completed in %.4f seconds", operation_name, elapsed)
 
 
 def time_function(logger: Optional[logging.Logger] = None):
     """Decorator to time function execution."""
 
     if logger is None:
-        from .logging_config import get_logger
-
         logger = get_logger("timing")
 
     def decorator(func):
