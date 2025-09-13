@@ -15,11 +15,11 @@ import numpy as np
 import pandas as pd
 from pandas import Timedelta
 
-from ..core.constants import DateAndTimeConstants
+from ..core.constants import DateAndTimeConstants, TransactionTypes
 from ..utils.logging_config import get_logger
 
 # Custom type aliases
-DateLike = Union[pd.Timestamp, dt, str, None]
+DateLike = Union[pd.Timestamp, dt, str]
 SeqLike = Union[pd.Series, Iterable[DateLike], pd.Index]
 NonExistentTime = Union[
     Literal["shift_forward", "shift_backward", "NaT", "raise"],
@@ -31,8 +31,8 @@ logger = get_logger()
 
 
 def ensure_timestamp(
-    value: DateLike,
-    default: DateLike = None,
+    value: Union[DateLike, None],
+    default: Union[DateLike, None] = None,
     *,
     tz: Optional[str] = None,
 ) -> pd.Timestamp:
@@ -44,7 +44,7 @@ def ensure_timestamp(
     - Accepts a `pd.Timestamp`, a date-like `str`, or `None`.
     - If `value` is None/empty or cannot be parsed, returns `default`
       converted the same way (which itself may be Timestamp/str/None).
-    - If both `value` and `default` are unusable, returns None.
+    - If both `value` and `default` are None, raises ValueError.
     - If `tz` is provided:
         * naive timestamps are localized to that timezone
         * tz-aware timestamps are converted to that timezone
@@ -60,13 +60,17 @@ def ensure_timestamp(
 
     Returns
     -------
-    Optional[pd.Timestamp]
-    """
+    pd.Timestamp
 
-    def _coerce(x: DateLike) -> Optional[pd.Timestamp]:
+    Raises
+    -------
+    ValueError is both value and default are None.
+    """
+    ts: Union[DateLike, None]
+
+    def _coerce(x: Union[DateLike, None]) -> Optional[pd.Timestamp]:
         if x is None:
             return None
-
         if isinstance(x, pd.Timestamp):
             ts = x
         else:
@@ -89,12 +93,19 @@ def ensure_timestamp(
         ts = _coerce(value)
         if ts is not None:
             return ts
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         # fall through to default if parsing fails
         pass
 
     # Fallback to default
-    return _coerce(default)
+    if default is None:
+        raise ValueError("Both primary value and default are None.")
+
+    result = _coerce(default)
+    if result is None:
+        raise ValueError(f"Unable to convert using default value: '{default}'")
+
+    return result
 
 
 def to_tz_mixed(
@@ -262,24 +273,29 @@ class NpEncoder(json.JSONEncoder):
 
 def aggregate_dividends(group):
     """
-    A helper function to correctly aggregate dividend transactions for a single pay date.
-    It sums the total value, gets the dividend-per-share value only from
-    'DIVIDEND' type transactions, and combines the dividend types.
+    A helper function to correctly aggregate dividend transactions for a single
+    pay date. It sums the total value, gets the dividend-per-share value only
+    from 'DIVIDEND' type transactions, and combines the dividend types.
     """
     # Filter for the cash dividend portion to get the correct per-share value
-    dividend_rows = group[group["transaction_type"] == "DIVIDEND"]
+    dividend_rows = group[
+        group["transaction_type"] == TransactionTypes.DIVIDEND.value
+    ]
 
     if not dividend_rows.empty:
         # If dividend exists, use its per-share value.
-        # .mean() handles cases where it might appear multiple times, though it shouldn't.
+        # .mean() handles cases where it might appear multiple times...
+        # though it shouldn't.
         value_per_share = dividend_rows["value_per_share"].mean()
     else:
         # If only reinvestment, there is no 'dividend per share' to report.
-        # NaN (Not a Number) is the correct representation for a missing value.
         value_per_share = float("nan")
 
-    # Combine all transaction types for that day (e.g., "DIVIDEND,DIVIDEND_REINVEST")
-    div_types = ",".join(sorted(set(group["transaction_type"].dropna())))
+    # Combine all dividend types for that day (e.g., "DIVIDEND,DIVIDEND_REINVEST")
+    if "div_type" in group.columns:
+        div_types = ",".join(sorted(set(group["div_type"].dropna())))
+    else:
+        div_types = ""
 
     # Return a pandas Series. Pandas will assemble these into the new DataFrame.
     return pd.Series(
