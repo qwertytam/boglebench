@@ -38,6 +38,25 @@ class DateAndTimeConstants(str, Enum):
     SECONDS_IN_DAY = SECONDS_IN_HOUR * HOURS_IN_DAY  # Seconds in a day
 
 
+class NumericalConstants(float, Enum):
+    """Enumeration for common numerical constants used in financial calculations."""
+
+    ONE_HUNDRED = 100.0
+    ONE_THOUSAND = 1000.0
+    ONE_MILLION = ONE_THOUSAND * ONE_THOUSAND
+    ONE_BILLION = ONE_MILLION * ONE_THOUSAND
+    ONE_TRILLION = ONE_BILLION * ONE_THOUSAND
+
+    BASIS_POINT = 0.0001  # One basis point (0.01%)
+    MILLIBASIS_POINT = 0.000001  # One millibasis point (0.0001%)
+
+    EPSILON = 1e-10  # Small value to avoid division by zero
+    INFINITY = float("inf")  # Positive infinity
+
+    ONE_CENT = 0.01  # One cent in dollars
+    ONE_DOLLAR = 1.0  # One dollar
+
+
 class ConversionFactors(float, Enum):
     """Enumeration for common conversion factors used in financial calculations."""
 
@@ -92,6 +111,17 @@ class TransactionTypes(str, Enum):
         return [cls.DIVIDEND, cls.DIVIDEND_REINVEST]
 
     @classmethod
+    def all_quantity_changing_types(cls) -> list[str]:
+        """Return a list of all transaction types that change quantity."""
+        return [
+            cls.BUY,
+            cls.SELL,
+            cls.DIVIDEND_REINVEST,
+            cls.SHARE_TRANSFER_IN,
+            cls.SHARE_TRANSFER_OUT,
+        ]
+
+    @classmethod
     def is_valid(cls, tx_type: str) -> bool:
         """Check if a transaction type is valid."""
         return tx_type in cls.all_types()
@@ -103,8 +133,8 @@ class TransactionTypes(str, Enum):
 
     @classmethod
     def is_dividend(cls, tx_type: str) -> bool:
-        """Check if a transaction type is DIVIDEND or DIVIDEND_REINVEST."""
-        return tx_type in (cls.DIVIDEND, cls.DIVIDEND_REINVEST)
+        """Check if a transaction type is DIVIDEND."""
+        return tx_type == cls.DIVIDEND
 
     @classmethod
     def is_dividend_reinvest(cls, tx_type: str) -> bool:
@@ -112,16 +142,15 @@ class TransactionTypes(str, Enum):
         return tx_type == cls.DIVIDEND_REINVEST
 
     @classmethod
+    def is_any_dividend(cls, tx_type: str) -> bool:
+        """Check if a transaction type is DIVIDEND or DIVIDEND_REINVEST."""
+        return tx_type in (cls.DIVIDEND, cls.DIVIDEND_REINVEST)
+
+    @classmethod
     def is_quantity_changing(cls, tx_type: str) -> bool:
         """Check if a transaction type changes quantity (BUY, SELL,
         SHARE_TRANSFER_IN, SHARE_TRANSFER_OUT)."""
-        return tx_type in (
-            cls.BUY,
-            cls.SELL,
-            cls.DIVIDEND_REINVEST,
-            cls.SHARE_TRANSFER_IN,
-            cls.SHARE_TRANSFER_OUT,
-        )
+        return tx_type in TransactionTypes.all_quantity_changing_types()
 
     @classmethod
     def is_fee(cls, tx_type: str) -> bool:
