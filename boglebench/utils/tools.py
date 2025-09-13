@@ -279,7 +279,7 @@ def aggregate_dividends(group):
         value_per_share = float("nan")
 
     # Combine all transaction types for that day (e.g., "DIVIDEND,DIVIDEND_REINVEST")
-    div_types = ",".join(sorted(set(group["div_type"].dropna())))
+    div_types = ",".join(sorted(set(group["transaction_type"].dropna())))
 
     # Return a pandas Series. Pandas will assemble these into the new DataFrame.
     return pd.Series(
