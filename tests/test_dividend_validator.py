@@ -77,7 +77,9 @@ def transactions_perfect_match() -> pd.DataFrame:
             "transaction_type": "DIVIDEND",
             "quantity": 0,  # Cash dividend, no shares involved
             "value_per_share": 0,  # Not used for cash dividend
-            "total_value": 10.00,
+            # Negative as outflow (received dividend) and we are skipping the
+            # loading which would make it a negative value
+            "total_value": -10.00,
             "account": "Taxable",
         },
         {
@@ -86,7 +88,9 @@ def transactions_perfect_match() -> pd.DataFrame:
             "transaction_type": "DIVIDEND",
             "quantity": 0,  # Cash dividend, no shares involved
             "value_per_share": 0,  # Not used for cash dividend
-            "total_value": 10.00,
+            # Negative as outflow (received dividend) and we are skipping the
+            # loading which would make it a negative value
+            "total_value": -10.00,
             "account": "Taxable",
         },
     ]
@@ -119,7 +123,9 @@ def transactions_with_discrepancies() -> pd.DataFrame:
             "transaction_type": "DIVIDEND",
             "quantity": 0,  # Cash dividend, no shares involved
             "value_per_share": 0,  # Not used for cash dividend
-            "total_value": 9.00,  # Should be $10.00
+            # Negative as outflow (received dividend) and we are skipping the
+            # loading which would make it a negative value
+            "total_value": -9.00,  # Should be $10.00
             "account": "Taxable",
         },
         {
@@ -128,7 +134,9 @@ def transactions_with_discrepancies() -> pd.DataFrame:
             "transaction_type": "DIVIDEND",
             "quantity": 0,  # Cash dividend, no shares involved
             "value_per_share": 0,  # Not used for cash dividend
-            "total_value": 5.00,
+            # Negative as outflow (received dividend) and we are skipping the
+            # loading which would make it a negative value
+            "total_value": -5.00,
             "account": "Taxable",
         },
         {
