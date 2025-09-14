@@ -43,6 +43,7 @@ from ..core.metrics import (
 )
 from ..core.results import PerformanceResults
 from ..core.transaction_loader import load_validate_transactions
+from ..core.types import DateLike
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
 from ..utils.tools import ensure_timestamp, to_tz_mixed
@@ -79,6 +80,9 @@ class BogleBenchAnalyzer:
         # print("DEBUG: BogleBench Setting up logging...")
         setup_logging()  # Initialize after workspace context is set
         self.logger = get_logger("core.portfolio")
+
+        self.start_date: Optional[pd.Timestamp] = None
+        self.end_date: Optional[pd.Timestamp] = None
 
         self.transactions = pd.DataFrame()
         self.market_data: Dict[str, pd.DataFrame] = {}
@@ -144,7 +148,7 @@ class BogleBenchAnalyzer:
             self.transactions["ticker"].nunique(),
         )
         self.logger.info(
-            "📅 Date range: %s to %s",
+            "📅 Transactions date range: %s to %s",
             self.transactions["date"].min(),
             self.transactions["date"].max(),
         )
@@ -158,6 +162,38 @@ class BogleBenchAnalyzer:
         self.logger.info(msg)
 
         return self.transactions
+
+    def _set_start_date(self, first_transaction_date: DateLike) -> None:
+        """Set the analysis start date."""
+        first_transaction_date = ensure_timestamp(
+            first_transaction_date, tz=DateAndTimeConstants.TZ_UTC.value
+        )
+
+        # Ensure the config value is not a dict before passing to pd.Timestamp
+        config_start_date = self.config.get("analysis.start_date", None)
+        if isinstance(config_start_date, dict):
+            config_start_date = config_start_date.get("value", None)
+
+        if config_start_date is not None:
+            config_start_date = ensure_timestamp(
+                config_start_date, tz=DateAndTimeConstants.TZ_UTC.value
+            )
+            self.start_date = config_start_date
+            self.logger.info(
+                "Using configured start date: %s", self.start_date
+            )
+        else:
+            self.start_date = first_transaction_date
+            self.logger.info(
+                "Using first transaction date as start date: %s",
+                self.start_date,
+            )
+
+    def _get_start_date(self) -> pd.Timestamp:
+        """Get the analysis start date, ensuring it's set."""
+        if self.start_date is None:
+            raise ValueError("Start date is not set")
+        return self.start_date
 
     def _is_market_currently_open(self) -> bool:
         """Check if the market is currently open."""
@@ -418,24 +454,8 @@ class BogleBenchAnalyzer:
             for account in accounts
         }
 
-        # Get full date range for analysis
-        # Ensure the config value is not a dict before passing to pd.Timestamp
-        config_start_date = self.config.get(
-            "analysis.default_start_date", None
-        )
-        if isinstance(config_start_date, dict):
-            config_start_date = config_start_date.get("value", None)
-
         min_transaction_date = self.transactions["date"].min().date()
-        if config_start_date is not None:
-            start_date = min(
-                pd.Timestamp(config_start_date).date(), min_transaction_date
-            )
-        else:
-            start_date = min_transaction_date
-
-        if start_date is None:
-            raise ValueError("No valid start date provided or found.")
+        self._set_start_date(min_transaction_date)
 
         last_market_close_date = None
         if self._is_market_currently_open():
@@ -478,11 +498,13 @@ class BogleBenchAnalyzer:
 
         # 1. Get all trading days in the period
         self.logger.debug(
-            "Getting NYSE trading days from %s to %s", start_date, end_date
+            "Getting NYSE trading days from %s to %s",
+            self._get_start_date(),
+            end_date,
         )
         nyse = mcal.get_calendar("NYSE")
         trading_days = nyse.schedule(
-            start_date=start_date, end_date=end_date.date()
+            start_date=self._get_start_date(), end_date=end_date.date()
         )
 
         self.logger.debug("trading_days:\n%s", trading_days)
@@ -500,10 +522,12 @@ class BogleBenchAnalyzer:
 
         self.logger.debug("trading_dates:\n%s", trading_dates)
 
-        # 2. Get all unique transaction dates
+        # 2. Get all unique transaction dates between start and end dates
+        # inclusive
         transaction_dates_mask = (
-            self.transactions["date"].dt.date <= end_date.date()
-        )
+            self.transactions["date"].dt.date >= self._get_start_date().date()
+        ) & (self.transactions["date"].dt.date <= end_date.date())
+
         transaction_dates = list(
             set(
                 pd.to_datetime(
@@ -572,7 +596,7 @@ class BogleBenchAnalyzer:
         ):
             self.market_data = self.market_data_provider.get_market_data(
                 tickers=tickers,
-                start_date_str=start_date.strftime("%Y-%m-%d"),
+                start_date_str=self._get_start_date().strftime("%Y-%m-%d"),
                 end_date_str=end_date.strftime("%Y-%m-%d"),
             )
 

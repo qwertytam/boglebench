@@ -28,7 +28,7 @@ class TestMultiTransactionPerformance:
             (config_dir / "market_data").mkdir()
             (config_dir / "output").mkdir()
 
-            config.config["analysis"]["default_start_date"] = "2023-06-05"
+            config.config["analysis"]["start_date"] = "2023-06-05"
             config.config["analysis"]["default_end_date"] = "2023-06-16"
 
             yield config

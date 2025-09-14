@@ -35,7 +35,7 @@ class TestPerformanceCalculation:
                 "period_cash_flow_weight"
             ] = 1.0
 
-            config.config["analysis"]["default_start_date"] = "2023-06-05"
+            config.config["analysis"]["start_date"] = "2023-06-05"
             config.config["analysis"]["default_end_date"] = "2023-06-16"
 
             yield config

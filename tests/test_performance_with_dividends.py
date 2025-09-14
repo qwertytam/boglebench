@@ -67,7 +67,7 @@ class TestPerformanceWithDividends:
             config.config["api"]["alpha_vantage_key"] = "DUMMY_KEY"
             config.config["data"]["transactions_file"] = "transactions.csv"
 
-            config.config["analysis"]["default_start_date"] = "2023-01-03"
+            config.config["analysis"]["start_date"] = "2023-01-03"
             config.config["analysis"]["default_end_date"] = "2023-01-05"
 
             yield config

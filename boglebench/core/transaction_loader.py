@@ -297,12 +297,9 @@ def load_validate_transactions(file_path: Path) -> pd.DataFrame:
     df = _clean_transaction_data(df)
 
     logger.debug(
-        "✅ Loaded %d transactions for %d unique assets",
+        "✅ Loaded %d transactions for %d unique assets with date range: %s to %s",
         len(df),
         df["ticker"].nunique(),
-    )
-    logger.debug(
-        "📅 Date range: %s to %s",
         df["date"].min(),
         df["date"].max(),
     )

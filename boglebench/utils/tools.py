@@ -7,25 +7,16 @@ from __future__ import annotations
 
 import json
 from datetime import datetime as dt
-from datetime import timedelta, tzinfo
-from typing import Any, Iterable, Literal, Optional, Union
+from datetime import tzinfo
+from typing import Any, Literal, Optional, Union
 from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
 import numpy as np
 import pandas as pd
-from pandas import Timedelta
 
 from ..core.constants import DateAndTimeConstants, TransactionTypes
+from ..core.types import DateLike, NonExistentTime, SeqLike
 from ..utils.logging_config import get_logger
-
-# Custom type aliases
-DateLike = Union[pd.Timestamp, dt, str]
-SeqLike = Union[pd.Series, Iterable[DateLike], pd.Index]
-NonExistentTime = Union[
-    Literal["shift_forward", "shift_backward", "NaT", "raise"],
-    Timedelta,
-    timedelta,
-]
 
 logger = get_logger()
 

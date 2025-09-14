@@ -272,6 +272,9 @@ class TestDividendScenarios:
                 "period_cash_flow_weight"
             ] = 1.0
 
+            config.config["analysis"]["start_date"] = "2023-01-02"
+            config.config["analysis"]["end_date"] = "2023-01-05"
+
             yield config
 
     @pytest.fixture(

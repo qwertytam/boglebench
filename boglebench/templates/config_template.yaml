@@ -24,7 +24,7 @@ settings:
 
 # Portfolio analysis configuration
 analysis:
-  default_start_date: null # If null, uses first transaction date
+  start_date: null # If null, uses first transaction date
   default_end_date: null # If null, uses today
   rebalance_frequency: "monthly" # Options: daily, weekly, monthly, quarterly
 
