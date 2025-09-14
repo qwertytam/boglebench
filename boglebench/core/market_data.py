@@ -144,8 +144,8 @@ class MarketDataProvider:
                             "⚠️ Cached data for %s is out of range (%s to %s). "
                             "Fetching fresh data.",
                             ticker,
-                            cache_start_date.date(),
-                            cache_end_date.date(),
+                            cache_start_date,
+                            cache_end_date,
                         )
 
             try:

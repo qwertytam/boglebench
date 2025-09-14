@@ -68,7 +68,7 @@ class TestPerformanceWithDividends:
             config.config["data"]["transactions_file"] = "transactions.csv"
 
             config.config["analysis"]["start_date"] = "2023-01-03"
-            config.config["analysis"]["default_end_date"] = "2023-01-05"
+            config.config["analysis"]["end_date"] = "2023-01-05"
 
             yield config
 

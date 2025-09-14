@@ -195,6 +195,53 @@ class BogleBenchAnalyzer:
             raise ValueError("Start date is not set")
         return self.start_date
 
+    def _set_end_date(self) -> None:
+        """Set the analysis end date."""
+        last_market_close_date = None
+        if self._is_market_currently_open():
+            self.logger.info("Market is currently open")
+            last_market_close_date = self._get_last_closed_market_day()
+        else:
+            self.logger.info("Market is currently closed")
+
+            # Ensure last_market_close_date is a scalar Timestamp,
+            # not a Series or None
+            dt_now = to_tz_mixed(datetime.now())
+            if isinstance(dt_now, pd.Series):
+                if not dt_now.empty:
+                    last_market_close_date = pd.to_datetime(dt_now.iloc[0])
+                else:
+                    raise ValueError("dt_now Series is empty")
+            else:
+                last_market_close_date = dt_now
+
+        # Ensure the config value is not a dict before passing to pd.Timestamp
+        config_end_date = self.config.get(
+            "analysis.end_date", last_market_close_date
+        )
+        if isinstance(config_end_date, dict):
+            config_end_date = config_end_date.get(
+                "value", last_market_close_date
+            )
+
+        if config_end_date is not None:
+            self.end_date = pd.Timestamp(config_end_date)
+            self.logger.info("Using configured end date: %s", config_end_date)
+        elif last_market_close_date is not None:
+            self.end_date = pd.Timestamp(last_market_close_date)
+            self.logger.info(
+                "Using last market close date as end date: %s",
+                last_market_close_date,
+            )
+        else:
+            raise ValueError("No valid end date provided or found.")
+
+    def _get_end_date(self) -> pd.Timestamp:
+        """Get the analysis end date, ensuring it's set."""
+        if self.end_date is None:
+            raise ValueError("End date is not set")
+        return self.end_date
+
     def _is_market_currently_open(self) -> bool:
         """Check if the market is currently open."""
         nyse = mcal.get_calendar("NYSE")
@@ -457,38 +504,7 @@ class BogleBenchAnalyzer:
         min_transaction_date = self.transactions["date"].min().date()
         self._set_start_date(min_transaction_date)
 
-        last_market_close_date = None
-        if self._is_market_currently_open():
-            self.logger.info("Market is currently open")
-            last_market_close_date = self._get_last_closed_market_day()
-        else:
-            self.logger.info("Market is currently closed")
-
-            # Ensure last_market_close_date is a scalar Timestamp,
-            # not a Series or None
-            dt_now = to_tz_mixed(datetime.now())
-            if isinstance(dt_now, pd.Series):
-                if not dt_now.empty:
-                    last_market_close_date = pd.to_datetime(dt_now.iloc[0])
-                else:
-                    raise ValueError("dt_now Series is empty")
-            else:
-                last_market_close_date = dt_now
-
-        # Ensure the config value is not a dict before passing to pd.Timestamp
-        config_end_date = self.config.get(
-            "analysis.default_end_date", last_market_close_date
-        )
-        if isinstance(config_end_date, dict):
-            config_end_date = config_end_date.get(
-                "value", last_market_close_date
-            )
-        if config_end_date is not None:
-            end_date = pd.Timestamp(config_end_date)
-        elif last_market_close_date is not None:
-            end_date = pd.Timestamp(last_market_close_date)
-        else:
-            raise ValueError("No valid end date provided or found.")
+        self._set_end_date()
 
         # Default is all day between and including start and end dates that are
         # trading days.
@@ -500,11 +516,12 @@ class BogleBenchAnalyzer:
         self.logger.debug(
             "Getting NYSE trading days from %s to %s",
             self._get_start_date(),
-            end_date,
+            self._get_end_date(),
         )
         nyse = mcal.get_calendar("NYSE")
         trading_days = nyse.schedule(
-            start_date=self._get_start_date(), end_date=end_date.date()
+            start_date=self._get_start_date(),
+            end_date=self._get_end_date().date(),
         )
 
         self.logger.debug("trading_days:\n%s", trading_days)
@@ -526,7 +543,7 @@ class BogleBenchAnalyzer:
         # inclusive
         transaction_dates_mask = (
             self.transactions["date"].dt.date >= self._get_start_date().date()
-        ) & (self.transactions["date"].dt.date <= end_date.date())
+        ) & (self.transactions["date"].dt.date <= self._get_end_date().date())
 
         transaction_dates = list(
             set(
@@ -597,7 +614,7 @@ class BogleBenchAnalyzer:
             self.market_data = self.market_data_provider.get_market_data(
                 tickers=tickers,
                 start_date_str=self._get_start_date().strftime("%Y-%m-%d"),
-                end_date_str=end_date.strftime("%Y-%m-%d"),
+                end_date_str=self._get_end_date().strftime("%Y-%m-%d"),
             )
 
             benchmark_ticker = self.config.get(
