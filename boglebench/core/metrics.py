@@ -258,6 +258,13 @@ def calculate_metrics(
         return {}
 
     annualized_return = cagr(1, 1 + total_return, year_fraction)
+    if isinstance(annualized_return, complex):
+        logger.error(
+            "%s: Annualized return calculation resulted in complex number: %s",
+            name,
+            annualized_return,
+        )
+        annualized_return = Defaults.ZERO_RETURN
 
     logger.debug(
         "%s: Periods: %d, Years: %.2f",
