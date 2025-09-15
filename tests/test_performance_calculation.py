@@ -138,12 +138,40 @@ class TestPerformanceCalculation:
         # Verify portfolio history was built correctly
         portfolio_history = results.portfolio_history
 
-        print(f"Portfolio History:\n{portfolio_history}")
-
         assert len(portfolio_history) == 10  # 10 trading days
-        assert "total_value" in portfolio_history.columns
-        assert "portfolio_daily_return_mod_dietz" in portfolio_history.columns
-        assert "portfolio_daily_return_twr" in portfolio_history.columns
+
+        expected_columns = [
+            "date",
+            "Test_Account_AAPL_shares",
+            "Test_Account_AAPL_price",
+            "Test_Account_AAPL_value",
+            "Test_Account_total",
+            "total_value",
+            "AAPL_total_shares",
+            "AAPL_total_value",
+            "net_cash_flow",
+            "weighted_cash_flow",
+            "market_value_change",
+            "market_value_return",
+            "Test_Account_AAPL_weight",
+            "AAPL_weight",
+            "investment_cash_flow",
+            "income_cash_flow",
+            "Test_Account_cash_flow",
+            "Test_Account_weighted_cash_flow",
+            "cash_flow_impact",
+            "portfolio_daily_return_mod_dietz",
+            "portfolio_daily_return_twr",
+            "Test_Account_mod_dietz_return",
+            "Test_Account_mod_twr_return",
+            "Benchmark_Returns",
+        ]
+
+        for col in expected_columns:
+            assert col in portfolio_history.columns
+
+        for col in portfolio_history.columns:
+            assert col in expected_columns
 
         assert (
             abs(
