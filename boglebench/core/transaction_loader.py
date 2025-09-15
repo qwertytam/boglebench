@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from ..utils.logging_config import get_logger
-from ..utils.tools import to_tz_mixed
+from ..utils.tools import to_tzts
 from .constants import (
     DateAndTimeConstants,
     Defaults,
@@ -95,7 +95,7 @@ def _clean_transaction_data(
                 )
 
         # df["date"] = pd.to_datetime(df["date"], format="%Y-%m-%d")
-        df["date"] = to_tz_mixed(df["date"], tz=default_tz, format="%Y-%m-%d")
+        df["date"] = to_tzts(df["date"], tz=default_tz, format="%Y-%m-%d")
         logger.debug("Converted 'date' column to type %s", df["date"].dtype)
     except ValueError as e:
         if "is not in ISO8601 format" in str(e):

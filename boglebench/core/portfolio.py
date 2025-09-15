@@ -46,7 +46,7 @@ from ..core.transaction_loader import load_validate_transactions
 from ..core.types import DateLike
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
-from ..utils.tools import ensure_timestamp, to_tz_mixed
+from ..utils.tools import is_tz_aware, to_tzts, to_tzts_scaler
 from ..utils.workspace import WorkspaceContext
 
 
@@ -163,11 +163,34 @@ class BogleBenchAnalyzer:
 
         return self.transactions
 
-    def _set_start_date(self, first_transaction_date: DateLike) -> None:
-        """Set the analysis start date."""
-        first_transaction_date = ensure_timestamp(
+    def _set_start_date(self, first_transaction_date: DateLike) -> bool:
+        """Set the analysis start date.
+
+        Rules:
+        1. If 'analysis.start_date' is set in config, use that.
+        2. Otherwise, use the date of the first transaction as provided.
+
+        Args:
+            first_transaction_date: Date of the first transaction.
+
+        Returns:
+            bool: True if start date is has been set successfully as a
+            timezone-aware timestamp, False otherwise.
+        """
+        first_transaction_tstz = to_tzts(
             first_transaction_date, tz=DateAndTimeConstants.TZ_UTC.value
         )
+        if isinstance(first_transaction_tstz, pd.Series):
+            if not first_transaction_tstz.empty:
+                self.logger.debug(
+                    "first_transaction_tstz is a Series, taking first value"
+                )
+                first_transaction_tstz = to_tzts_scaler(
+                    first_transaction_tstz.iloc[0],
+                    tz=DateAndTimeConstants.TZ_UTC.value,
+                )
+            else:
+                raise ValueError("first_transaction_date Series is empty")
 
         # Ensure the config value is not a dict before passing to pd.Timestamp
         config_start_date = self.config.get("analysis.start_date", None)
@@ -175,7 +198,7 @@ class BogleBenchAnalyzer:
             config_start_date = config_start_date.get("value", None)
 
         if config_start_date is not None:
-            config_start_date = ensure_timestamp(
+            config_start_date = to_tzts_scaler(
                 config_start_date, tz=DateAndTimeConstants.TZ_UTC.value
             )
             self.start_date = config_start_date
@@ -183,11 +206,16 @@ class BogleBenchAnalyzer:
                 "Using configured start date: %s", self.start_date
             )
         else:
-            self.start_date = first_transaction_date
+            self.start_date = first_transaction_tstz
             self.logger.info(
                 "Using first transaction date as start date: %s",
                 self.start_date,
             )
+
+        if self.start_date is None:
+            self.logger.error("Failed to set start date")
+            return False
+        return is_tz_aware(self.start_date)
 
     def _get_start_date(self) -> pd.Timestamp:
         """Get the analysis start date, ensuring it's set."""
@@ -195,8 +223,20 @@ class BogleBenchAnalyzer:
             raise ValueError("Start date is not set")
         return self.start_date
 
-    def _set_end_date(self) -> None:
-        """Set the analysis end date."""
+    def _set_end_date(self) -> bool:
+        """Set the analysis end date.
+
+        Rules:
+        1. If 'analysis.end_date' is set in config, use that.
+        2. Otherwise, if the market is currently open, use the last closed market day.
+        3. Otherwise, use the current datetime as the end date.
+        Raises:
+            ValueError: If no valid end date can be determined.
+
+        Returns:
+            bool: True if end date is has been set successfully as a
+            timezone-aware timestamp, False otherwise.
+        """
         last_market_close_date = None
         if self._is_market_currently_open():
             self.logger.info("Market is currently open")
@@ -206,12 +246,17 @@ class BogleBenchAnalyzer:
 
             # Ensure last_market_close_date is a scalar Timestamp,
             # not a Series or None
-            dt_now = to_tz_mixed(datetime.now())
+            machine_tz = ZoneInfo(str(DateAndTimeConstants.TZ_UTC.value))
+            dt_now = to_tzts(datetime.now(tz=machine_tz))
             if isinstance(dt_now, pd.Series):
                 if not dt_now.empty:
-                    last_market_close_date = pd.to_datetime(dt_now.iloc[0])
+                    last_market_close_date = to_tzts_scaler(
+                        dt_now.iloc[0], tz=machine_tz
+                    )
                 else:
-                    raise ValueError("dt_now Series is empty")
+                    raise ValueError(
+                        "Received empty Series for datetime.now()"
+                    )
             else:
                 last_market_close_date = dt_now
 
@@ -225,16 +270,25 @@ class BogleBenchAnalyzer:
             )
 
         if config_end_date is not None:
-            self.end_date = pd.Timestamp(config_end_date)
+            self.end_date = to_tzts_scaler(
+                config_end_date, tz=DateAndTimeConstants.TZ_UTC.value
+            )
             self.logger.info("Using configured end date: %s", config_end_date)
         elif last_market_close_date is not None:
-            self.end_date = pd.Timestamp(last_market_close_date)
+            self.end_date = to_tzts_scaler(
+                last_market_close_date, tz=DateAndTimeConstants.TZ_UTC.value
+            )
             self.logger.info(
                 "Using last market close date as end date: %s",
                 last_market_close_date,
             )
         else:
             raise ValueError("No valid end date provided or found.")
+
+        if self.end_date is None:
+            self.logger.error("Failed to set end date")
+            return False
+        return is_tz_aware(self.end_date)
 
     def _get_end_date(self) -> pd.Timestamp:
         """Get the analysis end date, ensuring it's set."""
@@ -291,14 +345,18 @@ class BogleBenchAnalyzer:
         return pd.to_datetime(last_closed_market_day)
 
     def _get_price_for_date(
-        self, ticker: str, target_date: pd.Timestamp
+        self, ticker: str, price_date: pd.Timestamp
     ) -> float:
         """Get price for ticker on specific date with forward-fill logic."""
         if ticker not in self.market_data:
             raise ValueError(f"No market data available for {ticker}")
 
         ticker_data = self.market_data[ticker]
-        target_date = ensure_timestamp(target_date)
+        target_date = to_tzts_scaler(
+            price_date, tz=DateAndTimeConstants.TZ_UTC.value
+        )
+        if target_date is None:
+            raise ValueError("Invalid price date provided")
 
         # Try exact date match first
         exact_match = ticker_data[
@@ -502,9 +560,19 @@ class BogleBenchAnalyzer:
         }
 
         min_transaction_date = self.transactions["date"].min().date()
+        max_transaction_date = self.transactions["date"].max().date()
         self._set_start_date(min_transaction_date)
 
+        if self._get_start_date().date() > max_transaction_date:
+            return pd.DataFrame()  # No data to process
+
         self._set_end_date()
+
+        if self._get_start_date() > self._get_end_date():
+            raise ValueError(
+                "Start date must be on or before end date: "
+                f"{self._get_start_date()} > {self._get_end_date()}"
+            )
 
         # Default is all day between and including start and end dates that are
         # trading days.
@@ -1511,7 +1579,9 @@ class BogleBenchAnalyzer:
             PerformanceResults object containing all metrics and analysis
         """
         if self.portfolio_history.empty:
-            self.build_portfolio_history()
+            portfolio_history = self.build_portfolio_history()
+            if portfolio_history.empty:
+                return PerformanceResults()
 
         self.logger.info("📊 Calculating performance metrics...")
         self.logger.debug(
