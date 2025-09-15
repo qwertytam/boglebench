@@ -1068,11 +1068,11 @@ class BogleBenchAnalyzer:
             else:
                 market_return = market_change / prev_value
 
-            portfolio_df.at[
+            portfolio_df.iat[
                 i, portfolio_df.columns.get_loc("market_value_change")
             ] = market_change
 
-            portfolio_df.at[
+            portfolio_df.iat[
                 i, portfolio_df.columns.get_loc("market_value_return")
             ] = market_return
 
