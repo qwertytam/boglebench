@@ -11,7 +11,7 @@ data:
 # API configuration for market data providers
 api:
   # Alpha Vantage API key - get free key from https://www.alphavantage.co/support/#api-key
-  alpha_vantage_key: null
+  alpha_vantage_key: "YOUR_ALPHA_VANTAGE_API_KEY_HERE"
   data_provider: "alpha_vantage" # Options: alpha_vantage, yahoo_finance
 
 # Analysis settings
@@ -81,6 +81,7 @@ advanced:
     max_cache_age_days: 7
     retry_attempts: 3
     request_delay_seconds: 0.5
+    local_tz: America/New_York
 
   dividend:
     auto_validate: true # Automatically validate during portfolio building
