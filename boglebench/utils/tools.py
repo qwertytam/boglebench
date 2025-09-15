@@ -6,8 +6,8 @@ Collection of utility functions and classes for Boglebench
 from __future__ import annotations
 
 import json
+from datetime import date, tzinfo
 from datetime import datetime as dt
-from datetime import tzinfo
 from typing import Any, Literal, Optional, Union
 from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
@@ -19,6 +19,214 @@ from ..core.types import DateLike, NonExistentTime, SeqLike
 from ..utils.logging_config import get_logger
 
 logger = get_logger()
+
+
+def to_tzts(
+    x: Union[DateLike, SeqLike, None],
+    tz: Union[str, tzinfo, None] = DateAndTimeConstants.TZ_UTC.value,
+    *,
+    default: Union[DateLike, None] = None,
+    errors: Literal["raise", "coerce", "ignore"] = "raise",
+    nonexistent: NonExistentTime = "shift_forward",
+    ambiguous: Any = "NaT",
+    **to_datetime_kwargs: Any,
+) -> Union[pd.Timestamp, pd.Series, None]:
+    """
+    Convert a scalar or sequence of date-like values to a pandas Timestamp.
+
+    This function combines timezone localization/conversion with robust parsing
+    and fallback defaults.
+
+    Behavior:
+    - Handles scalar values (Timestamp, datetime, str, etc.) and sequences
+      (Series, list, Index).
+    - If `tz` is provided:
+        - Naïve timestamps are localized to that timezone.
+        - Tz-aware timestamps are converted to that timezone.
+    - If a value is missing or fails to parse:
+        - If `default` is set, it's used as a fallback.
+        - Otherwise, behavior depends on the `errors` parameter.
+
+    Parameters
+    ----------
+    x : DateLike | SeqLike | None
+        The primary input(s) to convert.
+    tz : str | tzinfo | None, optional
+        IANA timezone name or tzinfo object. Defaults to UTC. If None, the
+        function will not apply any timezone localization.
+    default : DateLike | None, optional
+        A fallback value to parse if the primary input is missing or invalid.
+    errors : {'raise', 'coerce', 'ignore'}, default 'raise'
+        Determines how to handle parsing errors, passed to `pd.to_datetime`.
+        - 'raise': raise an exception.
+        - 'coerce': return `NaT` for parsing errors.
+        - 'ignore': return the original input for parsing errors.
+    nonexistent : str or timedelta, default 'shift_forward'
+        How to handle wall times that fall in a DST gap.
+    ambiguous : str, bool, or array-like, default 'NaT'
+        How to handle wall times that fall in a DST overlap.
+    **to_datetime_kwargs : Any
+        Additional keyword arguments passed to `pd.to_datetime`.
+
+    Returns
+    -------
+    pd.Timestamp | pd.Series | None
+        The converted and timezone-aware pandas object(s).
+
+    Raises
+    ------
+    TypeError
+        If the input type is not supported.
+    ValueError
+        If `errors='raise'` and a value cannot be parsed.
+    """
+    tz_obj = ZoneInfo(str(tz)) if isinstance(tz, str) else tz
+
+    def _convert_one(val: Union[DateLike, None]) -> Optional[pd.Timestamp]:
+        """Processes a single scalar value."""
+        # Use default if initial value is None or an empty string
+        if val is None or (isinstance(val, str) and not val.strip()):
+            val = default
+
+        # If still no value, return None (which pandas will handle as NaT)
+        if val is None:
+            return None
+
+        # Attempt to convert to a timestamp
+        ts = pd.to_datetime(val, errors=errors, **to_datetime_kwargs)
+        if pd.isna(ts):
+            return None  # Return None for NaT to satisfy type checkers
+
+        # Apply timezone if specified
+        if tz_obj:
+            if ts.tz is None:
+                return ts.tz_localize(
+                    tz_obj, nonexistent=nonexistent, ambiguous=ambiguous
+                )
+            return ts.tz_convert(tz_obj)
+        return ts
+
+    # Process based on input type
+    if isinstance(x, pd.Series):
+        return x.apply(_convert_one)
+    if isinstance(x, (list, tuple, pd.Index)):
+        # Let Series constructor handle conversion of None to NaT
+        return pd.Series([_convert_one(v) for v in x])
+    if (
+        isinstance(x, (pd.Timestamp, dt, date, str, int, float, np.datetime64))
+        or x is None
+    ):
+        return _convert_one(x)
+
+    logger.error("to_timestamp: unsupported input type %s", type(x))
+    raise TypeError(f"Unsupported input type for to_timestamp: {type(x)}")
+
+
+def to_tzts_scaler(
+    x: Union[DateLike, None],
+    tz: Union[str, tzinfo, None] = DateAndTimeConstants.TZ_UTC.value,
+    *,
+    default: Union[DateLike, None] = None,
+    errors: Literal["raise", "coerce", "ignore"] = "raise",
+    nonexistent: NonExistentTime = "shift_forward",
+    ambiguous: Any = "NaT",
+    **to_datetime_kwargs: Any,
+) -> Union[pd.Timestamp, None]:
+    """
+    Convert a scalar date-like value to a pandas Timestamp.
+
+    This function combines timezone localization/conversion with robust parsing
+    and fallback defaults.
+
+    Behavior:
+    - Handles scalar values (Timestamp, datetime, str, etc.) and sequences
+      (Series, list, Index).
+    - If `tz` is provided:
+        - Naïve timestamps are localized to that timezone.
+        - Tz-aware timestamps are converted to that timezone.
+    - If a value is missing or fails to parse:
+        - If `default` is set, it's used as a fallback.
+        - Otherwise, behavior depends on the `errors` parameter.
+
+    Parameters
+    ----------
+    x : DateLike | SeqLike | None
+        The primary input(s) to convert.
+    tz : str | tzinfo | None, optional
+        IANA timezone name or tzinfo object. Defaults to UTC. If None, the
+        function will not apply any timezone localization.
+    default : DateLike | None, optional
+        A fallback value to parse if the primary input is missing or invalid.
+    errors : {'raise', 'coerce', 'ignore'}, default 'raise'
+        Determines how to handle parsing errors, passed to `pd.to_datetime`.
+        - 'raise': raise an exception.
+        - 'coerce': return `NaT` for parsing errors.
+        - 'ignore': return the original input for parsing errors.
+    nonexistent : str or timedelta, default 'shift_forward'
+        How to handle wall times that fall in a DST gap.
+    ambiguous : str, bool, or array-like, default 'NaT'
+        How to handle wall times that fall in a DST overlap.
+    **to_datetime_kwargs : Any
+        Additional keyword arguments passed to `pd.to_datetime`.
+
+    Returns
+    -------
+    pd.Timestamp | pd.Series | None
+        The converted and timezone-aware pandas object(s).
+
+    Raises
+    ------
+    TypeError
+        If the input type is not supported.
+    ValueError
+        If `errors='raise'` and a value cannot be parsed.
+    """
+    result = to_tzts(
+        x,
+        tz,
+        default=default,
+        errors=errors,
+        nonexistent=nonexistent,
+        ambiguous=ambiguous,
+        **to_datetime_kwargs,
+    )
+    if isinstance(result, pd.Series):
+        raise TypeError("to_tzts_scaler only accepts scalar inputs")
+    return result
+
+
+def is_tz_aware(x: Union[pd.Timestamp, pd.Series]) -> bool:
+    """
+    Check if a pandas Timestamp or Series is timezone-aware.
+
+    Parameters
+    ----------
+    x : pd.Timestamp | pd.Series
+        The scalar or series to check.
+
+    Returns
+    -------
+    bool
+        True if the object has timezone information, False otherwise.
+
+    Raises
+    ------
+    TypeError
+        If the input is not a pandas Timestamp or Series.
+    """
+    if isinstance(x, pd.Timestamp):
+        # For a scalar, check the tzinfo attribute
+        return x.tzinfo is not None
+    if isinstance(x, pd.Series):
+        # For a series, check the tz of its dtype
+        if pd.api.types.is_datetime64_any_dtype(x.dtype):
+            return x.dt.tz is not None
+        # The series is not a datetime series
+        return False
+
+    raise TypeError(
+        f"Input must be a pandas Timestamp or Series, not {type(x)}"
+    )
 
 
 def ensure_timestamp(
