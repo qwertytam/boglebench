@@ -64,6 +64,8 @@ class TestBogleBenchAnalyzer:
             (config_dir / "market_data").mkdir()
             (config_dir / "output").mkdir()
 
+            config.config["api"]["alpha_vantage_key"] = "TESTKEY"
+
             yield config
 
     @pytest.fixture

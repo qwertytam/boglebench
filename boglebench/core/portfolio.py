@@ -15,7 +15,7 @@ and long-term focus.
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 from zoneinfo import ZoneInfo  # pylint: disable=wrong-import-order
 
 import pandas as pd
@@ -84,6 +84,11 @@ class BogleBenchAnalyzer:
         self.start_date: Optional[pd.Timestamp] = None
         self.end_date: Optional[pd.Timestamp] = None
 
+        initial_local_tz = self.config.get(
+            "advanced.market_data.local_tz", DateAndTimeConstants.TZ_UTC.value
+        )
+        self.local_tz = initial_local_tz
+
         self.transactions = pd.DataFrame()
         self.market_data: Dict[str, pd.DataFrame] = {}
         self.portfolio_history = pd.DataFrame()
@@ -91,13 +96,10 @@ class BogleBenchAnalyzer:
         self.performance_results = PerformanceResults()
 
         # Set up market data provider
-        self.api_key = self.config.get(
+        initial_api_key = self.config.get(
             "api.alpha_vantage_key", Defaults.DEFAULT_API_KEY
         )
-        if isinstance(self.api_key, dict):
-            self.api_key = self.api_key.get("value", Defaults.DEFAULT_API_KEY)
-        if self.api_key is None or str(self.api_key).strip() == "":
-            self.api_key = Defaults.DEFAULT_API_KEY
+        self.api_key = initial_api_key
 
         cache_enabled = self.config.get("settings.cache_market_data", True)
         if isinstance(cache_enabled, dict):
@@ -107,16 +109,59 @@ class BogleBenchAnalyzer:
 
         cache_dir = self.config.get_market_data_path()
 
-        self.market_data_provider = MarketDataProvider(
+        initial_market_data_provider = MarketDataProvider(
             api_key=self.api_key,
             cache_dir=cache_dir,
             cache_enabled=cache_enabled,
             force_cache_refresh=False,
         )
+        self.market_data_provider = initial_market_data_provider
 
         # Suppress warnings for cleaner output
         warnings.filterwarnings("ignore", category=FutureWarning)
         self.logger.info("BogleBench analyzer initialized")
+
+    @property
+    def local_tz(self) -> ZoneInfo:
+        """Get the local timezone for date handling."""
+        return self._local_tz
+
+    @local_tz.setter
+    def local_tz(self, tz_str: Union[dict, str, ZoneInfo, None]) -> None:
+        if isinstance(tz_str, dict):
+            tz_str = tz_str.get("value", DateAndTimeConstants.TZ_UTC.value)
+        if isinstance(tz_str, str):
+            self._local_tz = ZoneInfo(tz_str)
+        elif isinstance(tz_str, ZoneInfo):
+            self._local_tz = tz_str
+        elif tz_str is None:
+            self._local_tz = ZoneInfo(DateAndTimeConstants.TZ_UTC.value)
+        else:
+            raise ValueError("Invalid timezone value provided")
+        self.logger.info("Local timezone set to: %s", self._local_tz)
+
+    @property
+    def api_key(self) -> str:
+        """Get the API key for market data provider."""
+        return self._api_key
+
+    @api_key.setter
+    def api_key(self, key: Union[dict, str, None]) -> None:
+        if isinstance(key, dict):
+            key = key.get("value", Defaults.DEFAULT_API_KEY)
+        if key is None or str(key).strip() == "":
+            key = Defaults.DEFAULT_API_KEY
+
+        if key is not None and isinstance(key, str) and key.strip() != "":
+            self._api_key = key.strip()
+            # self.market_data_provider.api_key = self._api_key
+            self.logger.info("Market data API key set")
+        else:
+            self._api_key = Defaults.DEFAULT_API_KEY
+            # self.market_data_provider.api_key = None
+            self.logger.info(
+                "No market data API key provided; using limited access"
+            )
 
     def load_transactions(
         self, file_path: Optional[str] = None
@@ -162,6 +207,23 @@ class BogleBenchAnalyzer:
         self.logger.info(msg)
 
         return self.transactions
+
+    def _set_timezone(self, tz_str: str) -> bool:
+        """Set the timezone for date handling.
+
+        Args:
+            tz_str: Timezone string, e.g. 'America/New_York'.
+
+        Returns:
+            bool: True if timezone was set successfully, False otherwise.
+        """
+        try:
+            self.tz = ZoneInfo(tz_str)
+            self.logger.info("Timezone set to: %s", tz_str)
+            return True
+        except ValueError as e:
+            self.logger.error("Failed to set timezone '%s': %s", tz_str, e)
+            return False
 
     def _set_start_date(self, first_transaction_date: DateLike) -> bool:
         """Set the analysis start date.
@@ -273,14 +335,14 @@ class BogleBenchAnalyzer:
             self.end_date = to_tzts_scaler(
                 config_end_date, tz=DateAndTimeConstants.TZ_UTC.value
             )
-            self.logger.info("Using configured end date: %s", config_end_date)
+            self.logger.info("Using configured end date: %s", self.end_date)
         elif last_market_close_date is not None:
             self.end_date = to_tzts_scaler(
                 last_market_close_date, tz=DateAndTimeConstants.TZ_UTC.value
             )
             self.logger.info(
                 "Using last market close date as end date: %s",
-                last_market_close_date,
+                self.end_date,
             )
         else:
             raise ValueError("No valid end date provided or found.")
@@ -288,6 +350,7 @@ class BogleBenchAnalyzer:
         if self.end_date is None:
             self.logger.error("Failed to set end date")
             return False
+
         return is_tz_aware(self.end_date)
 
     def _get_end_date(self) -> pd.Timestamp:
@@ -301,6 +364,10 @@ class BogleBenchAnalyzer:
         nyse = mcal.get_calendar("NYSE")
         now = datetime.now(tz=ZoneInfo(DateAndTimeConstants.TZ_UTC))
         schedule = nyse.schedule(start_date=now.date(), end_date=now.date())
+
+        self.logger.info("Checking market status for %s", now)
+        self.logger.info("Market schedule for today:\n%s", schedule)
+
         if schedule.empty:
             self.logger.debug("Market is closed today (holiday or weekend)")
             return False
@@ -339,7 +406,8 @@ class BogleBenchAnalyzer:
         closed_days = schedule[schedule["market_close"] < today]
         last_closed_market_day = closed_days["market_close"].max()
 
-        self.logger.debug(
+        self.logger.info("Using now time of %s", today)
+        self.logger.info(
             "Last closed market day is %s", last_closed_market_day
         )
         return pd.to_datetime(last_closed_market_day)
