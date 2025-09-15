@@ -191,8 +191,8 @@ def scenario_user_start_end_dates_outside_transaction_dates(
     transaction date range.
     """
     # Provide explicit start and end dates outside the transaction date range
-    start_date = "2020-01-01"
-    end_date = "2024-01-01"
+    start_date = "2022-12-30"
+    end_date = "2023-01-09"
 
     # Attach these dates to the returned tuple for use by the test harness
     return (
@@ -452,10 +452,10 @@ class TestDateScenarios:
 
         elif scenario_name == "user_start_end_dates_outside_transaction_dates":
             assert (
-                first_day["date"].date() == pd.to_datetime("1990-01-01").date()
+                first_day["date"].date() == pd.to_datetime("2022-12-30").date()
             )
             assert (
-                final_day["date"].date() == pd.to_datetime("2023-01-10").date()
+                final_day["date"].date() == pd.to_datetime("2023-01-09").date()
             )
 
             assert first_day["Taxable_TICK_shares"] == 0
