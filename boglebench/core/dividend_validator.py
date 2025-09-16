@@ -119,9 +119,9 @@ class DividendValidator:
             return pd.DataFrame()
 
         try:
-            logger.debug("data_df column dtypes:\n%s", data_df.dtypes)
+            # logger.debug("data_df column dtypes:\n%s", data_df.dtypes)
             date_tz = data_df["date"].dt.tz
-            logger.debug("Market data 'date' column tz info: %s", date_tz)
+            # logger.debug("Market data 'date' column tz info: %s", date_tz)
         except TypeError as e:
             logger.debug(
                 "Market data 'date' column tz info could not be determined: %s",
@@ -162,12 +162,12 @@ class DividendValidator:
         Returns:
             The number of shares held on the specified date.
         """
-        logger.debug(
-            "Retrieving shares held for %s on %s in account %s.",
-            ticker,
-            date,
-            account if account else "ALL",
-        )
+        # logger.debug(
+        #     "Retrieving shares held for %s on %s in account %s.",
+        #     ticker,
+        #     date,
+        #     account if account else "ALL",
+        # )
 
         # Filter transactions for the specific ticker and date
         mask = (
@@ -184,13 +184,13 @@ class DividendValidator:
             mask &= self.transactions_df["account"] == account
 
         shares_held = self.transactions_df.loc[mask, "quantity"].sum()
-        logger.debug(
-            "Shares held for %s on %s in account %s: %d",
-            ticker,
-            date,
-            account if account else "ALL",
-            shares_held,
-        )
+        # logger.debug(
+        #     "Shares held for %s on %s in account %s: %d",
+        #     ticker,
+        #     date,
+        #     account if account else "ALL",
+        #     shares_held,
+        # )
 
         return shares_held
 

@@ -352,14 +352,14 @@ def to_tz_mixed(
         return ts.tz_convert(tz_obj)
 
     if isinstance(x, pd.Series):
-        logger.debug("to_tz_mixed: processing pd.Series input")
+        # logger.debug("to_tz_mixed: processing pd.Series input")
         return x.apply(_one)
     if isinstance(x, (list, tuple, pd.Index)):
-        logger.debug("to_tz_mixed: processing list/tuple/pd.Index input")
+        # logger.debug("to_tz_mixed: processing list/tuple/pd.Index input")
         return pd.Series(list(x)).apply(_one)
     # Only pass scalars (not sequences) to _one
     if isinstance(x, (pd.Timestamp, dt, str)) or x is None:
-        logger.debug("to_tz_mixed: processing scalar input")
+        # logger.debug("to_tz_mixed: processing scalar input")
         return _one(x)
 
     logger.error("to_tz_mixed: unsupported input type %s", type(x))
@@ -400,16 +400,16 @@ def ensure_date_only(
         return ts.normalize()
 
     if isinstance(x, pd.Series):
-        logger.debug("ensure_date_only: processing pd.Series input")
+        # logger.debug("ensure_date_only: processing pd.Series input")
         return x.apply(_to_date_only)
 
     if isinstance(x, (list, tuple, pd.Index)):
-        logger.debug("ensure_date_only: processing list/tuple/pd.Index input")
+        # logger.debug("ensure_date_only: processing list/tuple/pd.Index input")
         return pd.Series(list(x)).apply(_to_date_only)
 
     # Only pass scalars (not sequences) to _to_date_only
     if isinstance(x, (pd.Timestamp, dt, str)) or x is None:
-        logger.debug("ensure_date_only: processing scalar input")
+        # logger.debug("ensure_date_only: processing scalar input")
         return _to_date_only(x)
 
     logger.error("ensure_date_only: unsupported input type %s", type(x))

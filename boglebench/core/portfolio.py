@@ -159,13 +159,13 @@ class BogleBenchAnalyzer:
             if not is_tz_aware(value):
                 raise ValueError("Unable to set timezone-aware start date")
             self._start_date = value
-            self.logger.info(
+            self.logger.debug(
                 "Using configured start date: %s", self.start_date
             )
             return
         elif value is None:
             self._start_date = None
-            self.logger.info("'Start date provided as None, clearing it")
+            self.logger.debug("'Start date provided as None, clearing it")
             return
         elif isinstance(value, dict):
             raise ValueError(
@@ -201,7 +201,7 @@ class BogleBenchAnalyzer:
             self._end_date = to_tzts_scaler(
                 value, tz=DateAndTimeConstants.TZ_UTC.value
             )
-            self.logger.info("Using configured end date: %s", self.end_date)
+            self.logger.debug("Using configured end date: %s", self.end_date)
             return
 
         last_market_close_date = None
@@ -215,7 +215,7 @@ class BogleBenchAnalyzer:
             # not a Series or None
             local_tz = ZoneInfo(str(DateAndTimeConstants.TZ_UTC.value))
             dt_now = to_tzts_scaler(datetime.now(tz=local_tz))
-            last_market_close_date: Optional[pd.Timestamp] = dt_now
+            last_market_close_date = dt_now
 
         if last_market_close_date is not None:
             self._end_date = to_tzts_scaler(
@@ -247,7 +247,7 @@ class BogleBenchAnalyzer:
             self._local_tz = ZoneInfo(DateAndTimeConstants.TZ_UTC.value)
         else:
             raise ValueError("Invalid timezone value provided")
-        self.logger.info("Local timezone set to: %s", self._local_tz)
+        self.logger.debug("Local timezone set to: %s", self._local_tz)
 
     @property
     def api_key(self) -> str:
@@ -264,7 +264,7 @@ class BogleBenchAnalyzer:
         if key is not None and isinstance(key, str) and key.strip() != "":
             self._api_key = key.strip()
             # self.market_data_provider.api_key = self._api_key
-            self.logger.info("Market data API key set")
+            self.logger.debug("Market data API key set")
         else:
             self._api_key = Defaults.DEFAULT_API_KEY
             # self.market_data_provider.api_key = None
@@ -303,11 +303,13 @@ class BogleBenchAnalyzer:
         )
         self.logger.info(
             "📅 Transactions date range: %s to %s",
-            self.transactions["date"].min(),
-            self.transactions["date"].max(),
+            self.transactions["date"].dt.date.min(),
+            self.transactions["date"].dt.date.max(),
         )
         self.logger.info(
-            "🏦 Accounts: %s", ", ".join(self.transactions["account"].unique())
+            "🏦 %d accounts: %s",
+            len(self.transactions["account"].unique()),
+            ", ".join(self.transactions["account"].unique()),
         )
         total_invested = self.transactions[
             self.transactions["total_value"] > 0
@@ -323,8 +325,8 @@ class BogleBenchAnalyzer:
         now = datetime.now(tz=ZoneInfo(DateAndTimeConstants.TZ_UTC))
         schedule = nyse.schedule(start_date=now.date(), end_date=now.date())
 
-        self.logger.info("Checking market status for %s", now)
-        self.logger.info("Market schedule for today:\n%s", schedule)
+        self.logger.debug("Checking market status for %s", now)
+        self.logger.debug("Market schedule for today:\n%s", schedule)
 
         if schedule.empty:
             self.logger.debug("Market is closed today (holiday or weekend)")
@@ -335,15 +337,15 @@ class BogleBenchAnalyzer:
         self.logger.debug(
             "Market hours today: %s to %s", market_open, market_close
         )
-        self.logger.debug(
-            "Going to compare market open %s %s, now %s %s, close %s %s",
-            market_open,
-            type(market_open),
-            now,
-            type(now),
-            market_close,
-            type(market_close),
-        )
+        # self.logger.debug(
+        #     "Going to compare market open %s %s, now %s %s, close %s %s",
+        #     market_open,
+        #     type(market_open),
+        #     now,
+        #     type(now),
+        #     market_close,
+        #     type(market_close),
+        # )
         return market_open <= now <= market_close
 
     def _get_last_closed_market_day(self) -> pd.Timestamp:
@@ -364,8 +366,8 @@ class BogleBenchAnalyzer:
         closed_days = schedule[schedule["market_close"] < today]
         last_closed_market_day = closed_days["market_close"].max()
 
-        self.logger.info("Using now time of %s", today)
-        self.logger.info(
+        self.logger.debug("Using now time of %s", today)
+        self.logger.debug(
             "Last closed market day is %s", last_closed_market_day
         )
         return pd.to_datetime(last_closed_market_day)
@@ -457,7 +459,7 @@ class BogleBenchAnalyzer:
             len(day_transactions),
             date.strftime("%Y-%m-%d"),
         )
-        self.logger.debug("Transactions:\n%s", day_transactions)
+        # self.logger.debug("Transactions:\n%s", day_transactions)
 
         # Investment cash flows: affect cost basis (BUY/SELL)
         inv_cf = {"total": Defaults.ZERO_CASH_FLOW}
@@ -482,11 +484,11 @@ class BogleBenchAnalyzer:
                 account,
             )
 
-            self.logger.debug(
-                "  Is ttype %s in DIVIDEND? %s",
-                ttype,
-                TransactionTypes.is_dividend(ttype),
-            )
+            # self.logger.debug(
+            #     "  Is ttype %s in DIVIDEND? %s",
+            #     ttype,
+            #     TransactionTypes.is_dividend(ttype),
+            # )
 
             if TransactionTypes.is_buy_or_sell(ttype):
                 cf = trans["total_value"]  # +ve for BUY, -ve for SELL
@@ -622,11 +624,11 @@ class BogleBenchAnalyzer:
             end_date=self.end_date,
         )
 
-        self.logger.debug("trading_days:\n%s", trading_days)
-        self.logger.debug("type of trading_days:\n%s", trading_days.dtypes)
-        self.logger.debug(
-            "type of trading_days index:\n%s", trading_days.index.dtype
-        )
+        # self.logger.debug("trading_days:\n%s", trading_days)
+        # self.logger.debug("type of trading_days:\n%s", trading_days.dtypes)
+        # self.logger.debug(
+        #     "type of trading_days index:\n%s", trading_days.index.dtype
+        # )
 
         trading_dates_set = set(
             [pd.to_datetime(date).normalize() for date in trading_days.index]
@@ -655,13 +657,13 @@ class BogleBenchAnalyzer:
             )
         )
 
-        self.logger.debug("Trading days sample:\n%s", trading_days.head(10))
-        self.logger.debug(
-            "Transaction dates sample:\n%s", transaction_dates[:10]
-        )
+        # self.logger.debug("Trading days sample:\n%s", trading_days.head(10))
+        # self.logger.debug(
+        #     "Transaction dates sample:\n%s", transaction_dates[:10]
+        # )
 
         # 3. Find transactions dates that are outside of trading days
-        self.logger.debug("Checking for transactions on non-trading days")
+        # self.logger.debug("Checking for transactions on non-trading days")
         non_trading_transaction_dates = set(transaction_dates) - set(
             trading_dates
         )
@@ -673,10 +675,10 @@ class BogleBenchAnalyzer:
                 "\n".join(str(date) for date in non_trading_transaction_dates),
             )
 
-        self.logger.debug("trading_dates:\n%s", trading_dates)
-        self.logger.debug(
-            "non_trading_transaction_dates:\n%s", non_trading_transaction_dates
-        )
+        # self.logger.debug("trading_dates:\n%s", trading_dates)
+        # self.logger.debug(
+        #     "non_trading_transaction_dates:\n%s", non_trading_transaction_dates
+        # )
 
         all_dates_to_process = sorted(
             list(trading_dates.union(list(non_trading_transaction_dates)))
@@ -687,8 +689,8 @@ class BogleBenchAnalyzer:
         self.logger.info(
             "📅 Processing %d trading days from %s to %s",
             len(date_range),
-            pd.Timestamp(date_range[0]),
-            pd.Timestamp(date_range[-1]),
+            pd.Timestamp(date_range[0]).date(),
+            pd.Timestamp(date_range[-1]).date(),
         )
 
         self.logger.debug(
@@ -703,9 +705,9 @@ class BogleBenchAnalyzer:
         force_refresh_market_data = self.config.get(
             "settings.force_refresh_market_data", False
         )
-        self.logger.debug(
-            "Force refresh of market data: %s", force_refresh_market_data
-        )
+        # self.logger.debug(
+        #     "Force refresh of market data: %s", force_refresh_market_data
+        # )
         if (
             force_refresh_market_data
             or self.market_data is None
@@ -853,7 +855,7 @@ class BogleBenchAnalyzer:
                                 )
                             else:
                                 self.logger.warning(
-                                    "No matching transaction found to"
+                                    "⚠️ No matching transaction found to"
                                     + " update for %s on %s",
                                     ticker,
                                     date.date(),
@@ -861,27 +863,27 @@ class BogleBenchAnalyzer:
 
         for date in date_range:
             # Process any transactions on this date
-            self.logger.debug(
-                "Processing transaction dates:\n%s\nagainst date %s",
-                self.transactions["date"].dt.date,
-                date.date(),
-            )
-            self.logger.debug(
-                "These dates have type %s and %s",
-                type(self.transactions["date"].dt.date),
-                type(date.date()),
-            )
+            # self.logger.debug(
+            #     "Processing transaction dates:\n%s\nagainst date %s",
+            #     self.transactions["date"].dt.date,
+            #     date.date(),
+            # )
+            # self.logger.debug(
+            #     "These dates have type %s and %s",
+            #     type(self.transactions["date"].dt.date),
+            #     type(date.date()),
+            # )
 
             day_transactions = self.transactions[
                 self.transactions["date"].dt.date == date.date()
             ]
 
-            self.logger.debug(
-                "Processing %s transactions for %s:\n%s",
-                len(day_transactions),
-                date.date(),
-                day_transactions,
-            )
+            # self.logger.debug(
+            #     "Processing %s transactions for %s:\n%s",
+            #     len(day_transactions),
+            #     date.date(),
+            #     day_transactions,
+            # )
 
             for _, transaction in day_transactions.iterrows():
                 account = transaction["account"]
@@ -891,7 +893,7 @@ class BogleBenchAnalyzer:
                 if TransactionTypes.is_quantity_changing(ttype):
                     shares = transaction["quantity"]
 
-                    self.logger.debug("Have %s shares for %s", shares, ttype)
+                    # self.logger.debug("Have %s shares for %s", shares, ttype)
 
                     # Ensure account and ticker exist in our tracking
                     if account not in current_holdings:
@@ -908,7 +910,7 @@ class BogleBenchAnalyzer:
                     current_holdings[account][ticker] += shares
 
             # Get market prices for this date
-            self.logger.debug("Calculating portfolio value for %s", date)
+            # self.logger.debug("Calculating portfolio value for %s", date)
             day_data: Dict[str, Any] = {"date": date}
             total_portfolio_value = Defaults.ZERO_ASSET_VALUE
             account_totals = {}
@@ -929,27 +931,27 @@ class BogleBenchAnalyzer:
                             Defaults.ZERO_PRICE
                         )  # Only set to 0 if truly no data exists
 
-                    self.logger.debug(
-                        "Calculated price for %s on %s: $%.2f",
-                        ticker,
-                        date,
-                        price,
-                    )
+                    # self.logger.debug(
+                    #     "Calculated price for %s on %s: $%.2f",
+                    #     ticker,
+                    #     date,
+                    #     price,
+                    # )
                     position_value = shares * price
                     account_value += position_value
 
-                    self.logger.debug(
-                        "Storing shares %.4f of %s", shares, ticker
-                    )
-                    self.logger.debug(
-                        "Storing price $%.2f for %s on %s", price, ticker, date
-                    )
-                    self.logger.debug(
-                        "Storing position value $%.2f for %s on %s",
-                        position_value,
-                        ticker,
-                        date,
-                    )
+                    # self.logger.debug(
+                    #     "Storing shares %.4f of %s", shares, ticker
+                    # )
+                    # self.logger.debug(
+                    #     "Storing price $%.2f for %s on %s", price, ticker, date
+                    # )
+                    # self.logger.debug(
+                    #     "Storing position value $%.2f for %s on %s",
+                    #     position_value,
+                    #     ticker,
+                    #     date,
+                    # )
 
                     # Store account-specific position data
                     day_data[f"{account}_{ticker}_shares"] = shares
@@ -987,14 +989,14 @@ class BogleBenchAnalyzer:
                 else:
                     price = Defaults.ZERO_PRICE
 
-                self.logger.debug(
-                    "Storing total shares %.4f of %s", total_shares, ticker
-                )
-                self.logger.debug(
-                    "Storing total value $%.2f of %s",
-                    total_shares * price,
-                    ticker,
-                )
+                # self.logger.debug(
+                #     "Storing total shares %.4f of %s", total_shares, ticker
+                # )
+                # self.logger.debug(
+                #     "Storing total value $%.2f of %s",
+                #     total_shares * price,
+                #     ticker,
+                # )
 
                 day_data[f"{ticker}_total_shares"] = total_shares
                 day_data[f"{ticker}_total_value"] = total_shares * price
@@ -1002,15 +1004,15 @@ class BogleBenchAnalyzer:
             portfolio_data.append(day_data)
 
         # Convert to DataFrame
-        self.logger.debug("Converting portfolio data to DataFrame")
+        # self.logger.debug("Converting portfolio data to DataFrame")
         portfolio_df = pd.DataFrame(portfolio_data)
 
-        self.logger.debug(
-            "Portfolio DataFrame sample:\n%s", portfolio_df.head(10)
-        )
-        self.logger.debug(
-            "Portfolio dates sample:\n%s", portfolio_df["date"].head(10)
-        )
+        # self.logger.debug(
+        #     "Portfolio DataFrame sample:\n%s", portfolio_df.head(10)
+        # )
+        # self.logger.debug(
+        #     "Portfolio dates sample:\n%s", portfolio_df["date"].head(10)
+        # )
         # Ensure ascending date order
         portfolio_df = portfolio_df.sort_values("date").reset_index(drop=True)
 
@@ -1618,18 +1620,18 @@ class BogleBenchAnalyzer:
                 return PerformanceResults()
 
         self.logger.info("📊 Calculating performance metrics...")
-        self.logger.debug(
-            "Portfolio history columns:\n%s", self.portfolio_history.columns
-        )
+        # self.logger.debug(
+        #     "Portfolio history columns:\n%s", self.portfolio_history.columns
+        # )
         self.portfolio_history["date"] = pd.to_datetime(
             self.portfolio_history["date"], utc=True
         ).dt.normalize()
 
         portfolio_metrics = {}
 
-        self.logger.debug(
-            "Portfolio history sample:\n%s", self.portfolio_history.head(n=10)
-        )
+        # self.logger.debug(
+        #     "Portfolio history sample:\n%s", self.portfolio_history.head(n=10)
+        # )
 
         annual_trading_days = self.config.get(
             "settings.annual_trading_days",
@@ -1683,17 +1685,17 @@ class BogleBenchAnalyzer:
             # Align benchmark data with portfolio dates
             aligned_benchmark_df = self._align_benchmark_returns()
 
-            self.logger.debug(
-                "Aligned benchmark %s returns:\n%s",
-                len(benchmark_returns),
-                benchmark_returns.head(n=10)
-                * ConversionFactors.DECIMAL_TO_PERCENT,
-            )
+            # self.logger.debug(
+            #     "Aligned benchmark %s returns:\n%s",
+            #     len(benchmark_returns),
+            #     benchmark_returns.head(n=10)
+            #     * ConversionFactors.DECIMAL_TO_PERCENT,
+            # )
 
-            self.logger.debug(
-                "portfolio_history before merging benchmark:\n%s",
-                self.portfolio_history.head(n=10),
-            )
+            # self.logger.debug(
+            #     "portfolio_history before merging benchmark:\n%s",
+            #     self.portfolio_history.head(n=10),
+            # )
 
             self.portfolio_history = pd.merge(
                 self.portfolio_history,
@@ -1702,10 +1704,10 @@ class BogleBenchAnalyzer:
                 how="left",
             )
 
-            self.logger.debug(
-                "portfolio_history after merging benchmark:\n%s",
-                self.portfolio_history.head(n=10),
-            )
+            # self.logger.debug(
+            #     "portfolio_history after merging benchmark:\n%s",
+            #     self.portfolio_history.head(n=10),
+            # )
 
             benchmark_returns = self.portfolio_history[
                 "Benchmark_Returns"
@@ -1722,22 +1724,22 @@ class BogleBenchAnalyzer:
             "portfolio_daily_return_twr"
         ].copy()
 
-        self.logger.debug(
-            "Portfolio returns sample:\n%s",
-            portfolio_returns.head(n=10)
-            * ConversionFactors.DECIMAL_TO_PERCENT,
-        )
+        # self.logger.debug(
+        #     "Portfolio returns sample:\n%s",
+        #     portfolio_returns.head(n=10)
+        #     * ConversionFactors.DECIMAL_TO_PERCENT,
+        # )
 
         portfolio_returns = pd.Series(
             portfolio_returns.values,
             index=pd.to_datetime(self.portfolio_history["date"]),
         )
 
-        self.logger.debug(
-            "Portfolio returns after index update:\n%s",
-            portfolio_returns.head(n=10)
-            * ConversionFactors.DECIMAL_TO_PERCENT,
-        )
+        # self.logger.debug(
+        #     "Portfolio returns after index update:\n%s",
+        #     portfolio_returns.head(n=10)
+        #     * ConversionFactors.DECIMAL_TO_PERCENT,
+        # )
 
         if benchmark_returns.any():
             benchmark_returns = pd.Series(

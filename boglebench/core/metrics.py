@@ -228,11 +228,11 @@ def calculate_metrics(
     year_fraction = total_periods / annual_trading_days
 
     # Ensure returns are numeric to avoid type errors
-    logger.debug(
-        "Returns series %s before numeric conversion:\n%s",
-        name,
-        returns.head(10),
-    )
+    # logger.debug(
+    #     "Returns series %s before numeric conversion:\n%s",
+    #     name,
+    #     returns.head(10),
+    # )
     returns = pd.to_numeric(returns, errors="coerce")
     if returns.isna().any():
         logger.warning(
@@ -242,11 +242,11 @@ def calculate_metrics(
         )
         returns = returns.fillna(0)
 
-    logger.debug(
-        "%s: First 10 daily returns:\n%s",
-        name,
-        returns.head(n=10) * ConversionFactors.DECIMAL_TO_PERCENT,
-    )
+    # logger.debug(
+    #     "%s: First 10 daily returns:\n%s",
+    #     name,
+    #     returns.head(n=10) * ConversionFactors.DECIMAL_TO_PERCENT,
+    # )
 
     prod_result = (1 + returns).prod()
     if isinstance(prod_result, (int, float, np.number)):
@@ -266,38 +266,38 @@ def calculate_metrics(
         )
         annualized_return = Defaults.ZERO_RETURN
 
-    logger.debug(
-        "%s: Periods: %d, Years: %.2f",
-        name,
-        total_periods,
-        year_fraction,
-    )
+    # logger.debug(
+    #     "%s: Periods: %d, Years: %.2f",
+    #     name,
+    #     total_periods,
+    #     year_fraction,
+    # )
 
-    logger.debug(
-        "%s: First date: %s, Last date: %s",
-        name,
-        returns.index[0] if len(returns) > 0 else "N/A",
-        returns.index[-1] if len(returns) > 0 else "N/A",
-    )
+    # logger.debug(
+    #     "%s: First date: %s, Last date: %s",
+    #     name,
+    #     returns.index[0] if len(returns) > 0 else "N/A",
+    #     returns.index[-1] if len(returns) > 0 else "N/A",
+    # )
 
-    logger.debug(
-        "%s: Total Return: %.2f%%, Annualized Return: %.2f%%",
-        name,
-        total_return * ConversionFactors.DECIMAL_TO_PERCENT,
-        annualized_return * ConversionFactors.DECIMAL_TO_PERCENT,
-    )
+    # logger.debug(
+    #     "%s: Total Return: %.2f%%, Annualized Return: %.2f%%",
+    #     name,
+    #     total_return * ConversionFactors.DECIMAL_TO_PERCENT,
+    #     annualized_return * ConversionFactors.DECIMAL_TO_PERCENT,
+    # )
 
     volatility = returns.std(ddof=1)  # Daily volatility, sample stddev
     annual_volatility = volatility * np.sqrt(
         annual_trading_days
     )  # Annualized volatility
 
-    logger.debug(
-        "%s: Volatility: %.2f%% (period) %.2f%% (annualized)",
-        name,
-        volatility * ConversionFactors.DECIMAL_TO_PERCENT,
-        annual_volatility * ConversionFactors.DECIMAL_TO_PERCENT,
-    )
+    # logger.debug(
+    #     "%s: Volatility: %.2f%% (period) %.2f%% (annualized)",
+    #     name,
+    #     volatility * ConversionFactors.DECIMAL_TO_PERCENT,
+    #     annual_volatility * ConversionFactors.DECIMAL_TO_PERCENT,
+    # )
 
     # Risk-adjusted metrics
     daily_risk_free_rate = cagr(
@@ -356,9 +356,9 @@ def calculate_relative_metrics(
 
     # Align the series by index. This is crucial for non-continuous date
     # ranges.
-    logger.debug("Aligning portfolio and benchmark returns...")
-    logger.debug("Portfolio returns:\n%s", portfolio_returns.head(10))
-    logger.debug("Benchmark returns:\n%s", benchmark_returns.head(10))
+    # logger.debug("Aligning portfolio and benchmark returns...")
+    # logger.debug("Portfolio returns:\n%s", portfolio_returns.head(10))
+    # logger.debug("Benchmark returns:\n%s", benchmark_returns.head(10))
 
     aligned_portfolio, aligned_benchmark = portfolio_returns.align(
         benchmark_returns, join="inner"

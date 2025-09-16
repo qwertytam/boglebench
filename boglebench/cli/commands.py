@@ -178,13 +178,13 @@ def run_analysis(
             analyzer.config.config["settings"]["benchmark_ticker"] = benchmark
             logger.info(f"📊 Using custom benchmark: {benchmark}")
 
-        logger.info("Loading transaction data...")
+        logger.debug("Loading transaction data...")
         analyzer.load_transactions()
 
-        logger.info("Building portfolio history...")
+        logger.debug("Building portfolio history...")
         analyzer.build_portfolio_history()
 
-        logger.info("Calculating performance metrics...")
+        logger.debug("Calculating performance metrics...")
         results = analyzer.calculate_performance()
 
         # Display results

@@ -94,7 +94,12 @@ class MarketDataProvider:
         Returns:
             A dictionary mapping each ticker to its market data DataFrame.
         """
-        logger.info("⬇️  Fetching market data for: %s", tickers)
+        logger.info(
+            "⬇️  Fetching market data for %d unique tickers: %s",
+            len(tickers),
+            ", ".join(tickers),
+        )
+
         all_data = {}
         failed_tickers = []
 
@@ -120,7 +125,7 @@ class MarketDataProvider:
                         cache_start_date <= start_date
                         and cache_end_date >= end_date
                     ):
-                        logger.info(
+                        logger.debug(
                             "✅ Using cached data for %s from %s to %s.",
                             ticker,
                             cache_start_date,
@@ -188,11 +193,11 @@ class MarketDataProvider:
                 data.reset_index(inplace=True, names="date")
 
                 try:
-                    logger.debug("data column dtypes:\n%s", data.dtypes)
+                    # logger.debug("data column dtypes:\n%s", data.dtypes)
                     date_tz = data["date"].dt.tz
-                    logger.debug(
-                        "Market data 'date' column tz info: %s", date_tz
-                    )
+                    # logger.debug(
+                    #     "Market data 'date' column tz info: %s", date_tz
+                    # )
                 except TypeError as e:
                     logger.debug(
                         "Market data 'date' column tz info could not be determined: %s",
