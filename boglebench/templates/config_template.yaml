@@ -4,7 +4,7 @@
 # Data file locations and paths
 data:
   base_path: "~/boglebench_data"
-  transactions_file: "transactions/transactions.csv"
+  transactions_file: "transactions/sample_transactions.csv"
   market_data_cache: "market_data/"
   output_path: "output/"
 
