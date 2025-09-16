@@ -294,6 +294,10 @@ class DividendValidator:
                 ):
                     # Case 1: Both user and market have a dividend on this day
                     # Dividends are treated as cash outflows (hence negative)
+                    # Calculate expected total dividend based on shares held
+                    # and market rate
+                    # For a short position, short holder pays the dividend
+                    # For a long position, long holder receives the dividend
                     expected_total = -shares * value_per_share_market
                     if not np.isclose(
                         total_value_user,
@@ -301,7 +305,7 @@ class DividendValidator:
                         atol=self.dividend_tolerance,
                     ):
                         msg = (
-                            f"   Mismatch on {row['date'].date()} "
+                            f"Mismatch on {row['date'].date()} "
                             f"for {ticker} "
                             f"in account {account if account else 'ALL'}: "
                             f"User recorded ${np.abs(total_value_user):.2f}, "
@@ -362,12 +366,12 @@ class DividendValidator:
                 ):
                     # Case 3: Market has a dividend, but user did not record one
                     msg = (
-                        f"   Missing dividend on {row['date'].date()} for "
+                        f"Missing dividend on {row['date'].date()} for "
                         f"{ticker} "
                         f"in account {account if account else 'ALL'}: "
                         f"Market data shows a dividend of "
                         f"${value_per_share_market:.4f}/share, "
-                        f"but none was recorded."
+                        f"but none were by recorded user."
                     )
                     messages.append(msg)
                     dividend_differences_df = pd.concat(

@@ -837,7 +837,7 @@ class BogleBenchAnalyzer:
                                     shares_sum * new_div_per_share
                                 )
                                 self.logger.info(
-                                    "Updating %s dividend on %s: "
+                                    "ℹ️  Updating %s dividend on %s: "
                                     "per share from %.4f to %.4f, "
                                     "total from $%.2f to $%.2f",
                                     ticker,
