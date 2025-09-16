@@ -102,8 +102,8 @@ class DividendValidator:
         self.transactions_df = transactions_df
         self.market_data_df = market_data_df
         self.dividend_tolerance = dividend_tolerance
-        self._start_date = start_date
-        self._end_date = end_date
+        self.start_date = start_date
+        self.end_date = end_date
 
     def _get_market_dividends_for_ticker(self, ticker: str) -> pd.DataFrame:
         """Extracts market dividends for a specific ticker."""
@@ -229,17 +229,27 @@ class DividendValidator:
             ).apply(aggregate_dividends)
 
             user_divs_grouped.reset_index(drop=True, inplace=True)
-            user_dividends_in_range = user_divs_grouped[
-                (user_divs_grouped["date"] >= self._start_date)
-                & (user_divs_grouped["date"] <= self._end_date)
-            ]
+
+            if self.start_date is not None and self.end_date is not None:
+                logger.debug(
+                    "Filtering user dividends for %s between %s and %s.",
+                    ticker,
+                    self.start_date,
+                    self.end_date,
+                )
+                user_dividends_in_range = user_divs_grouped[
+                    (user_divs_grouped["date"] >= self.start_date)
+                    & (user_divs_grouped["date"] <= self.end_date)
+                ]
+            else:
+                user_dividends_in_range = user_divs_grouped
 
             market_ticker_dividends = self._get_market_dividends_for_ticker(
                 ticker
             )
 
             if market_ticker_dividends.empty:
-                if self._start_date is not None and self._end_date is not None:
+                if self.start_date is not None and self.end_date is not None:
                     if (
                         user_dividends_in_range.empty
                         or user_dividends_in_range["total_value"].abs().sum()
