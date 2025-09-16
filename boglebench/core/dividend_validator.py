@@ -255,7 +255,7 @@ class DividendValidator:
                         or user_dividends_in_range["total_value"].abs().sum()
                         < self.dividend_tolerance
                     ):
-                        logger.info(
+                        logger.debug(
                             "No user or market dividends for %s in the specified date "
                             "range; skipping comparison.",
                             ticker,
