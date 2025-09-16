@@ -236,8 +236,8 @@ class MarketDataProvider:
                     "✅ Downloaded market data for %s: %d rows from %s to %s.",
                     ticker,
                     len(data),
-                    data["date"].min(),
-                    data["date"].max(),
+                    data["date"].dt.date.min(),
+                    data["date"].dt.date.max(),
                 )
 
                 self._cache_data(data, ticker)
