@@ -298,7 +298,7 @@ class TestDateScenarios:
         ],
         ids=lambda x: x[0],  # Use scenario name for test ID
     )
-    def scenario_analyzer(self, request, temp_config):
+    def scenario_analyzer(self, request, temp_config, monkeypatch):
         """Fixture to set up BogleBenchAnalyzer for a given date range
         scenario."""
 
@@ -306,13 +306,24 @@ class TestDateScenarios:
             request.param
         )
 
+        # --- Mocks ---
+        # Mock methods on the BogleBenchAnalyzer class to control date logic
+        monkeypatch.setattr(
+            BogleBenchAnalyzer, "_is_market_currently_open", lambda self: True
+        )
+        monkeypatch.setattr(
+            BogleBenchAnalyzer,
+            "_get_last_closed_market_day",
+            lambda self: pd.to_datetime("2023-01-10", utc=True).date(),
+        )
+
         # Create analyzer
         analyzer = BogleBenchAnalyzer()
         analyzer.config = temp_config
 
         # Set scenario-specific start and end dates
-        analyzer.config.config["analysis"]["start_date"] = start_date
-        analyzer.config.config["analysis"]["end_date"] = end_date
+        analyzer.start_date = start_date
+        analyzer.end_date = end_date
 
         # Save transactions to csv
         workspace = analyzer.config.get_data_path()
@@ -341,24 +352,11 @@ class TestDateScenarios:
         # Yield analyzer and scenario name
         yield analyzer, request.param[0], transactions_file
 
-    @patch(
-        "boglebench.core.portfolio.BogleBenchAnalyzer._is_market_currently_open"
-    )
-    @patch(
-        "boglebench.core.portfolio.BogleBenchAnalyzer._get_last_closed_market_day"
-    )
-    def test_date_scenarios(
-        self, mock_last_closed_day, mock_market_open, scenario_analyzer
-    ):
+    def test_date_scenarios(self, scenario_analyzer):
         """
         Runs a date range scenario and performs assertions based on the scenario
         type.
         """
-        # Set return values for the mocks
-        mock_market_open.return_value = True
-        mock_last_closed_day.return_value = pd.to_datetime(
-            "2023-01-10", utc=True
-        ).date()
 
         analyzer, scenario_name, transactions_file = scenario_analyzer
 

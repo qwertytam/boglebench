@@ -46,7 +46,7 @@ from ..core.transaction_loader import load_validate_transactions
 from ..core.types import DateLike
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
-from ..utils.tools import is_tz_aware, to_tzts, to_tzts_scaler
+from ..utils.tools import is_tz_aware, to_tzts_scaler
 from ..utils.workspace import WorkspaceContext
 
 
@@ -81,8 +81,13 @@ class BogleBenchAnalyzer:
         setup_logging()  # Initialize after workspace context is set
         self.logger = get_logger("core.portfolio")
 
-        self.start_date: Optional[pd.Timestamp] = None
-        self.end_date: Optional[pd.Timestamp] = None
+        self._start_date: Optional[pd.Timestamp] = None
+        initial_start_date = self.config.get("analysis.start_date", None)
+        self.start_date = initial_start_date
+
+        self._end_date: Optional[pd.Timestamp] = None
+        initial_end_date = self.config.get("analysis.end_date", None)
+        self.end_date = initial_end_date
 
         initial_local_tz = self.config.get(
             "advanced.market_data.local_tz", DateAndTimeConstants.TZ_UTC.value
@@ -120,6 +125,110 @@ class BogleBenchAnalyzer:
         # Suppress warnings for cleaner output
         warnings.filterwarnings("ignore", category=FutureWarning)
         self.logger.info("BogleBench analyzer initialized")
+
+    @property
+    def start_date(self) -> Optional[pd.Timestamp]:
+        """Get the analysis start date."""
+        return self._start_date
+
+    @start_date.setter
+    def start_date(self, value: Union[DateLike, dict, None]) -> None:
+        """Set the analysis start date.
+
+        Args:
+            value: Date-like object (str, pd.Timestamp, datetime) or None
+                   to set the start date.
+
+        Raises:
+            ValueError: If the provided date is invalid or not timezone-aware.
+
+        Returns:
+            None
+
+        """
+
+        if isinstance(value, dict):
+            value = value.get("value", None)
+
+        if value is not None and not isinstance(value, dict):
+            value = to_tzts_scaler(value, tz=DateAndTimeConstants.TZ_UTC.value)
+            if value is None:
+                raise ValueError(
+                    "Unable to set start date: Invalid start date provided"
+                )
+            if not is_tz_aware(value):
+                raise ValueError("Unable to set timezone-aware start date")
+            self._start_date = value
+            self.logger.info(
+                "Using configured start date: %s", self.start_date
+            )
+            return
+        elif value is None:
+            self._start_date = None
+            self.logger.info("'Start date provided as None, clearing it")
+            return
+        elif isinstance(value, dict):
+            raise ValueError(
+                f"Unable to set start date: Invalid start date provided {value}"
+            )
+
+    @property
+    def end_date(self) -> Optional[pd.Timestamp]:
+        """Get the analysis end date."""
+        return self._end_date
+
+    @end_date.setter
+    def end_date(self, value: Union[DateLike, dict, None]) -> None:
+        """Set the analysis end date.
+        Rules:
+        1. If value is provided, use it.
+        2. Otherwise, if the market is currently open, use the last closed market day.
+        3. Otherwise, use the current datetime as the end date.
+        Args:
+            value: Date-like object (str, pd.Timestamp, datetime) or None
+                   to clear the end date.
+        Raises:
+            ValueError: If the provided date is invalid or not timezone-aware.
+        Returns:
+            None
+        """
+
+        # Ensure the config value is not a dict before passing to pd.Timestamp
+        if isinstance(value, dict):
+            value = value.get("value", None)
+
+        if value is not None and not isinstance(value, dict):
+            self._end_date = to_tzts_scaler(
+                value, tz=DateAndTimeConstants.TZ_UTC.value
+            )
+            self.logger.info("Using configured end date: %s", self.end_date)
+            return
+
+        last_market_close_date = None
+        if self._is_market_currently_open():
+            self.logger.info("Market is currently open")
+            last_market_close_date = self._get_last_closed_market_day()
+        else:
+            self.logger.info("Market is currently closed")
+
+            # Ensure last_market_close_date is a scalar Timestamp,
+            # not a Series or None
+            local_tz = ZoneInfo(str(DateAndTimeConstants.TZ_UTC.value))
+            dt_now = to_tzts_scaler(datetime.now(tz=local_tz))
+            last_market_close_date: Optional[pd.Timestamp] = dt_now
+
+        if last_market_close_date is not None:
+            self._end_date = to_tzts_scaler(
+                last_market_close_date, tz=DateAndTimeConstants.TZ_UTC.value
+            )
+            self.logger.info(
+                "Using last market close date as end date: %s",
+                self.end_date,
+            )
+        else:
+            raise ValueError("No valid end date provided or found.")
+
+        return
 
     @property
     def local_tz(self) -> ZoneInfo:
@@ -207,157 +316,6 @@ class BogleBenchAnalyzer:
         self.logger.info(msg)
 
         return self.transactions
-
-    def _set_timezone(self, tz_str: str) -> bool:
-        """Set the timezone for date handling.
-
-        Args:
-            tz_str: Timezone string, e.g. 'America/New_York'.
-
-        Returns:
-            bool: True if timezone was set successfully, False otherwise.
-        """
-        try:
-            self.tz = ZoneInfo(tz_str)
-            self.logger.info("Timezone set to: %s", tz_str)
-            return True
-        except ValueError as e:
-            self.logger.error("Failed to set timezone '%s': %s", tz_str, e)
-            return False
-
-    def _set_start_date(self, first_transaction_date: DateLike) -> bool:
-        """Set the analysis start date.
-
-        Rules:
-        1. If 'analysis.start_date' is set in config, use that.
-        2. Otherwise, use the date of the first transaction as provided.
-
-        Args:
-            first_transaction_date: Date of the first transaction.
-
-        Returns:
-            bool: True if start date is has been set successfully as a
-            timezone-aware timestamp, False otherwise.
-        """
-        first_transaction_tstz = to_tzts(
-            first_transaction_date, tz=DateAndTimeConstants.TZ_UTC.value
-        )
-        if isinstance(first_transaction_tstz, pd.Series):
-            if not first_transaction_tstz.empty:
-                self.logger.debug(
-                    "first_transaction_tstz is a Series, taking first value"
-                )
-                first_transaction_tstz = to_tzts_scaler(
-                    first_transaction_tstz.iloc[0],
-                    tz=DateAndTimeConstants.TZ_UTC.value,
-                )
-            else:
-                raise ValueError("first_transaction_date Series is empty")
-
-        # Ensure the config value is not a dict before passing to pd.Timestamp
-        config_start_date = self.config.get("analysis.start_date", None)
-        if isinstance(config_start_date, dict):
-            config_start_date = config_start_date.get("value", None)
-
-        if config_start_date is not None:
-            config_start_date = to_tzts_scaler(
-                config_start_date, tz=DateAndTimeConstants.TZ_UTC.value
-            )
-            self.start_date = config_start_date
-            self.logger.info(
-                "Using configured start date: %s", self.start_date
-            )
-        else:
-            self.start_date = first_transaction_tstz
-            self.logger.info(
-                "Using first transaction date as start date: %s",
-                self.start_date,
-            )
-
-        if self.start_date is None:
-            self.logger.error("Failed to set start date")
-            return False
-        return is_tz_aware(self.start_date)
-
-    def _get_start_date(self) -> pd.Timestamp:
-        """Get the analysis start date, ensuring it's set."""
-        if self.start_date is None:
-            raise ValueError("Start date is not set")
-        return self.start_date
-
-    def _set_end_date(self) -> bool:
-        """Set the analysis end date.
-
-        Rules:
-        1. If 'analysis.end_date' is set in config, use that.
-        2. Otherwise, if the market is currently open, use the last closed market day.
-        3. Otherwise, use the current datetime as the end date.
-        Raises:
-            ValueError: If no valid end date can be determined.
-
-        Returns:
-            bool: True if end date is has been set successfully as a
-            timezone-aware timestamp, False otherwise.
-        """
-        last_market_close_date = None
-        if self._is_market_currently_open():
-            self.logger.info("Market is currently open")
-            last_market_close_date = self._get_last_closed_market_day()
-        else:
-            self.logger.info("Market is currently closed")
-
-            # Ensure last_market_close_date is a scalar Timestamp,
-            # not a Series or None
-            machine_tz = ZoneInfo(str(DateAndTimeConstants.TZ_UTC.value))
-            dt_now = to_tzts(datetime.now(tz=machine_tz))
-            if isinstance(dt_now, pd.Series):
-                if not dt_now.empty:
-                    last_market_close_date = to_tzts_scaler(
-                        dt_now.iloc[0], tz=machine_tz
-                    )
-                else:
-                    raise ValueError(
-                        "Received empty Series for datetime.now()"
-                    )
-            else:
-                last_market_close_date = dt_now
-
-        # Ensure the config value is not a dict before passing to pd.Timestamp
-        config_end_date = self.config.get(
-            "analysis.end_date", last_market_close_date
-        )
-        if isinstance(config_end_date, dict):
-            config_end_date = config_end_date.get(
-                "value", last_market_close_date
-            )
-
-        if config_end_date is not None:
-            self.end_date = to_tzts_scaler(
-                config_end_date, tz=DateAndTimeConstants.TZ_UTC.value
-            )
-            self.logger.info("Using configured end date: %s", self.end_date)
-        elif last_market_close_date is not None:
-            self.end_date = to_tzts_scaler(
-                last_market_close_date, tz=DateAndTimeConstants.TZ_UTC.value
-            )
-            self.logger.info(
-                "Using last market close date as end date: %s",
-                self.end_date,
-            )
-        else:
-            raise ValueError("No valid end date provided or found.")
-
-        if self.end_date is None:
-            self.logger.error("Failed to set end date")
-            return False
-
-        return is_tz_aware(self.end_date)
-
-    def _get_end_date(self) -> pd.Timestamp:
-        """Get the analysis end date, ensuring it's set."""
-        if self.end_date is None:
-            raise ValueError("End date is not set")
-        return self.end_date
 
     def _is_market_currently_open(self) -> bool:
         """Check if the market is currently open."""
@@ -627,19 +585,23 @@ class BogleBenchAnalyzer:
             for account in accounts
         }
 
-        min_transaction_date = self.transactions["date"].min().date()
-        max_transaction_date = self.transactions["date"].max().date()
-        self._set_start_date(min_transaction_date)
+        if self.start_date is None:
+            min_transaction_date = self.transactions["date"].min().date()
+            self.start_date = min_transaction_date
 
-        if self._get_start_date().date() > max_transaction_date:
+            if self.start_date is None:
+                raise ValueError(
+                    "Start date is not set after loading transaction dates"
+                )
+
+        max_transaction_date = self.transactions["date"].max().date()
+        if self.start_date.date() > max_transaction_date:  # type: ignore
             return pd.DataFrame()  # No data to process
 
-        self._set_end_date()
-
-        if self._get_start_date() > self._get_end_date():
+        if self.start_date > self.end_date:  # type: ignore
             raise ValueError(
                 "Start date must be on or before end date: "
-                f"{self._get_start_date()} > {self._get_end_date()}"
+                f"{self.start_date} > {self.end_date}"
             )
 
         # Default is all day between and including start and end dates that are
@@ -651,13 +613,13 @@ class BogleBenchAnalyzer:
         # 1. Get all trading days in the period
         self.logger.debug(
             "Getting NYSE trading days from %s to %s",
-            self._get_start_date(),
-            self._get_end_date(),
+            self.start_date,
+            self.end_date,
         )
         nyse = mcal.get_calendar("NYSE")
         trading_days = nyse.schedule(
-            start_date=self._get_start_date(),
-            end_date=self._get_end_date().date(),
+            start_date=self.start_date,
+            end_date=self.end_date,
         )
 
         self.logger.debug("trading_days:\n%s", trading_days)
@@ -678,8 +640,10 @@ class BogleBenchAnalyzer:
         # 2. Get all unique transaction dates between start and end dates
         # inclusive
         transaction_dates_mask = (
-            self.transactions["date"].dt.date >= self._get_start_date().date()
-        ) & (self.transactions["date"].dt.date <= self._get_end_date().date())
+            self.transactions["date"].dt.date >= self.start_date.date()  # type: ignore
+        ) & (
+            self.transactions["date"].dt.date <= self.end_date.date()  # type: ignore
+        )
 
         transaction_dates = list(
             set(
@@ -749,8 +713,8 @@ class BogleBenchAnalyzer:
         ):
             self.market_data = self.market_data_provider.get_market_data(
                 tickers=tickers,
-                start_date_str=self._get_start_date().strftime("%Y-%m-%d"),
-                end_date_str=self._get_end_date().strftime("%Y-%m-%d"),
+                start_date_str=self.start_date.strftime("%Y-%m-%d"),  # type: ignore
+                end_date_str=self.end_date.strftime("%Y-%m-%d"),  # type: ignore
             )
 
             benchmark_ticker = self.config.get(

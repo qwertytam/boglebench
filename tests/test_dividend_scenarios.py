@@ -294,6 +294,8 @@ class TestDividendScenarios:
         # Create analyzer
         analyzer = BogleBenchAnalyzer()
         analyzer.config = temp_config
+        analyzer.start_date = temp_config.get("analysis.start_date")
+        analyzer.end_date = temp_config.get("analysis.end_date")
 
         # Save transactions to csv
         workspace = analyzer.config.get_data_path()

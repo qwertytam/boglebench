@@ -87,6 +87,8 @@ class TestPerformanceWithDividends:
         ) as mock_fetch:
             analyzer = BogleBenchAnalyzer()
             analyzer.config = temp_config
+            analyzer.start_date = temp_config.get("analysis.start_date")
+            analyzer.end_date = temp_config.get("analysis.end_date")
 
             # Write transactions to CSV
             workspace = analyzer.config.get_data_path()

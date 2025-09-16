@@ -52,6 +52,8 @@ class TestPerformanceCalculation:
         # Create analyzer
         analyzer = BogleBenchAnalyzer()
         analyzer.config = temp_config
+        analyzer.start_date = temp_config.get("analysis.start_date")
+        analyzer.end_date = temp_config.get("analysis.end_date")
 
         # Simple market data for AAPL and SPY over one week
         aapl_mkt_data_path = test_data_dir / "AAPL_market_data_pytest.csv"
@@ -331,6 +333,8 @@ class TestPerformanceCalculation:
         # Create analyzer
         analyzer = BogleBenchAnalyzer()
         analyzer.config = temp_config
+        analyzer.start_date = temp_config.get("analysis.start_date")
+        analyzer.end_date = temp_config.get("analysis.end_date")
 
         # Simple market data for AAPL and SPY over one week
         aapl_mkt_data_path = test_data_dir / "AAPL_market_data_pytest.csv"
@@ -514,6 +518,8 @@ class TestPerformanceCalculation:
         # Create analyzer
         analyzer = BogleBenchAnalyzer()
         analyzer.config = temp_config
+        analyzer.start_date = temp_config.get("analysis.start_date")
+        analyzer.end_date = temp_config.get("analysis.end_date")
 
         # Simple market data for AAPL and SPY over one week
         aapl_mkt_data_path = test_data_dir / "AAPL_market_data_pytest.csv"
@@ -548,6 +554,8 @@ class TestPerformanceCalculation:
         # Create analyzer
         analyzer = BogleBenchAnalyzer()
         analyzer.config = temp_config
+        analyzer.start_date = temp_config.get("analysis.start_date")
+        analyzer.end_date = temp_config.get("analysis.end_date")
 
         # Simple market data for AAPL and SPY over one week
         aapl_mkt_data_path = test_data_dir / "AAPL_market_data_pytest.csv"
