@@ -88,6 +88,8 @@ class DividendValidator:
         transactions_df: pd.DataFrame,
         market_data_df: Dict[str, pd.DataFrame],
         dividend_tolerance: float = NumericalConstants.ONE_CENT.value,
+        start_date: Optional[pd.Timestamp] = None,
+        end_date: Optional[pd.Timestamp] = None,
     ):
         """
         Initializes the DividendValidator.
@@ -100,6 +102,8 @@ class DividendValidator:
         self.transactions_df = transactions_df
         self.market_data_df = market_data_df
         self.dividend_tolerance = dividend_tolerance
+        self._start_date = start_date
+        self._end_date = end_date
 
     def _get_market_dividends_for_ticker(self, ticker: str) -> pd.DataFrame:
         """Extracts market dividends for a specific ticker."""
@@ -225,16 +229,32 @@ class DividendValidator:
             ).apply(aggregate_dividends)
 
             user_divs_grouped.reset_index(drop=True, inplace=True)
+            user_dividends_in_range = user_divs_grouped[
+                (user_divs_grouped["date"] >= self._start_date)
+                & (user_divs_grouped["date"] <= self._end_date)
+            ]
 
             market_ticker_dividends = self._get_market_dividends_for_ticker(
                 ticker
             )
 
             if market_ticker_dividends.empty:
-                logger.warning(
-                    "⚠️  No market dividend data found for %s",
-                    ticker,
-                )
+                if self._start_date is not None and self._end_date is not None:
+                    if (
+                        user_dividends_in_range.empty
+                        or user_dividends_in_range["total_value"].abs().sum()
+                        < self.dividend_tolerance
+                    ):
+                        logger.info(
+                            "No user or market dividends for %s in the specified date "
+                            "range; skipping comparison.",
+                            ticker,
+                        )
+                else:
+                    logger.warning(
+                        "⚠️  No market dividend data found for %s",
+                        ticker,
+                    )
                 market_ticker_dividends = pd.DataFrame(
                     {
                         "date": pd.to_datetime([], utc=True),
@@ -243,7 +263,7 @@ class DividendValidator:
                 )
 
             comparison_df = pd.merge(
-                user_divs_grouped,
+                user_dividends_in_range,
                 market_ticker_dividends,
                 on="date",
                 how="outer",

@@ -745,6 +745,8 @@ class BogleBenchAnalyzer:
                 validator = DividendValidator(
                     transactions_df=self.transactions,
                     market_data_df=self.market_data,
+                    start_date=self.start_date,
+                    end_date=self.end_date,
                 )
 
                 messages, div_differences = validator.validate()
