@@ -44,8 +44,8 @@ def calculate_modified_dietz_returns(portfolio_df: pd.DataFrame) -> pd.Series:
         # Modified Dietz formula
         denominator = beginning_value + weighted_cash_flow
 
-        if denominator <= 0:
-            # Handle edge case: no beginning value or negative denominator
+        if denominator == 0:
+            # Handle edge case: no beginning value
             returns.append(Defaults.ZERO_RETURN)
         else:
             daily_return = (
@@ -79,7 +79,7 @@ def calculate_account_modified_dietz_returns(
 
         denominator = beginning_value + weighted_cash_flow
 
-        if denominator <= 0:
+        if denominator == 0:
             returns.append(Defaults.ZERO_RETURN)
         else:
             daily_return = (
@@ -107,7 +107,7 @@ def calculate_twr_daily_returns(portfolio_df: pd.DataFrame) -> pd.Series:
         ending_value = portfolio_df.iloc[i]["total_value"]
         net_cash_flow = portfolio_df.iloc[i]["net_cash_flow"]
 
-        if beginning_value <= 0:
+        if beginning_value == 0:
             # If the starting value is zero or negative, the return for the
             # period is considered zero as there's no initial investment
             # base to measure performance against.
@@ -140,7 +140,7 @@ def calculate_account_twr_daily_returns(
         ending_value = portfolio_df.iloc[i][account_total_col]
         net_cash_flow = portfolio_df.iloc[i][account_cash_flow_col]
 
-        if beginning_value <= 0:
+        if beginning_value == 0:
             returns.append(Defaults.ZERO_RETURN)
         else:
             daily_return = (ending_value - net_cash_flow) / beginning_value - 1
