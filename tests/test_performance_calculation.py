@@ -166,7 +166,7 @@ class TestPerformanceCalculation:
             "portfolio_daily_return_twr",
             "Test_Account_mod_dietz_return",
             "Test_Account_mod_twr_return",
-            "Benchmark_Returns",
+            "benchmark_returns",
         ]
 
         for col in expected_columns:

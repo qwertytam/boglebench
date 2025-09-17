@@ -593,9 +593,9 @@ class TestMultiTransactionPerformance:
             ]
         )
 
-        assert portfolio_history["Benchmark_Returns"].notna().all()
+        assert portfolio_history["benchmark_returns"].notna().all()
         assert (
-            portfolio_history["Benchmark_Returns"] == expected_bm_daily_returns
+            portfolio_history["benchmark_returns"] == expected_bm_daily_returns
         ).all()
 
         # Tracking error
