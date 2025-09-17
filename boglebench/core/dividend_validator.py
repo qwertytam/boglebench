@@ -230,6 +230,10 @@ class DividendValidator:
 
             user_divs_grouped.reset_index(drop=True, inplace=True)
 
+            market_ticker_dividends = self._get_market_dividends_for_ticker(
+                ticker
+            )
+
             if self.start_date is not None and self.end_date is not None:
                 logger.debug(
                     "Filtering user dividends for %s between %s and %s.",
@@ -241,12 +245,13 @@ class DividendValidator:
                     (user_divs_grouped["date"] >= self.start_date)
                     & (user_divs_grouped["date"] <= self.end_date)
                 ]
+
+                market_ticker_dividends = market_ticker_dividends[
+                    (market_ticker_dividends["date"] >= self.start_date)
+                    & (market_ticker_dividends["date"] <= self.end_date)
+                ]
             else:
                 user_dividends_in_range = user_divs_grouped
-
-            market_ticker_dividends = self._get_market_dividends_for_ticker(
-                ticker
-            )
 
             if market_ticker_dividends.empty:
                 if self.start_date is not None and self.end_date is not None:
