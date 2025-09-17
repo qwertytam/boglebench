@@ -468,17 +468,23 @@ class BogleBenchAnalyzer:
         mask = (
             (self.transactions["ticker"] == ticker)
             & (self.transactions["date"].dt.date < date.date())
-            & (
-                identify_quantity_change_transactions(
-                    self.transactions["transaction_type"]
-                )
+            & identify_quantity_change_transactions(
+                self.transactions["transaction_type"]
             )
         )
 
         if account:
             mask &= self.transactions["account"] == account
 
+        if self.start_date is not None:
+            mask &= self.transactions["date"].dt.date >= self.start_date.date()
+
         shares_held = self.transactions.loc[mask, "quantity"].sum()
+        if shares_held is None:
+            shares_held = 0.0
+
+        if isinstance(shares_held, pd.Series):
+            shares_held = shares_held.sum()
         # logger.debug(
         #     "Shares held for %s on %s in account %s: %d",
         #     ticker,
@@ -487,7 +493,7 @@ class BogleBenchAnalyzer:
         #     shares_held,
         # )
 
-        return shares_held
+        return float(shares_held)
 
     def _process_daily_transactions(
         self, date: pd.Timestamp
@@ -832,6 +838,12 @@ class BogleBenchAnalyzer:
                         for _, row in df.iterrows():
                             date = row["date"]
                             new_div_per_share = row["value_per_share_market"]
+                            if isinstance(new_div_per_share, pd.Series):
+                                new_div_per_share = new_div_per_share.iloc[0]
+                            elif not isinstance(
+                                new_div_per_share, (int, float)
+                            ):
+                                new_div_per_share = 0
                             mask = (
                                 (self.transactions["ticker"] == ticker)
                                 & (
@@ -842,6 +854,10 @@ class BogleBenchAnalyzer:
                                     identify_any_dividend_transactions(
                                         self.transactions["transaction_type"]
                                     )
+                                )
+                                & (
+                                    self.transactions["account"]
+                                    == row["account"]
                                 )
                             )
 
@@ -1158,6 +1174,7 @@ class BogleBenchAnalyzer:
             ] = market_return
 
         # For clarity, also store cash flow impact column
+        self.logger.info("Calculating cash flow impact column")
         portfolio_df["cash_flow_impact"] = portfolio_df["net_cash_flow"]
 
         # Calculate Modified Dietz returns
@@ -1755,7 +1772,7 @@ class BogleBenchAnalyzer:
             # )
 
             benchmark_returns = self.portfolio_history[
-                "Benchmark_Returns"
+                "benchmark_returns"
             ].copy()
             benchmark_metrics = calculate_metrics(
                 benchmark_returns[1:],
@@ -1834,13 +1851,13 @@ class BogleBenchAnalyzer:
 
         # Calculate period on period returns
         # Use adjusted close prices for benchmark returns
-        benchmark_df["Benchmark_Returns"] = benchmark_df[
+        benchmark_df["benchmark_returns"] = benchmark_df[
             "adj_close"
         ].pct_change()
 
         # Reindex benchmark returns to match portfolio dates, forward-filling for missing days
         benchmark_df.set_index("date", inplace=True)
-        aligned_returns = benchmark_df["Benchmark_Returns"].reindex(
+        aligned_returns = benchmark_df["benchmark_returns"].reindex(
             portfolio_dates, method="ffill"
         )
 

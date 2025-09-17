@@ -183,6 +183,11 @@ class DividendValidator:
         if account:
             mask &= self.transactions_df["account"] == account
 
+        if self.start_date is not None:
+            mask &= (
+                self.transactions_df["date"].dt.date >= self.start_date.date()
+            )
+
         shares_held = self.transactions_df.loc[mask, "quantity"].sum()
         # logger.debug(
         #     "Shares held for %s on %s in account %s: %d",
@@ -313,9 +318,9 @@ class DividendValidator:
                             f"Mismatch on {row['date'].date()} "
                             f"for {ticker} "
                             f"in account {account if account else 'ALL'}: "
-                            f"User recorded ${np.abs(total_value_user):.2f}, "
+                            f"User recorded ${-total_value_user:.2f}, "
                             f"but market data suggests "
-                            f"${np.abs(expected_total):.2f} "
+                            f"${-expected_total:.2f} "
                             f"({shares:.4f} shares * "
                             f"${value_per_share_market:.4f})."
                         )
@@ -323,6 +328,7 @@ class DividendValidator:
 
                         dividend_differences_df = pd.concat(
                             [
+                                dividend_differences_df,
                                 pd.DataFrame(
                                     {
                                         "date": [row["date"]],
@@ -400,8 +406,8 @@ class DividendValidator:
                         ignore_index=True,
                     )
 
-                if not dividend_differences_df.empty:
-                    dividend_differences[ticker] = dividend_differences_df
+            if not dividend_differences_df.empty:
+                dividend_differences[ticker] = dividend_differences_df
 
         if messages:
             logger.warning("Found %d dividend discrepancies.", len(messages))
