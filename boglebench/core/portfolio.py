@@ -30,6 +30,7 @@ from ..core.constants import (
 from ..core.dividend_validator import (
     DividendValidator,
     identify_any_dividend_transactions,
+    identify_quantity_change_transactions,
 )
 from ..core.market_data import MarketDataProvider
 from ..core.metrics import (
@@ -442,6 +443,52 @@ class BogleBenchAnalyzer:
             f"No price data available for {ticker} around {target_date}"
         )
 
+    def _get_shares_held_on_date(
+        self, ticker: str, date: pd.Timestamp, account: Optional[str] = None
+    ) -> float:
+        """
+        Retrieves the number of shares held for a specific ticker on a given date.
+
+        Args:
+            ticker: The stock ticker symbol.
+            date: The date for which to retrieve the share quantity.
+            account: Optional account identifier to filter by account.
+
+        Returns:
+            The number of shares held on the specified date.
+        """
+        # logger.debug(
+        #     "Retrieving shares held for %s on %s in account %s.",
+        #     ticker,
+        #     date,
+        #     account if account else "ALL",
+        # )
+
+        # Filter transactions for the specific ticker and date
+        mask = (
+            (self.transactions["ticker"] == ticker)
+            & (self.transactions["date"].dt.date < date.date())
+            & (
+                identify_quantity_change_transactions(
+                    self.transactions["transaction_type"]
+                )
+            )
+        )
+
+        if account:
+            mask &= self.transactions["account"] == account
+
+        shares_held = self.transactions.loc[mask, "quantity"].sum()
+        # logger.debug(
+        #     "Shares held for %s on %s in account %s: %d",
+        #     ticker,
+        #     date,
+        #     account if account else "ALL",
+        #     shares_held,
+        # )
+
+        return shares_held
+
     def _process_daily_transactions(
         self, date: pd.Timestamp
     ) -> Tuple[Dict[str, float], Dict[str, float]]:
@@ -799,17 +846,17 @@ class BogleBenchAnalyzer:
                             )
 
                             if not self.transactions.loc[mask].empty:
-                                shares = self.transactions.loc[
-                                    mask, "quantity"
-                                ]
-                                if isinstance(shares, pd.Series):
-                                    shares_sum = shares.sum()
-                                else:
-                                    shares_sum = (
-                                        shares
-                                        if isinstance(shares, (int, float))
-                                        else 0
-                                    )
+                                shares = self._get_shares_held_on_date(
+                                    ticker, date, account=row["account"]
+                                )
+                                # if isinstance(shares, pd.Series):
+                                #     shares_sum = shares.sum()
+                                # else:
+                                #     shares_sum = (
+                                #         shares
+                                #         if isinstance(shares, (int, float))
+                                #         else 0
+                                #     )
 
                                 old_value_per_share = self.transactions.loc[
                                     mask, "value_per_share"
@@ -833,9 +880,7 @@ class BogleBenchAnalyzer:
                                 ):
                                     old_total_value = 0
 
-                                new_total_value = (
-                                    shares_sum * new_div_per_share
-                                )
+                                new_total_value = -shares * new_div_per_share
                                 self.logger.info(
                                     "ℹ️  Updating %s dividend on %s: "
                                     "per share from %.4f to %.4f, "
