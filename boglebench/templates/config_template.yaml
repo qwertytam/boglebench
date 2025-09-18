@@ -26,14 +26,6 @@ analysis:
   end_date: null # If null, uses today
   risk_free_rate: 0.02 # 2% annual risk-free rate
 
-  # Benchmark settings
-  benchmark:
-    rebalance_frequency: "monthly" # Options: daily, weekly, monthly, quarterly, yearly, none
-
-    components:
-      - { symbol: "VTI", weight: 0.60 } # Vanguard Total Stock Market ETF
-      - { symbol: "BND", weight: 0.40 } # Vanguard Total Bond Market ETF
-
   # Performance metrics to calculate
   performance_metrics:
     - "total_return"
@@ -47,6 +39,13 @@ analysis:
     - "win_rate"
     - "tracking_error"
     - "correlation"
+
+# Benchmark settings
+benchmark:
+  rebalance_frequency: "monthly" # Options: daily, weekly, monthly, quarterly, yearly, none
+  components:
+    - { symbol: "VTI", weight: 0.60 } # Vanguard Total Stock Market ETF
+    - { symbol: "BND", weight: 0.40 } # Vanguard Total Bond Market ETF
 
   # Risk analysis settings
   risk_analysis:

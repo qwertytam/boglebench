@@ -18,6 +18,7 @@ from typing import Dict, Optional, Union
 
 import pandas as pd
 
+from ..core.composite_benchmark import CompositeBenchmarkBuilder
 from ..core.constants import DateAndTimeConstants, Defaults
 from ..core.dates import AnalysisPeriod
 from ..core.dividend_processor import DividendProcessor
@@ -189,12 +190,12 @@ class BogleBenchAnalyzer:
             None
 
         """
-        tickers = self.transactions["ticker"].unique().tolist()
-        benchmark_ticker = self.config.get(
-            "settings.benchmark_ticker", Defaults.DEFAULT_BENCHMARK_TICKER
-        )
-        all_tickers = list(set(tickers + [benchmark_ticker]))
+        portfolio_tickers = self.transactions["ticker"].unique().tolist()
 
+        benchmark_components = self.config.get_benchmark_components()
+        benchmark_tickers = [comp["symbol"] for comp in benchmark_components]
+
+        all_tickers = list(set(portfolio_tickers + benchmark_tickers))
         self.logger.debug(
             "Fetching market data for %d unique tickers: %s",
             len(all_tickers),
@@ -206,12 +207,19 @@ class BogleBenchAnalyzer:
             end_date=end_date.strftime("%Y-%m-%d"),
         )
 
-        if benchmark_ticker in self.market_data:
-            self.benchmark_data = self.market_data[benchmark_ticker].copy()
-        else:
-            self.logger.info(
-                "Benchmark ticker '%s' not found in market data",
-                benchmark_ticker,
+        self.logger.info("Building composite benchmark history...")
+        builder = CompositeBenchmarkBuilder(
+            config=self.config,
+            market_data=self.market_data,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        self.benchmark_data = builder.build()
+
+        if self.benchmark_data.empty:
+            self.logger.warning(
+                "Composite benchmark data is empty or not found in market data."
+                " No benchmark comparison will be available."
             )
 
     def calculate_performance(self) -> "PerformanceResults":
