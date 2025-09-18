@@ -135,7 +135,7 @@ def _clean_transaction_data(
             elif col == "notes":
                 df[col] = ""
             elif col == "div_type":
-                df[col] = DividendTypes.CASH
+                df[col] = DividendTypes.CASH.value
             elif col == "div_pay_date":
                 df[col] = df["date"]
             elif col in ["div_record_date", "div_ex_date"]:
