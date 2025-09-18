@@ -80,8 +80,8 @@ class MarketDataProvider:
     def get_market_data(
         self,
         tickers: List[str],
-        start_date_str: str,
-        end_date_str: str,
+        start_date: str,
+        end_date: str,
     ) -> Dict[str, pd.DataFrame]:
         """
         Fetch market data for a list of tickers, using cache if available.
@@ -103,8 +103,8 @@ class MarketDataProvider:
         all_data = {}
         failed_tickers = []
 
-        start_date = pd.to_datetime(start_date_str).date()
-        end_date = pd.to_datetime(end_date_str).date()
+        s_date = pd.to_datetime(start_date).date()
+        e_date = pd.to_datetime(end_date).date()
 
         for ticker in tickers:
             if self.cache_enabled and not self.force_cache_refresh:
@@ -121,10 +121,7 @@ class MarketDataProvider:
                     cache_end_date = pd.to_datetime(
                         cached_data["date"].max()
                     ).date()
-                    if (
-                        cache_start_date <= start_date
-                        and cache_end_date >= end_date
-                    ):
+                    if cache_start_date <= s_date and cache_end_date >= e_date:
                         logger.debug(
                             "✅ Using cached data for %s from %s to %s.",
                             ticker,
@@ -215,18 +212,18 @@ class MarketDataProvider:
 
                 # Filter by date range
                 data_start_mask = data["date"] >= pd.to_datetime(
-                    start_date
+                    s_date
                 ).tz_localize(DateAndTimeConstants.TZ_UTC.value)
                 if not data_start_mask.any():
-                    msg = f"No market data available on or after start date: {start_date}"
+                    msg = f"No market data available on or after start date: {s_date}"
                     logger.error(msg)
                     raise ValueError(msg)
 
                 data_end_mask = data["date"] <= pd.to_datetime(
-                    end_date
+                    e_date
                 ).tz_localize(DateAndTimeConstants.TZ_UTC.value)
                 if not data_end_mask.any():
-                    msg = f"No market data available on or before end date: {end_date}"
+                    msg = f"No market data available on or before end date: {e_date}"
                     logger.error(msg)
                     raise ValueError(msg)
 
