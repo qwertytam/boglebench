@@ -219,11 +219,6 @@ def test_validator_with_discrepancies(
     )
     messages, dividend_differences = validator.validate()
 
-    print("Validation messages:")
-    for msg in messages:
-        print(msg)
-    print("\nDividend differences:\n", dividend_differences)
-
     assert len(messages) == 3
     # Check for the "Mismatch" message
     assert any("Mismatch on 2023-03-25 for VTI" in msg for msg in messages)
@@ -260,7 +255,6 @@ def test_validator_user_has_no_dividends(
         market_data_df=sample_market_data,
     )
     messages, dividend_differences = validator.validate()
-    print("Dividend differences:\n", dividend_differences)
 
     assert len(messages) == 2
     assert any(
@@ -294,7 +288,6 @@ def test_validator_no_market_data_for_ticker(
         market_data_df=market_data_missing_bnd,
     )
     messages, dividend_differences = validator.validate()
-    print("Dividend differences:\n", dividend_differences)
 
     # Should only find a discrepancy for VTI (perfect match = no message)
     # and should not raise an error for the missing BND.
