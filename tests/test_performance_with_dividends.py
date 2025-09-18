@@ -356,7 +356,6 @@ class TestPerformanceWithDividends:
 
         # --- Main Workflow ---
         analyzer.load_transactions(transactions_file)
-        portfolio_df = analyzer.build_portfolio_history()
         results = analyzer.calculate_performance()
 
         accuracy = 0.001 / 100  # 0.001% accuracy)
