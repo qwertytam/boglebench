@@ -70,7 +70,7 @@ class ConfigManager:
         # Minimal fallback if template missing
         return {
             "data": {"base_path": "~/boglebench_data"},
-            "settings": {"benchmark_ticker": "SPY"},
+            "benchmark": {"components": [{"symbol": "SPY", "weight": 1.00}]},
             "analysis": {"performance_metrics": ["total_return"]},
         }
 
