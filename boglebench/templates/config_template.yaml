@@ -100,7 +100,7 @@ advanced:
     annualization_factor: 252 # Trading days per year
     compound_returns: true
     handle_negative_values: "log_returns" # Options: log_returns, simple_returns
-    period_cash_flow_weight: 0.5 # Assume cash flows occurs mid-period
+    modified_dietz_periodic_cash_flow_weight: 0.5 # Assume cash flows occurs mid-period
 
 # Transaction validation rules
 validation:
