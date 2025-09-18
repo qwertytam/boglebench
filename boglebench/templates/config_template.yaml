@@ -16,8 +16,6 @@ api:
 
 # Analysis settings
 settings:
-  benchmark_ticker: "SPY"
-  risk_free_rate: 0.02 # 2% annual risk-free rate
   default_currency: "USD"
   cache_market_data: true
   force_refresh_market_data: false
@@ -26,7 +24,15 @@ settings:
 analysis:
   start_date: null # If null, uses first transaction date
   end_date: null # If null, uses today
-  rebalance_frequency: "monthly" # Options: daily, weekly, monthly, quarterly
+  risk_free_rate: 0.02 # 2% annual risk-free rate
+
+  # Benchmark settings
+  benchmark:
+    rebalance_frequency: "monthly" # Options: daily, weekly, monthly, quarterly, yearly, none
+
+    components:
+      - { symbol: "VTI", weight: 0.60 } # Vanguard Total Stock Market ETF
+      - { symbol: "BND", weight: 0.40 } # Vanguard Total Bond Market ETF
 
   # Performance metrics to calculate
   performance_metrics:
@@ -81,7 +87,7 @@ advanced:
     max_cache_age_days: 7
     retry_attempts: 3
     request_delay_seconds: 0.5
-    local_tz: America/New_York
+    local_tz: "America/New_York"
 
   dividend:
     auto_validate: true # Automatically validate during portfolio building
