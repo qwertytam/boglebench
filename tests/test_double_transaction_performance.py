@@ -1,4 +1,5 @@
-# In tests/test_multi_transaction_performance.py
+"""Test suite for performance calculations with multiple transactions."""
+
 import tempfile
 from pathlib import Path
 
@@ -18,15 +19,15 @@ class TestMultiTransactionPerformance:
         """Create temporary configuration for testing."""
         with tempfile.TemporaryDirectory() as temp_dir:
             config_dir = Path(temp_dir)
-
-            # Create config
-            config = ConfigManager()
-            config.config["data"]["base_path"] = str(config_dir)
-
-            # Create directories
             (config_dir / "transactions").mkdir()
             (config_dir / "market_data").mkdir()
             (config_dir / "output").mkdir()
+
+            config = ConfigManager()
+            config.config["data"]["base_path"] = str(config_dir)
+
+            config.config["analysis"]["start_date"] = "2023-06-05"
+            config.config["analysis"]["end_date"] = "2023-06-16"
 
             yield config
 
@@ -35,14 +36,10 @@ class TestMultiTransactionPerformance:
         """Path to test data directory."""
         return Path(__file__).parent / "test_data"
 
-    def test_portfolio_position_tracking(self, temp_config, test_data_dir):
-        """Test that positions are tracked correctly through multiple
-        transactions."""
-        # Create analyzer
-        analyzer = BogleBenchAnalyzer()
-        analyzer.config = temp_config
-
-        # Simple market data for AAPL, MSFT and SPY over two weeks
+    @pytest.fixture
+    def market_data(self, test_data_dir):
+        """Simple market data for AAPL and SPY over one week."""
+        # Simple market data for AAPL and SPY over one week
         aapl_mkt_data_path = test_data_dir / "AAPL_market_data_pytest.csv"
         aapl_mkt_data = pd.read_csv(aapl_mkt_data_path, parse_dates=["date"])
 
@@ -52,22 +49,76 @@ class TestMultiTransactionPerformance:
         spy_mkt_data_path = test_data_dir / "SPY_market_data_pytest.csv"
         spy_mkt_data = pd.read_csv(spy_mkt_data_path, parse_dates=["date"])
 
-        simple_market_data = {
+        market_data_dict = {
             "AAPL": aapl_mkt_data,
             "MSFT": msft_mkt_data,
             "SPY": spy_mkt_data,
         }
 
+        yield market_data_dict
+
+    @pytest.fixture
+    def scenario_analyzer(self, market_data, temp_config, monkeypatch):
+        """Fixture to set up BogleBenchAnalyzer for a given dividend
+        scenario."""
+
+        # Save transactions to csv
+        temp_data_path = temp_config.get_data_path()
+        transactions_file_path = (
+            temp_data_path / "transactions" / "transactions.csv"
+        )
+
+        market_data_path = temp_config.get_market_data_path()
+        for ticker, df in market_data.items():
+            df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
+
+        output_path = temp_config.get_output_path()
+
+        monkeypatch.setattr(
+            ConfigManager, "get_data_path", lambda self, config: temp_data_path
+        )
+
+        monkeypatch.setattr(
+            ConfigManager,
+            "get_transactions_file_path",
+            lambda self: transactions_file_path,
+        )
+
+        monkeypatch.setattr(
+            ConfigManager,
+            "get_market_data_path",
+            lambda self: market_data_path,
+        )
+
+        monkeypatch.setattr(
+            ConfigManager,
+            "get_output_path",
+            lambda self: output_path,
+        )
+
+        analyzer = BogleBenchAnalyzer()
+        analyzer.config = temp_config
+
+        yield analyzer
+
+    def test_portfolio_position_tracking(
+        self, test_data_dir, scenario_analyzer
+    ):
+        """Test that positions are tracked correctly through multiple
+        transactions."""
+        # Create analyzer
+        analyzer = scenario_analyzer
+
         # Transactions
         csv_path = test_data_dir / "double_transactions_pytest.csv"
         analyzer.load_transactions(csv_path)
 
-        # Mock market data instead of fetching
-        analyzer.market_data = simple_market_data
-        analyzer.benchmark_data = simple_market_data["SPY"].copy()
+        # Build portfolio and calculate performance
+        analyzer.build_portfolio_history()
+        results = analyzer.calculate_performance()
 
         # Build portfolio history
-        portfolio_history = analyzer.build_portfolio_history()
+        portfolio_history = results.portfolio_history
         portfolio_history["date"] = pd.to_datetime(portfolio_history["date"])
 
         # June 5: 100 AAPL shares at $180
@@ -152,36 +203,22 @@ class TestMultiTransactionPerformance:
             < 1
         )
 
-    def test_realized_gains_calculation(self, temp_config, test_data_dir):
+    def test_realized_gains_calculation(
+        self, test_data_dir, scenario_analyzer
+    ):
         """Test performance calculation with realized gains from sales."""
-        # Create analyzer
-        analyzer = BogleBenchAnalyzer()
-        analyzer.config = temp_config
+        analyzer = scenario_analyzer
 
-        # Simple market data for AAPL, MSFT and SPY over two weeks
-        aapl_mkt_data_path = test_data_dir / "AAPL_market_data_pytest.csv"
-        aapl_mkt_data = pd.read_csv(aapl_mkt_data_path, parse_dates=["date"])
-
-        msft_mkt_data_path = test_data_dir / "MSFT_market_data_pytest.csv"
-        msft_mkt_data = pd.read_csv(msft_mkt_data_path, parse_dates=["date"])
-
-        spy_mkt_data_path = test_data_dir / "SPY_market_data_pytest.csv"
-        spy_mkt_data = pd.read_csv(spy_mkt_data_path, parse_dates=["date"])
-
-        simple_market_data = {
-            "AAPL": aapl_mkt_data,
-            "MSFT": msft_mkt_data,
-            "SPY": spy_mkt_data,
-        }
+        # Setting to 1.0 for ease of comparing total returns
+        analyzer.config.config["advanced"]["performance"][
+            "modified_dietz_periodic_cash_flow_weight"
+        ] = 1.0
 
         # Transactions
         csv_path = test_data_dir / "double_transactions_pytest.csv"
         analyzer.load_transactions(csv_path)
 
-        # Mock market data instead of fetching
-        analyzer.market_data = simple_market_data
-        analyzer.benchmark_data = simple_market_data["SPY"].copy()
-
+        analyzer.build_portfolio_history()
         results = analyzer.calculate_performance()
 
         # Verify performance metrics are calculated
@@ -213,37 +250,24 @@ class TestMultiTransactionPerformance:
             # Should see portfolio composition change on sale date
             assert not pd.isna(june_12_returns.iloc[0])
 
-    def test_partial_position_sales(self, temp_config, test_data_dir):
+    def test_partial_position_sales(self, test_data_dir, scenario_analyzer):
         """Test handling of partial position sales (MSFT case)."""
-        # Create analyzer
-        analyzer = BogleBenchAnalyzer()
-        analyzer.config = temp_config
+        analyzer = scenario_analyzer
 
-        # Simple market data for AAPL, MSFT and SPY over two weeks
-        aapl_mkt_data_path = test_data_dir / "AAPL_market_data_pytest.csv"
-        aapl_mkt_data = pd.read_csv(aapl_mkt_data_path, parse_dates=["date"])
-
-        msft_mkt_data_path = test_data_dir / "MSFT_market_data_pytest.csv"
-        msft_mkt_data = pd.read_csv(msft_mkt_data_path, parse_dates=["date"])
-
-        spy_mkt_data_path = test_data_dir / "SPY_market_data_pytest.csv"
-        spy_mkt_data = pd.read_csv(spy_mkt_data_path, parse_dates=["date"])
-
-        simple_market_data = {
-            "AAPL": aapl_mkt_data,
-            "MSFT": msft_mkt_data,
-            "SPY": spy_mkt_data,
-        }
+        # Setting to 1.0 for ease of comparing total returns
+        analyzer.config.config["advanced"]["performance"][
+            "modified_dietz_periodic_cash_flow_weight"
+        ] = 1.0
 
         # Transactions
         csv_path = test_data_dir / "double_transactions_pytest.csv"
         analyzer.load_transactions(csv_path)
 
-        # Mock market data instead of fetching
-        analyzer.market_data = simple_market_data
-        analyzer.benchmark_data = simple_market_data["SPY"].copy()
+        # Build portfolio and calculate performance
+        analyzer.build_portfolio_history()
+        results = analyzer.calculate_performance()
+        portfolio_history = results.portfolio_history
 
-        portfolio_history = analyzer.build_portfolio_history()
         portfolio_history["date"] = pd.to_datetime(portfolio_history["date"])
 
         # Before MSFT purchase (June 7): 0 MSFT shares
@@ -270,11 +294,16 @@ class TestMultiTransactionPerformance:
         if not june_13_data.empty:
             assert june_13_data.iloc[0]["Test_Account_MSFT_shares"] == 25
 
-    def test_transaction_data_validation(self, temp_config, test_data_dir):
+    def test_transaction_data_validation(
+        self, test_data_dir, scenario_analyzer
+    ):
         """Test that transaction data is properly validated and processed."""
-        # Create analyzer
-        analyzer = BogleBenchAnalyzer()
-        analyzer.config = temp_config
+        analyzer = scenario_analyzer
+
+        # Setting to 1.0 for ease of comparing total returns
+        analyzer.config.config["advanced"]["performance"][
+            "modified_dietz_periodic_cash_flow_weight"
+        ] = 1.0
 
         # Transactions
         csv_path = test_data_dir / "double_transactions_pytest.csv"
@@ -304,37 +333,24 @@ class TestMultiTransactionPerformance:
             expected_total = row["quantity"] * row["value_per_share"]
             assert abs(row["total_value"] - expected_total) < 0.01
 
-    def test_complex_performance_summary(self, temp_config, test_data_dir):
+    def test_complex_performance_summary(
+        self, temp_config, test_data_dir, scenario_analyzer
+    ):
         """Test comprehensive performance summary with multiple
         transactions."""
-        # Create analyzer
-        analyzer = BogleBenchAnalyzer()
-        analyzer.config = temp_config
+        analyzer = scenario_analyzer
 
-        # Simple market data for AAPL, MSFT and SPY over two weeks
-        aapl_mkt_data_path = test_data_dir / "AAPL_market_data_pytest.csv"
-        aapl_mkt_data = pd.read_csv(aapl_mkt_data_path, parse_dates=["date"])
-
-        msft_mkt_data_path = test_data_dir / "MSFT_market_data_pytest.csv"
-        msft_mkt_data = pd.read_csv(msft_mkt_data_path, parse_dates=["date"])
-
-        spy_mkt_data_path = test_data_dir / "SPY_market_data_pytest.csv"
-        spy_mkt_data = pd.read_csv(spy_mkt_data_path, parse_dates=["date"])
-
-        simple_market_data = {
-            "AAPL": aapl_mkt_data,
-            "MSFT": msft_mkt_data,
-            "SPY": spy_mkt_data,
-        }
+        # Setting to 1.0 for ease of comparing total returns
+        analyzer.config.config["advanced"]["performance"][
+            "modified_dietz_periodic_cash_flow_weight"
+        ] = 1.0
 
         # Transactions
         csv_path = test_data_dir / "double_transactions_pytest.csv"
         analyzer.load_transactions(csv_path)
 
-        # Mock market data instead of fetching
-        analyzer.market_data = simple_market_data
-        analyzer.benchmark_data = simple_market_data["SPY"].copy()
-
+        # Build portfolio and calculate performance
+        analyzer.build_portfolio_history()
         results = analyzer.calculate_performance()
         summary = results.summary()
 
@@ -374,7 +390,8 @@ class TestMultiTransactionPerformance:
         expected_asset_beg_values[1:] = expected_asset_end_values[:-1]
 
         cash_flow_weight = temp_config.get(
-            "advanced.performance.period_cash_flow_weight", 0.5
+            "advanced.performance.modified_dietz_periodic_cash_flow_weight",
+            0.5,
         )
         expected_weighted_cfs = expected_asset_cash_flows * cash_flow_weight
         expected_asset_daily_returns_mod_dietz_numerator = (
@@ -580,9 +597,14 @@ class TestMultiTransactionPerformance:
             ]
         )
 
+        assert portfolio_history["benchmark_returns"].notna().all()
+        assert (
+            portfolio_history["benchmark_returns"] == expected_bm_daily_returns
+        ).all()
+
         # Tracking error
         expected_excess_returns = (
-            expected_asset_daily_mod_dietz_returns[1:]
+            expected_asset_daily_twr_returns[1:]
             - expected_bm_daily_returns[1:]
         )
         expected_tracking_error = np.std(expected_excess_returns, ddof=1)
@@ -610,7 +632,7 @@ class TestMultiTransactionPerformance:
 
         # Beta
         covariance_matrix = np.cov(
-            expected_asset_daily_mod_dietz_returns[1:],
+            expected_asset_daily_twr_returns[1:],
             expected_bm_daily_returns[1:],
             ddof=1,
         )  # Sample covariance so ddof=1
@@ -623,7 +645,7 @@ class TestMultiTransactionPerformance:
         ) - 1
 
         expected_jensens_alpha = (
-            np.mean(expected_asset_daily_mod_dietz_returns[1:])
+            np.mean(expected_asset_daily_twr_returns[1:])
             - daily_risk_free_rate
             - expected_beta
             * (np.mean(expected_bm_daily_returns[1:]) - daily_risk_free_rate)

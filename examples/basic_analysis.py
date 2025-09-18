@@ -48,28 +48,22 @@ def main():
             f"   Date range: {transactions['date'].min().date()} to {transactions['date'].max().date()}"
         )
 
-        # Step 2: Fetch market data
-        print("\n📈 Step 2: Fetching market data...")
-        market_data = analyzer.fetch_market_data()
-
-        print(f"   Downloaded data for {len(market_data)} assets")
-
-        # Step 3: Build portfolio history
+        # Step 2: Build portfolio history
         print("\n🏗️  Step 3: Building portfolio history...")
         portfolio_history = analyzer.build_portfolio_history()
 
         print(f"   Built history over {len(portfolio_history)} trading days")
 
-        # Step 4: Calculate performance metrics
+        # Step 3: Calculate performance metrics
         print("\n📊 Step 4: Calculating performance metrics...")
         results = analyzer.calculate_performance()
 
-        # Step 5: Display results
+        # Step 4: Display results
         print("\n" + "=" * 60)
         print(results.summary())
         print("=" * 60)
 
-        # Step 6: Export results
+        # Step 5: Export results
         print("\n💾 Step 5: Exporting results...")
         export_path = results.export_to_csv()
         print(f"   Results exported to: {export_path}")

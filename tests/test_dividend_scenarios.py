@@ -17,6 +17,18 @@ from boglebench.utils.config import ConfigManager
 
 # --- Scenario Data Generators ---
 
+SPY_MARKET_DATA = pd.DataFrame(
+    {
+        "date": pd.to_datetime(
+            ["2023-01-02", "2023-01-03", "2023-01-04", "2023-01-05"]
+        ),
+        "close": [400.0, 401.0, 402.0, 403.0],
+        "adj_close": [400.0, 401.0, 402.0, 403.0],
+        "dividend": [0.0, 0.0, 0.0, 0.0],
+        "split_coefficient": [0.0, 0.0, 0.0, 0.0],
+    }
+)
+
 
 def scenario_single_stock_cash_dividend():
     """
@@ -38,8 +50,8 @@ def scenario_single_stock_cash_dividend():
                 "date": "2023-01-04",
                 "ticker": "TICKA",
                 "transaction_type": "DIVIDEND",
-                "quantity": 0,
-                "value_per_share": 0,
+                "quantity": 0,  # Cash dividend, no shares involved
+                "value_per_share": 0,  # Not used for cash dividend
                 "total_value": 50.00,  # $0.50/share dividend
                 "account": "Taxable",
             },
@@ -52,18 +64,12 @@ def scenario_single_stock_cash_dividend():
                     ["2023-01-02", "2023-01-03", "2023-01-04", "2023-01-05"]
                 ),
                 "close": [10.0, 10.1, 10.2, 10.3],
+                "adj_close": [10.0, 10.1, 10.2, 10.3],
                 "dividend": [0.0, 0.0, 0.50, 0.0],
+                "split_coefficient": [0.0, 0.0, 0.0, 0.0],
             }
         ),
-        "SPY": pd.DataFrame(
-            {
-                "date": pd.to_datetime(
-                    ["2023-01-02", "2023-01-03", "2023-01-04", "2023-01-05"]
-                ),
-                "close": [400.0, 401.0, 402.0, 403.0],
-                "dividend": [0.0, 0.0, 0.0, 0.0],
-            }
-        ),
+        "SPY": SPY_MARKET_DATA,
     }
     return "cash_dividend", transactions, market_data
 
@@ -88,9 +94,9 @@ def scenario_single_stock_full_reinvestment():
                 "date": "2023-01-04",
                 "ticker": "TICKB",
                 "transaction_type": "DIVIDEND",
-                "quantity": 2.5,  # $50 dividend / $20 share price = 2.5 shares
-                "value_per_share": 20.0,
-                "total_value": 50.00,
+                "quantity": 0,  # Cash dividend, no shares involved
+                "value_per_share": 0,  # Not used for cash dividend
+                "total_value": 50.00,  # $0.50 dividend per share * 100 shares
                 "account": "IRA",
             },
             {
@@ -111,18 +117,12 @@ def scenario_single_stock_full_reinvestment():
                     ["2023-01-02", "2023-01-03", "2023-01-04", "2023-01-05"]
                 ),
                 "close": [20.0, 20.1, 20.0, 20.2],
+                "adj_close": [20.0, 20.1, 20.0, 20.2],
                 "dividend": [0.0, 0.0, 0.50, 0.0],
+                "split_coefficient": [0.0, 0.0, 0.0, 0.0],
             }
         ),
-        "SPY": pd.DataFrame(
-            {
-                "date": pd.to_datetime(
-                    ["2023-01-02", "2023-01-03", "2023-01-04", "2023-01-05"]
-                ),
-                "close": [400.0, 401.0, 402.0, 403.0],
-                "dividend": [0.0, 0.0, 0.0, 0.0],
-            }
-        ),
+        "SPY": SPY_MARKET_DATA,
     }
     return "full_reinvest", transactions, market_data
 
@@ -149,8 +149,8 @@ def scenario_single_stock_partial_reinvestment():
                 "date": "2023-01-04",
                 "ticker": "TICKC",
                 "transaction_type": "DIVIDEND",  # $100 total value
-                "quantity": 0,
-                "value_per_share": 0,
+                "quantity": 0,  # Cash dividend, no shares involved
+                "value_per_share": 0,  # Not used for cash dividend
                 "total_value": 100.00,
                 "account": "Taxable",
             },
@@ -173,18 +173,12 @@ def scenario_single_stock_partial_reinvestment():
                     ["2023-01-02", "2023-01-03", "2023-01-04", "2023-01-05"]
                 ),
                 "close": [30.0, 30.1, 30.0, 30.2],
+                "adj_close": [30.0, 30.1, 30.0, 30.2],
                 "dividend": [0.0, 0.0, 1.00, 0.0],  # $1/share total dividend
+                "split_coefficient": [0.0, 0.0, 0.0, 0.0],
             }
         ),
-        "SPY": pd.DataFrame(
-            {
-                "date": pd.to_datetime(
-                    ["2023-01-02", "2023-01-03", "2023-01-04", "2023-01-05"]
-                ),
-                "close": [400.0, 401.0, 402.0, 403.0],
-                "dividend": [0.0, 0.0, 0.0, 0.0],
-            }
-        ),
+        "SPY": SPY_MARKET_DATA,
     }
     return "partial_reinvest", transactions, market_data
 
@@ -219,8 +213,8 @@ def scenario_dividend_after_partial_sale():
                 "date": "2023-01-05",
                 "ticker": "TICKD",
                 "transaction_type": "DIVIDEND",
-                "quantity": 0,
-                "value_per_share": 0,
+                "quantity": 0,  # Cash dividend, no shares involved
+                "value_per_share": 0,  # Not used for cash dividend
                 "total_value": 75.00,  # $0.50/share on remaining 150 shares
                 "account": "Taxable",
             },
@@ -233,18 +227,12 @@ def scenario_dividend_after_partial_sale():
                     ["2023-01-02", "2023-01-03", "2023-01-04", "2023-01-05"]
                 ),
                 "close": [10.0, 10.1, 10.2, 10.3],
+                "adj_close": [10.0, 10.1, 10.2, 10.3],
                 "dividend": [0.0, 0.0, 0.0, 0.50],
+                "split_coefficient": [0.0, 0.0, 0.0, 0.0],
             }
         ),
-        "SPY": pd.DataFrame(
-            {
-                "date": pd.to_datetime(
-                    ["2023-01-02", "2023-01-03", "2023-01-04", "2023-01-05"]
-                ),
-                "close": [400.0, 401.0, 402.0, 403.0],
-                "dividend": [0.0, 0.0, 0.0, 0.0],
-            }
-        ),
+        "SPY": SPY_MARKET_DATA,
     }
     return "partial_sale", transactions, market_data
 
@@ -257,19 +245,22 @@ class TestDividendScenarios:
         """Create temporary configuration for testing."""
         with tempfile.TemporaryDirectory() as temp_dir:
             config_dir = Path(temp_dir)
+            (config_dir / "transactions").mkdir(exist_ok=True)
+            (config_dir / "market_data").mkdir(exist_ok=True)
+            (config_dir / "output").mkdir(exist_ok=True)
 
-            # Create config
             config = ConfigManager()
             config.config["data"]["base_path"] = str(config_dir)
 
-            # Create directories
-            (config_dir / "transactions").mkdir()
-            (config_dir / "market_data").mkdir()
-            (config_dir / "output").mkdir()
+            config.config["analysis"]["start_date"] = "2023-01-02"
+            config.config["analysis"]["end_date"] = "2023-01-05"
+
+            config.config["settings"]["cache_market_data"] = True
+            config.config["settings"]["force_refresh_market_data"] = False
 
             # Setting to 1.0 for ease of comparing total returns
             config.config["advanced"]["performance"][
-                "period_cash_flow_weight"
+                "modified_dietz_periodic_cash_flow_weight"
             ] = 1.0
 
             yield config
@@ -283,41 +274,50 @@ class TestDividendScenarios:
         ],
         ids=lambda x: x[0],  # Use scenario name for test ID
     )
-    def scenario_analyzer(self, request, temp_config):
+    def scenario_analyzer(self, request, temp_config, monkeypatch):
         """Fixture to set up BogleBenchAnalyzer for a given dividend
         scenario."""
-        _, transactions_df, market_data_dict = request.param
+        scenario_name, transactions_df, market_data_dict = request.param
 
-        # Create analyzer
+        # Save transactions to csv
+        temp_data_path = temp_config.get_data_path()
+        transactions_file_path = (
+            temp_data_path / "transactions" / "transactions.csv"
+        )
+        transactions_df.to_csv(transactions_file_path, index=False)
+
+        market_data_path = temp_config.get_market_data_path()
+        for ticker, df in market_data_dict.items():
+            df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
+
+        output_path = temp_config.get_output_path()
+
+        monkeypatch.setattr(
+            ConfigManager, "get_data_path", lambda self, config: temp_data_path
+        )
+
+        monkeypatch.setattr(
+            ConfigManager,
+            "get_transactions_file_path",
+            lambda self: transactions_file_path,
+        )
+
+        monkeypatch.setattr(
+            ConfigManager,
+            "get_market_data_path",
+            lambda self: market_data_path,
+        )
+
+        monkeypatch.setattr(
+            ConfigManager,
+            "get_output_path",
+            lambda self: output_path,
+        )
+
         analyzer = BogleBenchAnalyzer()
         analyzer.config = temp_config
 
-        # Save transactions to csv
-        workspace = analyzer.config.get_data_path()
-        transactions_file = workspace / "transactions.csv"
-        transactions_df.to_csv(transactions_file, index=False)
-
-        # Mock the market data fetching
-        analyzer.market_data = market_data_dict
-        for df in analyzer.market_data.values():
-            df["date"] = pd.to_datetime(df["date"], utc=True)
-            for col in [
-                "open",
-                "high",
-                "low",
-                "adj_close",
-                "volume",
-                "split_coefficient",
-            ]:
-                if col not in df.columns:
-                    if col == "adj_close":
-                        df[col] = df["close"]
-                    else:
-                        df[col] = 0
-        analyzer.benchmark_data = analyzer.market_data["SPY"]
-
-        # Yield analyzer and scenario name
-        yield analyzer, request.param[0], transactions_file
+        yield analyzer, scenario_name, transactions_file_path
 
     def test_dividend_scenarios(self, scenario_analyzer):
         """

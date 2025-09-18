@@ -4,14 +4,14 @@
 # Data file locations and paths
 data:
   base_path: "~/boglebench_data"
-  transactions_file: "transactions/transactions.csv"
+  transactions_file: "transactions/sample_transactions.csv"
   market_data_cache: "market_data/"
   output_path: "output/"
 
 # API configuration for market data providers
 api:
   # Alpha Vantage API key - get free key from https://www.alphavantage.co/support/#api-key
-  alpha_vantage_key: null
+  alpha_vantage_key: "YOUR_ALPHA_VANTAGE_API_KEY_HERE"
   data_provider: "alpha_vantage" # Options: alpha_vantage, yahoo_finance
 
 # Analysis settings
@@ -20,11 +20,12 @@ settings:
   risk_free_rate: 0.02 # 2% annual risk-free rate
   default_currency: "USD"
   cache_market_data: true
+  force_refresh_market_data: false
 
 # Portfolio analysis configuration
 analysis:
-  default_start_date: null # If null, uses first transaction date
-  default_end_date: null # If null, uses today
+  start_date: null # If null, uses first transaction date
+  end_date: null # If null, uses today
   rebalance_frequency: "monthly" # Options: daily, weekly, monthly, quarterly
 
   # Performance metrics to calculate
@@ -80,6 +81,7 @@ advanced:
     max_cache_age_days: 7
     retry_attempts: 3
     request_delay_seconds: 0.5
+    local_tz: America/New_York
 
   dividend:
     auto_validate: true # Automatically validate during portfolio building
@@ -98,7 +100,7 @@ advanced:
     annualization_factor: 252 # Trading days per year
     compound_returns: true
     handle_negative_values: "log_returns" # Options: log_returns, simple_returns
-    period_cash_flow_weight: 0.5 # Assume cash flows occurs mid-period
+    modified_dietz_periodic_cash_flow_weight: 0.5 # Assume cash flows occurs mid-period
 
 # Transaction validation rules
 validation:

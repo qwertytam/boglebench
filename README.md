@@ -96,7 +96,7 @@ analyzer = BogleBenchAnalyzer(config_path="~/my_boglebench_data/config/config.ya
 
 # Load and analyze
 analyzer.load_transactions()
-analyzer.fetch_market_data()
+analyzer.build_portfolio_history()
 results = analyzer.calculate_performance()
 
 # View results
