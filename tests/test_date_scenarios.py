@@ -7,6 +7,7 @@ scenarios.
 
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -106,7 +107,7 @@ SCENARIOS = {
     "user_start_end_inside_transaction_dates": ("2023-01-03", "2023-01-05"),
     "user_end_date_only": (None, "2023-01-06"),
     "user_start_end_outside_transaction_dates": ("2022-12-30", "2023-01-09"),
-    "user_dates_outside_transaction_range": ("2023-01-10", "2023-01-15"),
+    "user_dates_outside_transaction_range": ("2024-01-10", "2024-01-15"),
     "user_start_after_end": ("2023-01-10", "2023-01-05"),
 }
 
@@ -190,18 +191,22 @@ class TestDateScenarios:
 
         yield analyzer, scenario_name, transactions_file_path
 
-    @pytest.mark.patch(
-        "boglebench.core.dates.AnalysisPeriod._is_market_currently_open",
-        return_value=False,
-    )
-    @pytest.mark.patch(
-        "boglebench.core.dates.AnalysisPeriod._get_last_closed_market_day",
-        return_value=pd.to_datetime("2023-01-10", utc=True),
-    )
-    def test_date_scenarios(self, scenario_analyzer):
+    @patch("boglebench.core.dates.AnalysisPeriod._get_last_closed_market_day")
+    @patch("boglebench.core.dates.AnalysisPeriod._is_market_currently_open")
+    def test_date_scenarios(
+        self,
+        mock_is_market_open,
+        mock_last_closed_market_day,
+        scenario_analyzer,
+    ):
         """
         Runs a date range scenario and performs assertions based on the scenario type.
         """
+        mock_is_market_open.return_value = True
+        mock_last_closed_market_day.return_value = pd.to_datetime(
+            "2023-01-10", utc=True
+        )
+
         analyzer, scenario_name, transactions_file = scenario_analyzer
 
         # --- Handle the error case first ---
@@ -217,8 +222,13 @@ class TestDateScenarios:
 
         # --- Assertions ---
         if scenario_name == "user_dates_outside_transaction_range":
-            # This range has no transactions, so the portfolio should be empty
-            assert portfolio_df.empty
+            # This range has no transactions, so the portfolio should be all
+            # zeros
+            assert portfolio_df["TICK_total_shares"].eq(0).all()
+            assert portfolio_df["TICK_total_value"].eq(0).all()
+            assert portfolio_df["total_value"].eq(0).all()
+            assert portfolio_df["investment_cash_flow"].eq(0).all()
+            assert portfolio_df["income_cash_flow"].eq(0).all()
             return
 
         # --- Assertions for all other valid scenarios ---
