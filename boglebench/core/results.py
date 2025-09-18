@@ -1,7 +1,7 @@
 """Results container and reporting for portfolio performance analysis."""
 
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, Optional
 
 import pandas as pd
 
