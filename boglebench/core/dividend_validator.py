@@ -119,9 +119,8 @@ class DividendValidator:
             return pd.DataFrame()
 
         try:
-            # logger.debug("data_df column dtypes:\n%s", data_df.dtypes)
             date_tz = data_df["date"].dt.tz
-            # logger.debug("Market data 'date' column tz info: %s", date_tz)
+
         except TypeError as e:
             logger.debug(
                 "Market data 'date' column tz info could not be determined: %s",
@@ -162,14 +161,7 @@ class DividendValidator:
         Returns:
             The number of shares held on the specified date.
         """
-        # logger.debug(
-        #     "Retrieving shares held for %s on %s in account %s.",
-        #     ticker,
-        #     date,
-        #     account if account else "ALL",
-        # )
 
-        # Filter transactions for the specific ticker and date
         mask = (
             (self.transactions_df["ticker"] == ticker)
             & (self.transactions_df["date"].dt.date < date.date())
@@ -189,13 +181,6 @@ class DividendValidator:
             )
 
         shares_held = self.transactions_df.loc[mask, "quantity"].sum()
-        # logger.debug(
-        #     "Shares held for %s on %s in account %s: %d",
-        #     ticker,
-        #     date,
-        #     account if account else "ALL",
-        #     shares_held,
-        # )
 
         return shares_held
 
@@ -258,6 +243,19 @@ class DividendValidator:
             else:
                 user_dividends_in_range = user_divs_grouped
 
+            user_dividends_has_data = (
+                user_dividends_in_range.empty
+                or user_dividends_in_range["total_value"].abs().sum()
+                < self.dividend_tolerance
+            )
+            if user_dividends_has_data:
+                msg = (
+                    f"No user dividends for {ticker} "
+                    f"in the specified date range."
+                )
+                # messages.append(msg)
+                logger.debug(msg)
+
             if market_ticker_dividends.empty:
                 if self.start_date is not None and self.end_date is not None:
                     if (
@@ -265,16 +263,19 @@ class DividendValidator:
                         or user_dividends_in_range["total_value"].abs().sum()
                         < self.dividend_tolerance
                     ):
-                        logger.debug(
-                            "No user or market dividends for %s in the specified date "
-                            "range; skipping comparison.",
-                            ticker,
+                        msg = (
+                            f"No user or market dividends for {ticker} "
+                            f"in the specified date range; skipping comparison."
                         )
+                        messages.append(msg)
+                        logger.debug(msg)
                 else:
-                    logger.warning(
-                        "⚠️  No market dividend data found for %s",
-                        ticker,
+                    msg = (
+                        f"⚠️  No market dividends for {ticker}; "
+                        f"skipping comparison."
                     )
+                    messages.append(msg)
+                    logger.warning(msg)
                 market_ticker_dividends = pd.DataFrame(
                     {
                         "date": pd.to_datetime([], utc=True),
@@ -349,7 +350,7 @@ class DividendValidator:
                 ):
                     # Case 2: User recorded a dividend, but market has none
                     msg = (
-                        f"   Extra dividend on {row['date'].date()} "
+                        f"   Extra user dividend on {row['date'].date()} "
                         f"for {ticker} "
                         f"in account {account if account else 'ALL'}: "
                         f"User recorded ${np.abs(total_value_user):.2f}, "
