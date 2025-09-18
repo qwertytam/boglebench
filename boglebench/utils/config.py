@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional
 
 import yaml
 
+from ..core.constants import Defaults
 from .workspace import WorkspaceContext
 
 
@@ -69,7 +70,7 @@ class ConfigManager:
         # Minimal fallback if template missing
         return {
             "data": {"base_path": "~/boglebench_data"},
-            "settings": {"benchmark_ticker": "SPY"},
+            "benchmark": {"components": [{"symbol": "SPY", "weight": 1.00}]},
             "analysis": {"performance_metrics": ["total_return"]},
         }
 
@@ -159,6 +160,28 @@ class ConfigManager:
         if not isinstance(data_output_path, str):
             data_output_path = "output"
         return self.get_data_path(data_output_path)
+
+    def get_benchmark_components(self) -> list[dict]:
+        """
+        Returns the list of benchmark components from the config.
+        Defaults to a 100% allocation to the default benchmark ticker.
+        """
+        benchmark_config = self.config.get("benchmark", {})
+        default_components = [
+            {
+                "ticker": Defaults.DEFAULT_BENCHMARK_TICKER,
+                "weight": 1.0,
+            }
+        ]
+        return benchmark_config.get("components", default_components)
+
+    def get_benchmark_rebalancing_frequency(self) -> str:
+        """
+        Returns the rebalancing frequency for the composite benchmark.
+        Defaults to 'none'.
+        """
+        benchmark_config = self.config.get("benchmark", {})
+        return benchmark_config.get("rebalancing", "none")
 
     def create_config_file(self, config_path: Optional[str] = None) -> Path:
         """Copy template configuration file to user's location."""

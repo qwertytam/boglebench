@@ -80,8 +80,8 @@ class MarketDataProvider:
     def get_market_data(
         self,
         tickers: List[str],
-        start_date: str,
-        end_date: str,
+        start_date: pd.Timestamp,
+        end_date: pd.Timestamp,
     ) -> Dict[str, pd.DataFrame]:
         """
         Fetch market data for a list of tickers, using cache if available.
@@ -103,8 +103,8 @@ class MarketDataProvider:
         all_data = {}
         failed_tickers = []
 
-        s_date = pd.to_datetime(start_date).date()
-        e_date = pd.to_datetime(end_date).date()
+        s_date = start_date.date()
+        e_date = end_date.date()
 
         for ticker in tickers:
             if self.cache_enabled and not self.force_cache_refresh:

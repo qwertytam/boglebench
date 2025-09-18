@@ -288,6 +288,7 @@ class TestDividendScenarios:
 
         market_data_path = temp_config.get_market_data_path()
         for ticker, df in market_data_dict.items():
+            df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True)
             df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
 
         output_path = temp_config.get_output_path()
@@ -312,6 +313,12 @@ class TestDividendScenarios:
             ConfigManager,
             "get_output_path",
             lambda self: output_path,
+        )
+
+        monkeypatch.setattr(
+            ConfigManager,
+            "get_benchmark_components",
+            lambda self: [{"symbol": "SPY", "weight": 1.0}],
         )
 
         analyzer = BogleBenchAnalyzer()

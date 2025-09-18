@@ -256,6 +256,7 @@ class TestPerformanceWithDividends:
 
         market_data_path = temp_config.get_market_data_path()
         for ticker, df in market_data_dict.items():
+            df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True)
             df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
 
         output_path = temp_config.get_output_path()
@@ -282,6 +283,12 @@ class TestPerformanceWithDividends:
             lambda self: output_path,
         )
 
+        monkeypatch.setattr(
+            ConfigManager,
+            "get_benchmark_components",
+            lambda self: [{"symbol": "SPY", "weight": 1.0}],
+        )
+
         analyzer = BogleBenchAnalyzer()
         analyzer.config = temp_config
 
@@ -297,10 +304,12 @@ class TestPerformanceWithDividends:
 
         accuracy = 0.001 / 100  # 0.001% accuracy)
         annual_trading_days = int(
-            results.config.get("settings.annual_trading_days", 252)
+            results.config.get(
+                "advanced.performance.annualization_factor", 252
+            )
         )
         risk_free_rate = analyzer.config.config.get(
-            "settings.risk_free_rate", 0.02
+            "analysis.risk_free_rate", 0.02
         )
         daily_risk_free_rate = (1 + risk_free_rate) ** (
             1 / annual_trading_days

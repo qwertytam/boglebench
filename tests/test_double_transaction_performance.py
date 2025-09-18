@@ -29,6 +29,8 @@ class TestMultiTransactionPerformance:
             config.config["analysis"]["start_date"] = "2023-06-05"
             config.config["analysis"]["end_date"] = "2023-06-16"
 
+            config.config["benchmark"]["name"] = "SPY"
+
             yield config
 
     @pytest.fixture
@@ -70,6 +72,7 @@ class TestMultiTransactionPerformance:
 
         market_data_path = temp_config.get_market_data_path()
         for ticker, df in market_data.items():
+            df["date"] = pd.to_datetime(df["date"], utc=True, errors="coerce")
             df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
 
         output_path = temp_config.get_output_path()
@@ -94,6 +97,12 @@ class TestMultiTransactionPerformance:
             ConfigManager,
             "get_output_path",
             lambda self: output_path,
+        )
+
+        monkeypatch.setattr(
+            ConfigManager,
+            "get_benchmark_components",
+            lambda self: [{"symbol": "SPY", "weight": 1.0}],
         )
 
         analyzer = BogleBenchAnalyzer()
@@ -450,7 +459,9 @@ class TestMultiTransactionPerformance:
         )
 
         annual_trading_days = int(
-            results.config.get("settings.annual_trading_days", 252)
+            results.config.get(
+                "advanced.performance.annualization_factor", 252
+            )
         )
         # Annualized return
         return_days = len(portfolio_history)
@@ -510,7 +521,7 @@ class TestMultiTransactionPerformance:
         expected_asset_daily_mean_mod_dietz_returns = np.mean(
             expected_asset_daily_mod_dietz_returns
         )
-        risk_free_rate = temp_config.get("settings.risk_free_rate", 0.02)
+        risk_free_rate = temp_config.get("analysis.risk_free_rate", 0.02)
         daily_risk_free_rate = (1 + risk_free_rate) ** (
             1 / annual_trading_days
         ) - 1
@@ -599,8 +610,12 @@ class TestMultiTransactionPerformance:
 
         assert portfolio_history["benchmark_returns"].notna().all()
         assert (
-            portfolio_history["benchmark_returns"] == expected_bm_daily_returns
-        ).all()
+            abs(
+                portfolio_history["benchmark_returns"]
+                - expected_bm_daily_returns
+            ).max()
+            < accuracy
+        )
 
         # Tracking error
         expected_excess_returns = (
