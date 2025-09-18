@@ -83,9 +83,7 @@ class PerformanceResults:
         if self.benchmark_metrics:
             b = self.benchmark_metrics
 
-            benchmark_name = self.config.get(
-                "settings.benchmark_ticker", "Benchmark"
-            )
+            benchmark_name = self.config.get("benchmark.name", "Benchmark")
             lines.append(f"\n📈 {benchmark_name} PERFORMANCE")
             lines.append(f"  Total Return:        {b['total_return']:>+8.2%}")
             lines.append(

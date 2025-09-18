@@ -43,6 +43,7 @@ analysis:
 # Benchmark settings
 benchmark:
   rebalance_frequency: "monthly" # Options: daily, weekly, monthly, quarterly, yearly, none
+  name: "Vanguard 60/40" # Descriptive name for reports
   components:
     - { symbol: "VTI", weight: 0.60 } # Vanguard Total Stock Market ETF
     - { symbol: "BND", weight: 0.40 } # Vanguard Total Bond Market ETF
