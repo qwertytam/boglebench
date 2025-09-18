@@ -7,75 +7,15 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from ..core.constants import (
-    DateAndTimeConstants,
-    NumericalConstants,
-    TransactionTypes,
+from ..core.constants import DateAndTimeConstants, NumericalConstants
+from ..core.helpers import (
+    get_shares_held_on_date,
+    identify_dividend_transactions,
 )
 from ..utils.logging_config import get_logger
 from ..utils.tools import aggregate_dividends
 
 logger = get_logger()
-
-
-def identify_dividend_transactions(series: pd.Series) -> pd.Series:
-    """
-    Identifies transactions in a Series with type 'DIVIDEND'.
-
-    Args:
-        series: A pandas Series containing transaction type strings.
-
-    Returns:
-        A Series of booleans indicating which transactions are 'DIVIDEND'.
-    """
-    # Get the set of all valid transaction type strings from our Enum
-    valid_types = [TransactionTypes.DIVIDEND.value]
-
-    # Return the unique values from the original series that were invalid
-    return series.isin(valid_types)
-
-
-def identify_any_dividend_transactions(series: pd.Series) -> pd.Series:
-    """
-    Identifies transactions in a Series with type 'DIVIDEND' or
-    'DIVIDEND_REINVEST'.
-
-    Args:
-        series: A pandas Series containing transaction type strings.
-
-    Returns:
-        A Series of booleans indicating which transactions are 'DIVIDEND' or
-        'DIVIDEND_REINVEST'.
-    """
-    # Get the set of all valid transaction type strings from our Enum
-    valid_types = [
-        TransactionTypes.DIVIDEND.value,
-        TransactionTypes.DIVIDEND_REINVEST.value,
-    ]
-
-    # Return the unique values from the original series that were invalid
-    return series.isin(valid_types)
-
-
-def identify_quantity_change_transactions(series: pd.Series) -> pd.Series:
-    """
-    Identifies transactions in a Series with a type that will change the
-    quantity.
-
-    Args:
-        series: A pandas Series containing transaction type strings.
-
-    Returns:
-        A Series of booleans indicating which transactions will change the
-        quantity.
-    """
-    # Get the set of all valid transaction type strings from our Enum
-    valid_types = [
-        ttype for ttype in TransactionTypes.all_quantity_changing_types()
-    ]
-
-    # Return the unique values from the original series that were invalid
-    return series.isin(valid_types)
 
 
 class DividendValidator:
@@ -161,26 +101,13 @@ class DividendValidator:
         Returns:
             The number of shares held on the specified date.
         """
-
-        mask = (
-            (self.transactions_df["ticker"] == ticker)
-            & (self.transactions_df["date"].dt.date < date.date())
-            & (
-                identify_quantity_change_transactions(
-                    self.transactions_df["transaction_type"]
-                )
-            )
+        shares_held = get_shares_held_on_date(
+            ticker,
+            date,
+            self.transactions_df,
+            account=account,
+            start_date=self.start_date,
         )
-
-        if account:
-            mask &= self.transactions_df["account"] == account
-
-        if self.start_date is not None:
-            mask &= (
-                self.transactions_df["date"].dt.date >= self.start_date.date()
-            )
-
-        shares_held = self.transactions_df.loc[mask, "quantity"].sum()
 
         return shares_held
 
@@ -368,9 +295,9 @@ class DividendValidator:
                                     "date": [row["date"]],
                                     "account": [account],
                                     "total_value_user": [total_value_user],
-                                    "value_per_share_market": [np.nan],
+                                    "value_per_share_market": [0.0],
                                     "quantity": [shares],
-                                    "total_value_market": [np.nan],
+                                    "total_value_market": [0.0],
                                 }
                             ),
                         ],
@@ -396,7 +323,7 @@ class DividendValidator:
                                 {
                                     "date": [row["date"]],
                                     "account": [account],
-                                    "total_value_user": [np.nan],
+                                    "total_value_user": [0],
                                     "value_per_share_market": [
                                         value_per_share_market
                                     ],
