@@ -3,10 +3,13 @@ Configuration management for BogleBench portfolio analyzer.
 """
 
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
+
+from .workspace import WorkspaceContext
 
 
 class ConfigManager:
@@ -28,8 +31,6 @@ class ConfigManager:
             return Path(config_path).expanduser()
 
         # Check for workspace context first
-        from .workspace import WorkspaceContext
-
         workspace = WorkspaceContext.get_workspace()
         if workspace:
             workspace_config = workspace / "config" / "config.yaml"
@@ -60,9 +61,9 @@ class ConfigManager:
 
         if template_path.exists():
             try:
-                with open(template_path, "r") as f:
+                with open(template_path, "r", encoding="utf-8") as f:
                     return yaml.safe_load(f)
-            except Exception as e:
+            except ValueError as e:
                 print(f"WARNING: Could not load config template: {e}")
 
         # Minimal fallback if template missing
@@ -81,7 +82,7 @@ class ConfigManager:
         """Load configuration from file or use template defaults."""
         if self.config_path.exists():
             try:
-                with open(self.config_path, "r") as f:
+                with open(self.config_path, "r", encoding="utf-8") as f:
                     user_config = yaml.safe_load(f)
 
                 # Merge with template defaults
@@ -89,7 +90,7 @@ class ConfigManager:
                 self._deep_merge(config, user_config)
                 return config
 
-            except Exception as e:
+            except ValueError as e:
                 print(
                     f"!! ERROR !!: loading config from {self.config_path}: {e}"
                     "\nUsing template configuration."
@@ -132,10 +133,13 @@ class ConfigManager:
 
     def get_data_path(self, relative_path: str = "") -> Path:
         """Get absolute path for data files."""
-        base_path = Path(self.get("data.base_path")).expanduser()
+        data_base_path = self.get("data.base_path")
+        if not isinstance(data_base_path, str):
+            data_base_path = "~/boglebench_data"
+        base_path = Path(data_base_path).expanduser()
         return base_path / relative_path if relative_path else base_path
 
-    def get_transactions_path(self) -> Path:
+    def get_transactions_file_path(self) -> Path:
         """Get path to transactions file."""
         transactions_file = self.get("data.transactions_file")
         if not isinstance(transactions_file, str):
@@ -144,11 +148,17 @@ class ConfigManager:
 
     def get_market_data_path(self) -> Path:
         """Get path to market data cache directory."""
-        return self.get_data_path(self.get("data.market_data_cache"))
+        data_market_data_cache = self.get("data.market_data_cache")
+        if not isinstance(data_market_data_cache, str):
+            data_market_data_cache = "market_data"
+        return self.get_data_path(data_market_data_cache)
 
     def get_output_path(self) -> Path:
         """Get path to output directory."""
-        return self.get_data_path(self.get("data.output_path"))
+        data_output_path = self.get("data.output_path")
+        if not isinstance(data_output_path, str):
+            data_output_path = "output"
+        return self.get_data_path(data_output_path)
 
     def create_config_file(self, config_path: Optional[str] = None) -> Path:
         """Copy template configuration file to user's location."""
@@ -161,14 +171,12 @@ class ConfigManager:
         path.parent.mkdir(parents=True, exist_ok=True)
 
         if template_path.exists():
-            import shutil
-
             shutil.copy2(template_path, path)
             print(f"Created configuration file: {path}")
         else:
             # Fallback: create from loaded defaults
             config = self._load_default_config()
-            with open(path, "w") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 yaml.dump(config, f, default_flow_style=False, indent=2)
             print(f"Created configuration file: {path}")
 
