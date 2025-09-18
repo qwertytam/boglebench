@@ -209,29 +209,6 @@ def scenario_partial_reinvestment():
     return "partial_reinvestment", transactions, market_data
 
 
-# def create_mock_market_data(workspace: Path, market_data_dict: dict):
-#     """Creates mock market data parquet files for testing."""
-#     market_data_dir = workspace / "market_data"
-#     market_data_dir.mkdir(exist_ok=True)
-
-#     for ticker, data in market_data_dict.items():
-#         df = pd.DataFrame(data)
-#         df["date"] = pd.to_datetime(df["date"])
-#         # Add required columns if they don't exist
-#         for col in [
-#             "close",
-#             "adj_close",
-#             "split_coefficient",
-#         ]:
-#             if col not in df.columns:
-#                 if col == "adj_close":
-#                     df[col] = df["close"]
-#                 else:
-#                     df[col] = 0
-
-#         df.to_parquet(market_data_dir / f"{ticker}.parquet")
-
-
 class TestPerformanceWithDividends:
     """Test suite for performance calculations involving dividends."""
 
@@ -250,52 +227,12 @@ class TestPerformanceWithDividends:
             # Updating default settings
             config.config["settings"]["cache_market_data"] = True
             config.config["settings"]["force_refresh_market_data"] = False
-            # config.config["api"]["alpha_vantage_key"] = "DUMMY_KEY"
-            # config.config["data"]["transactions_file"] = "transactions.csv"
 
             config.config["analysis"]["start_date"] = "2023-01-03"
             config.config["analysis"]["end_date"] = "2023-01-05"
 
             yield config
 
-    # def _setup_scenario(
-    #     self, temp_config, transactions_data, market_data_dict
-    # ):
-    #     """
-    #     Helper to set up a test scenario by creating data files and the analyzer.
-    #     It also mocks the market data fetching to use local files.
-    #     """
-    #     # Patch the analyzer's fetch method to prevent live API calls
-    #     with patch.object(
-    #         MarketDataProvider,
-    #         "get_market_data",
-    #         return_value=market_data_dict,
-    #     ) as mock_fetch:
-    #         analyzer = BogleBenchAnalyzer()
-    #         analyzer.config = temp_config
-    #         analyzer.start_date = temp_config.get("analysis.start_date")
-    #         analyzer.end_date = temp_config.get("analysis.end_date")
-
-    #         # Write transactions to CSV
-    #         workspace = analyzer.config.get_data_path()
-    #         transactions_file = workspace / "transactions.csv"
-    #         pd.DataFrame(transactions_data).to_csv(
-    #             transactions_file, index=False
-    #         )
-
-    #         # Create mock market data files
-    #         create_mock_market_data(workspace, market_data_dict)
-
-    #         # Manually assign mocked data since we are bypassing the fetch logic
-    #         analyzer.market_data = {
-    #             ticker: pd.read_parquet(
-    #                 workspace / "market_data" / f"{ticker}.parquet"
-    #             )
-    #             for ticker in market_data_dict
-    #         }
-    #         analyzer.benchmark_data = analyzer.market_data["SPY"]
-
-    #         yield analyzer, mock_fetch
     @pytest.fixture(
         params=[
             scenario_no_dividends(),
@@ -656,14 +593,6 @@ class TestPerformanceWithDividends:
             )
 
         elif scenario_name == "partial_reinvestment":
-            #     total_purchase_value = purchase_qty * purchase_price
-            #     total_div_amount = 125.50  # Total dividend received
-            #     total_div_per_share = total_div_amount / purchase_qty
-            #     # Split into cash and reinvested portions
-            #     total_div_reinvest = final_price  # Reinvest enough to buy 1 share
-            #     drp_quantity = total_div_reinvest / final_price  # Should be 1 share
-            #     reinvest_div_per_share = total_div_reinvest / purchase_qty
-
             assert (
                 final_day["Roth_BND_shares"] == 101
             )  # 100 initial + 1 reinvested

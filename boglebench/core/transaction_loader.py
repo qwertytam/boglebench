@@ -227,20 +227,7 @@ def _clean_transaction_data(
             "Using quantity * value_per_share.",
             len(mismatch_rows),
         )
-        # logger.debug(
-        #     "Original data with mismatches:\n%s",
-        #     mismatch_rows[
-        #         [
-        #             "date",
-        #             "ticker",
-        #             "transaction_type",
-        #             "quantity",
-        #             "value_per_share",
-        #             "total_value",
-        #             "total_value_check",
-        #         ]
-        #     ],
-        # )
+
         df.loc[value_mismatch, "total_value"] = df.loc[
             value_mismatch, "total_value_check"
         ]
@@ -259,11 +246,7 @@ def _clean_transaction_data(
 
     # Sort by date
     df = df.sort_values("date").reset_index(drop=True)
-    # logger.debug(
-    #     "Cleaned transaction data:\n%s \nwith columns of types:\n%s",
-    #     df.head(),
-    #     df.dtypes,
-    # )
+
     return df
 
 

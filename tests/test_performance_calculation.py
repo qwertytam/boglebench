@@ -13,23 +13,6 @@ from alpha_vantage.timeseries import TimeSeries  # type: ignore
 from boglebench.core.portfolio import BogleBenchAnalyzer, PerformanceResults
 from boglebench.utils.config import ConfigManager
 
-# @pytest.fixture
-# def market_data(self, test_data_dir):
-#     """Simple market data for AAPL and SPY over one week."""
-#     # Simple market data for AAPL and SPY over one week
-#     aapl_mkt_data_path = test_data_dir / "AAPL_market_data_pytest.csv"
-#     aapl_mkt_data = pd.read_csv(aapl_mkt_data_path, parse_dates=["date"])
-
-#     spy_mkt_data_path = test_data_dir / "SPY_market_data_pytest.csv"
-#     spy_mkt_data = pd.read_csv(spy_mkt_data_path, parse_dates=["date"])
-
-#     market_data_dict = {
-#         "AAPL": aapl_mkt_data,
-#         "SPY": spy_mkt_data,
-#     }
-
-#     yield market_data_dict
-
 
 def scenario_simple_case():
     """Simple scenario: Buy 100 AAPL on day 1 at $180, hold through week."""
@@ -684,4 +667,5 @@ class TestPerformanceCalculation:
             assert "Sharpe Ratio:" in summary
 
         else:
+            pytest.fail(f"Unknown scenario name: {scenario_name}")
             pytest.fail(f"Unknown scenario name: {scenario_name}")
