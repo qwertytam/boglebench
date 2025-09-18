@@ -297,10 +297,12 @@ class TestPerformanceWithDividends:
 
         accuracy = 0.001 / 100  # 0.001% accuracy)
         annual_trading_days = int(
-            results.config.get("settings.annual_trading_days", 252)
+            results.config.get(
+                "advanced.performance.annualization_factor", 252
+            )
         )
         risk_free_rate = analyzer.config.config.get(
-            "settings.risk_free_rate", 0.02
+            "analysis.risk_free_rate", 0.02
         )
         daily_risk_free_rate = (1 + risk_free_rate) ** (
             1 / annual_trading_days

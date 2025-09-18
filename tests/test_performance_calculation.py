@@ -289,14 +289,14 @@ class TestPerformanceCalculation:
         assert "win_rate" in portfolio_twr_metrics
 
         annual_trading_days = results.config.get(
-            "settings.annual_trading_days", 252
+            "advanced.performance.annualization_factor", 252
         )
         if isinstance(annual_trading_days, dict):
             annual_trading_days = annual_trading_days.get("value", 252)
         if annual_trading_days is None or annual_trading_days <= 0:
             annual_trading_days = 252
 
-        risk_free_rate = temp_config.get("settings.risk_free_rate", 0.02)
+        risk_free_rate = temp_config.get("analysis.risk_free_rate", 0.02)
         daily_risk_free_rate = (1 + risk_free_rate) ** (
             1 / annual_trading_days
         ) - 1

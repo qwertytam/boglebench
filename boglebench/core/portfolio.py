@@ -249,7 +249,7 @@ class BogleBenchAnalyzer:
         annual_trading_days = int(annual_trading_days)
 
         annual_risk_free_rate = self.config.get(
-            "settings.annual_risk_free_rate", Defaults.DEFAULT_RISK_FREE_RATE
+            "analysis.annual_risk_free_rate", Defaults.DEFAULT_RISK_FREE_RATE
         )
         if isinstance(annual_risk_free_rate, Dict):
             annual_risk_free_rate = annual_risk_free_rate.get(
