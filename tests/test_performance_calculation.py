@@ -149,6 +149,10 @@ class TestPerformanceCalculation:
             config.config["settings"]["cache_market_data"] = True
             config.config["settings"]["force_refresh_market_data"] = False
 
+            config.config["benchmark"]["components"] = [
+                {"symbol": "SPY", "weight": 1.0}
+            ]
+
             # Setting to 1.0 for ease of comparing total returns
             config.config["advanced"]["performance"][
                 "modified_dietz_periodic_cash_flow_weight"
@@ -197,6 +201,9 @@ class TestPerformanceCalculation:
             )
         market_data_path = temp_config.get_market_data_path()
         for ticker, df in market_data_dict.items():
+            df["date"] = pd.to_datetime(
+                df["date"], errors="coerce", format="%Y-%m-%d", utc=True
+            )
             df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
 
         output_path = temp_config.get_output_path()

@@ -203,8 +203,8 @@ class BogleBenchAnalyzer:
         )
         self.market_data = self.market_data_provider.get_market_data(
             tickers=all_tickers,
-            start_date=start_date.strftime("%Y-%m-%d"),
-            end_date=end_date.strftime("%Y-%m-%d"),
+            start_date=start_date,
+            end_date=end_date,
         )
 
         self.logger.info("Building composite benchmark history...")

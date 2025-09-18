@@ -70,6 +70,7 @@ class TestMultiTransactionPerformance:
 
         market_data_path = temp_config.get_market_data_path()
         for ticker, df in market_data.items():
+            df["date"] = pd.to_datetime(df["date"], utc=True, errors="coerce")
             df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
 
         output_path = temp_config.get_output_path()
@@ -94,6 +95,12 @@ class TestMultiTransactionPerformance:
             ConfigManager,
             "get_output_path",
             lambda self: output_path,
+        )
+
+        monkeypatch.setattr(
+            ConfigManager,
+            "get_benchmark_components",
+            lambda self: [{"symbol": "SPY", "weight": 1.0}],
         )
 
         analyzer = BogleBenchAnalyzer()
@@ -601,8 +608,12 @@ class TestMultiTransactionPerformance:
 
         assert portfolio_history["benchmark_returns"].notna().all()
         assert (
-            portfolio_history["benchmark_returns"] == expected_bm_daily_returns
-        ).all()
+            abs(
+                portfolio_history["benchmark_returns"]
+                - expected_bm_daily_returns
+            ).max()
+            < accuracy
+        )
 
         # Tracking error
         expected_excess_returns = (
