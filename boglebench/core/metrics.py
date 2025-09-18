@@ -11,14 +11,46 @@ import pandas as pd
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger
 from ..utils.tools import cagr
-from .constants import ConversionFactors, DateAndTimeConstants, Defaults
+from .constants import DateAndTimeConstants, Defaults
 
 logger = get_logger()
 
 
-def calculate_modified_dietz_returns(portfolio_df: pd.DataFrame) -> pd.Series:
+def get_modified_dietz_cash_flow_weight(config: ConfigManager) -> float:
+    """Retrieve the cash flow weight for Modified Dietz calculation."""
+    weight = config.get(
+        "advanced.performance.modified_dietz_periodic_cash_flow_weight",
+        Defaults.DEFAULT_CASH_FLOW_WEIGHT,
+    )
+
+    if isinstance(weight, dict):
+        weight = weight.get("value", Defaults.DEFAULT_CASH_FLOW_WEIGHT)
+
+    if weight is None:
+        weight = Defaults.DEFAULT_CASH_FLOW_WEIGHT
+
+    try:
+        weight = float(weight)
+        weight_in_range = 0 <= weight <= 1
+        if not weight_in_range:
+            raise ValueError
+    except (TypeError, ValueError):
+        logger.warning(
+            "⚠️  Invalid modified_dietz_periodic_cash_flow_weight '%s'. "
+            "Using default value %.3f.",
+            weight,
+            Defaults.DEFAULT_CASH_FLOW_WEIGHT,
+        )
+        weight = Defaults.DEFAULT_CASH_FLOW_WEIGHT
+    return weight
+
+
+def calculate_modified_dietz_returns(
+    portfolio_df: pd.DataFrame, config: ConfigManager
+) -> pd.Series:
     """Calculate portfolio returns using Modified Dietz method."""
     returns = []
+    cash_flow_weight = get_modified_dietz_cash_flow_weight(config)
 
     for i in range(len(portfolio_df)):
         if i == 0:
@@ -32,14 +64,14 @@ def calculate_modified_dietz_returns(portfolio_df: pd.DataFrame) -> pd.Series:
         # focuses on external cash flows, which are movements of value
         # into or out of the portfolio that are not related to investment
         # income.
-        # Value change = total change minus external cash flow impact
-        # Get values
+        # However, here we are including dividends as this analysis assumes
+        # they are paid out immediately and not reinvested.
         ending_value = portfolio_df.iloc[i]["total_value"]
         external_cash_flow = (
             portfolio_df.iloc[i]["investment_cash_flow"]
             + portfolio_df.iloc[i]["income_cash_flow"]
         )
-        weighted_cash_flow = portfolio_df.iloc[i]["weighted_cash_flow"]
+        weighted_cash_flow = external_cash_flow * cash_flow_weight
 
         # Modified Dietz formula
         denominator = beginning_value + weighted_cash_flow
@@ -57,13 +89,23 @@ def calculate_modified_dietz_returns(portfolio_df: pd.DataFrame) -> pd.Series:
 
 
 def calculate_account_modified_dietz_returns(
-    portfolio_df: pd.DataFrame, account: str
+    portfolio_df: pd.DataFrame, account: str, config: ConfigManager
 ) -> pd.Series:
-    """Calculate account-level returns using Modified Dietz method."""
+    """Calculate account-level returns using Modified Dietz method.
+
+    Args:
+        portfolio_df (pd.DataFrame): DataFrame containing portfolio history.
+        account (str): The account name to calculate returns for.
+        config (ConfigManager): Configuration manager for settings.
+    Returns:
+        pd.Series: Series of daily returns for the specified account.
+
+    """
     returns = []
     account_total_col = f"{account}_total"
     account_cash_flow_col = f"{account}_cash_flow"
-    account_weighted_cash_flow_col = f"{account}_weighted_cash_flow"
+
+    cash_flow_weight = get_modified_dietz_cash_flow_weight(config)
 
     for i in range(len(portfolio_df)):
         if i == 0:
@@ -73,9 +115,7 @@ def calculate_account_modified_dietz_returns(
         beginning_value = portfolio_df.iloc[i - 1][account_total_col]
         ending_value = portfolio_df.iloc[i][account_total_col]
         net_cash_flow = portfolio_df.iloc[i][account_cash_flow_col]
-        weighted_cash_flow = portfolio_df.iloc[i][
-            account_weighted_cash_flow_col
-        ]
+        weighted_cash_flow = net_cash_flow * cash_flow_weight
 
         denominator = beginning_value + weighted_cash_flow
 
@@ -158,14 +198,7 @@ def calculate_irr(
     if portfolio_history is None or portfolio_history.empty:
         return Defaults.ZERO_RETURN
 
-    # IRR calculation requires a series of cash flows over time.
-    # The convention for numpy.irr is:
-    # - Investments (cash inflows to the portfolio) are negative.
-    # - Withdrawals (cash outflows from the portfolio) are positive.
-    # - The final value is the terminal market value of the portfolio.
-
-    # Your 'net_cash_flow' is positive for BUYs and negative for SELLs.
-    # We need to invert this for the IRR calculation.
+    # Need to invert cash flows for the IRR calculation.
     cash_flows = np.array(portfolio_history["net_cash_flow"].values) * -1
 
     # The first cash flow is the initial investment at time 0.
@@ -181,12 +214,10 @@ def calculate_irr(
     all_flows[-1] += final_value  # Add final value to last cash flow
 
     try:
-        # numpy.irr calculates the IRR for the given period (daily in this case).
         daily_irr = npf.irr(all_flows)
         if np.isnan(daily_irr) or np.isinf(daily_irr):
             return Defaults.ZERO_RETURN
 
-        # Annualize the daily IRR.
         annual_trading_days = config.get(
             "settings.annual_trading_days",
             DateAndTimeConstants.DAYS_IN_TRADING_YEAR,
@@ -204,7 +235,6 @@ def calculate_irr(
         return annualized_irr
 
     except ValueError:
-        # numpy.irr raises a ValueError if it cannot find a solution.
         if logger is not None:
             logger.warning(
                 "⚠️  Internal Rate of Return (IRR) calculation did not converge. "
@@ -223,16 +253,9 @@ def calculate_metrics(
     if returns.empty or returns.isna().all():
         return {}
 
-    # Basic statistics
     total_periods = len(returns)
     year_fraction = total_periods / annual_trading_days
 
-    # Ensure returns are numeric to avoid type errors
-    # logger.debug(
-    #     "Returns series %s before numeric conversion:\n%s",
-    #     name,
-    #     returns.head(10),
-    # )
     returns = pd.to_numeric(returns, errors="coerce")
     if returns.isna().any():
         logger.warning(
@@ -241,12 +264,6 @@ def calculate_metrics(
             returns[returns.isna()],
         )
         returns = returns.fillna(0)
-
-    # logger.debug(
-    #     "%s: First 10 daily returns:\n%s",
-    #     name,
-    #     returns.head(n=10) * ConversionFactors.DECIMAL_TO_PERCENT,
-    # )
 
     prod_result = (1 + returns).prod()
     if isinstance(prod_result, (int, float, np.number)):
@@ -266,40 +283,9 @@ def calculate_metrics(
         )
         annualized_return = Defaults.ZERO_RETURN
 
-    # logger.debug(
-    #     "%s: Periods: %d, Years: %.2f",
-    #     name,
-    #     total_periods,
-    #     year_fraction,
-    # )
-
-    # logger.debug(
-    #     "%s: First date: %s, Last date: %s",
-    #     name,
-    #     returns.index[0] if len(returns) > 0 else "N/A",
-    #     returns.index[-1] if len(returns) > 0 else "N/A",
-    # )
-
-    # logger.debug(
-    #     "%s: Total Return: %.2f%%, Annualized Return: %.2f%%",
-    #     name,
-    #     total_return * ConversionFactors.DECIMAL_TO_PERCENT,
-    #     annualized_return * ConversionFactors.DECIMAL_TO_PERCENT,
-    # )
-
     volatility = returns.std(ddof=1)  # Daily volatility, sample stddev
-    annual_volatility = volatility * np.sqrt(
-        annual_trading_days
-    )  # Annualized volatility
+    annual_volatility = volatility * np.sqrt(annual_trading_days)
 
-    # logger.debug(
-    #     "%s: Volatility: %.2f%% (period) %.2f%% (annualized)",
-    #     name,
-    #     volatility * ConversionFactors.DECIMAL_TO_PERCENT,
-    #     annual_volatility * ConversionFactors.DECIMAL_TO_PERCENT,
-    # )
-
-    # Risk-adjusted metrics
     daily_risk_free_rate = cagr(
         1, 1 + annual_risk_free_rate, annual_trading_days
     )
@@ -311,7 +297,6 @@ def calculate_metrics(
         else 0
     )
 
-    # Drawdown analysis
     cumulative_returns: np.number = (1 + returns).cumprod()
     if not isinstance(cumulative_returns, (int, float, np.number, pd.Series)):
         logger.error(
@@ -325,9 +310,7 @@ def calculate_metrics(
     drawdown = (cumulative_returns - running_max) / running_max
     max_drawdown = drawdown.min()
 
-    # Additional metrics
-    positive_periods = (returns > 0).sum()
-    win_rate = positive_periods / total_periods if total_periods > 0 else 0
+    win_rate = (returns > 0).sum() / total_periods if total_periods > 0 else 0
 
     return {
         "name": name,
@@ -356,10 +339,6 @@ def calculate_relative_metrics(
 
     # Align the series by index. This is crucial for non-continuous date
     # ranges.
-    # logger.debug("Aligning portfolio and benchmark returns...")
-    # logger.debug("Portfolio returns:\n%s", portfolio_returns.head(10))
-    # logger.debug("Benchmark returns:\n%s", benchmark_returns.head(10))
-
     aligned_portfolio, aligned_benchmark = portfolio_returns.align(
         benchmark_returns, join="inner"
     )
@@ -370,25 +349,20 @@ def calculate_relative_metrics(
         )
         return {}
 
-    # Calculate excess returns (alpha)
     excess_returns = aligned_portfolio - aligned_benchmark
 
-    # Tracking error (volatility of excess returns)
     tracking_error = excess_returns.std() * np.sqrt(annual_trading_days)
 
-    # Information ratio (excess return / tracking error)
     information_ratio = (
         (excess_returns.mean() * annual_trading_days) / tracking_error
         if tracking_error > 0
         else 0
     )
 
-    # Beta calculation
     covariance = np.cov(aligned_portfolio, aligned_benchmark, ddof=1)[0, 1]
     benchmark_variance = np.var(aligned_benchmark, ddof=1)
     beta = covariance / benchmark_variance if benchmark_variance > 0 else 0
 
-    # Jensen's Alpha (risk-adjusted excess return
     daily_risk_free_rate = cagr(
         1, 1 + annual_risk_free_rate, annual_trading_days
     )
@@ -404,3 +378,33 @@ def calculate_relative_metrics(
         "jensens_alpha": jensens_alpha_annualized,
         "correlation": np.corrcoef(aligned_portfolio, aligned_benchmark)[0, 1],
     }
+
+
+def calculate_market_change_and_returns(
+    portfolio_history: pd.DataFrame,
+) -> pd.DataFrame:
+    """Calculate market change and returns for the benchmark."""
+    if portfolio_history is None or portfolio_history.empty:
+        return portfolio_history
+
+    portfolio_history_df = portfolio_history.copy()
+
+    for i in range(0, len(portfolio_history_df)):
+        if i == 0:
+            prev_value = 0.0
+        else:
+            prev_value = portfolio_history_df.at[i - 1, "total_value"]
+
+        current_value = portfolio_history_df.at[i, "total_value"]
+        cash_flow = portfolio_history_df.at[i, "investment_cash_flow"]
+        market_change = current_value - prev_value - cash_flow
+
+        if prev_value == 0:
+            market_return = 0.0
+        else:
+            market_return = market_change / prev_value
+
+        portfolio_history_df.at[i, "market_value_change"] = market_change
+        portfolio_history_df.at[i, "market_value_return"] = market_return
+
+    return portfolio_history_df
