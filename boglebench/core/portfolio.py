@@ -158,7 +158,11 @@ class BogleBenchAnalyzer:
         self._fetch_market_data(period.start_date, period.end_date)
 
         processor = DividendProcessor(
-            self.config, self.transactions, self.market_data
+            self.config,
+            self.transactions,
+            self.market_data,
+            start_date=period.start_date,
+            end_date=period.end_date,
         )
         self.transactions = processor.run()
 

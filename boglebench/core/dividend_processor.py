@@ -20,10 +20,14 @@ class DividendProcessor:
         config: ConfigManager,
         transactions_df: pd.DataFrame,
         market_data: dict,
+        start_date=None,
+        end_date=None,
     ):
         self.config = config
         self.transactions_df = transactions_df.copy()
         self.market_data = market_data
+        self.start_date = start_date
+        self.end_date = end_date
         self.logger = get_logger()
 
     def run(self) -> pd.DataFrame:
@@ -41,7 +45,12 @@ class DividendProcessor:
             )
             return self.transactions_df
 
-        validator = DividendValidator(self.transactions_df, self.market_data)
+        validator = DividendValidator(
+            self.transactions_df,
+            self.market_data,
+            start_date=self.start_date,
+            end_date=self.end_date,
+        )
         messages, diffs = validator.validate()
 
         self._log_validation_messages(messages)

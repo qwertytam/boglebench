@@ -236,10 +236,6 @@ class DividendValidator:
                     & (user_divs_grouped["date"] <= self.end_date)
                 ]
 
-                market_ticker_dividends = market_ticker_dividends[
-                    (market_ticker_dividends["date"] >= self.start_date)
-                    & (market_ticker_dividends["date"] <= self.end_date)
-                ]
             else:
                 user_dividends_in_range = user_divs_grouped
 
@@ -276,12 +272,19 @@ class DividendValidator:
                     )
                     messages.append(msg)
                     logger.warning(msg)
+
                 market_ticker_dividends = pd.DataFrame(
                     {
                         "date": pd.to_datetime([], utc=True),
                         "value_per_share_market": [],
                     }
                 )
+
+            elif self.start_date is not None and self.end_date is not None:
+                market_ticker_dividends = market_ticker_dividends[
+                    (market_ticker_dividends["date"] >= self.start_date)
+                    & (market_ticker_dividends["date"] <= self.end_date)
+                ]
 
             comparison_df = pd.merge(
                 user_dividends_in_range,
