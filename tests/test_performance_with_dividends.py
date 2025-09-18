@@ -283,6 +283,12 @@ class TestPerformanceWithDividends:
             lambda self: output_path,
         )
 
+        monkeypatch.setattr(
+            ConfigManager,
+            "get_benchmark_components",
+            lambda self: [{"symbol": "SPY", "weight": 1.0}],
+        )
+
         analyzer = BogleBenchAnalyzer()
         analyzer.config = temp_config
 

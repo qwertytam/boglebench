@@ -29,6 +29,8 @@ class TestMultiTransactionPerformance:
             config.config["analysis"]["start_date"] = "2023-06-05"
             config.config["analysis"]["end_date"] = "2023-06-16"
 
+            config.config["benchmark"]["name"] = "SPY"
+
             yield config
 
     @pytest.fixture

@@ -153,6 +153,8 @@ class TestPerformanceCalculation:
                 {"symbol": "SPY", "weight": 1.0}
             ]
 
+            config.config["benchmark"]["name"] = "SPY"
+
             # Setting to 1.0 for ease of comparing total returns
             config.config["advanced"]["performance"][
                 "modified_dietz_periodic_cash_flow_weight"
@@ -234,6 +236,12 @@ class TestPerformanceCalculation:
             TimeSeries,
             "get_daily_adjusted",
             lambda self, symbol, outputsize: pd.DataFrame(),
+        )
+
+        monkeypatch.setattr(
+            ConfigManager,
+            "get_benchmark_components",
+            lambda self: [{"symbol": "SPY", "weight": 1.0}],
         )
 
         analyzer = BogleBenchAnalyzer()
