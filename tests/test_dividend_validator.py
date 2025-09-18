@@ -187,8 +187,10 @@ def transactions_no_dividends() -> pd.DataFrame:
 
 
 def test_validator_perfect_match(
-    transactions_perfect_match, sample_market_data
+    transactions_perfect_match,
+    sample_market_data,
 ):
+    # pylint: disable=redefined-outer-name
     """
     Tests the scenario where user dividends perfectly match market data.
     The validator should return an empty list of messages.
@@ -203,8 +205,10 @@ def test_validator_perfect_match(
 
 
 def test_validator_with_discrepancies(
-    transactions_with_discrepancies, sample_market_data
+    transactions_with_discrepancies,
+    sample_market_data,
 ):
+    # pylint: disable=redefined-outer-name
     """
     Tests the scenario with a mix of mismatch, extra, and missing dividends.
     The validator should return three specific error messages.
@@ -215,10 +219,12 @@ def test_validator_with_discrepancies(
     )
     messages, dividend_differences = validator.validate()
 
-    print("Dividend differences:\n", dividend_differences)
+    print("Validation messages:")
+    for msg in messages:
+        print(msg)
+    print("\nDividend differences:\n", dividend_differences)
 
     assert len(messages) == 3
-    print(messages)
     # Check for the "Mismatch" message
     assert any("Mismatch on 2023-03-25 for VTI" in msg for msg in messages)
     assert any("User recorded $9.00" in msg for msg in messages)
@@ -226,7 +232,7 @@ def test_validator_with_discrepancies(
 
     # Check for the "Extra dividend" message
     assert any(
-        "Extra dividend on 2023-03-26 for VTI" in msg for msg in messages
+        "Extra user dividend on 2023-03-26 for VTI" in msg for msg in messages
     )
     assert any("no market dividend was found" in msg for msg in messages)
 
@@ -241,8 +247,10 @@ def test_validator_with_discrepancies(
 
 
 def test_validator_user_has_no_dividends(
-    transactions_no_dividends, sample_market_data
+    transactions_no_dividends,
+    sample_market_data,  # pylint: disable=redefined-outer-name
 ):
+    # pylint: disable=redefined-outer-name
     """
     Tests the scenario where the user has no DIVIDEND type transactions.
     The validator should find the missing BND and VTI dividends.
@@ -263,7 +271,9 @@ def test_validator_user_has_no_dividends(
     )
 
 
-def test_validator_no_market_data_for_ticker(transactions_perfect_match):
+def test_validator_no_market_data_for_ticker(
+    transactions_perfect_match,
+):  # pylint: disable=redefined-outer-name
     """
     Tests that validation is gracefully skipped for a ticker if no market
     data is available.
@@ -290,5 +300,6 @@ def test_validator_no_market_data_for_ticker(transactions_perfect_match):
     # and should not raise an error for the missing BND.
     # The BND dividend recorded by the user will be flagged as "Extra" because
     # there's no market data to compare it against.
-    assert len(messages) == 1
-    assert "Extra dividend on 2023-03-20 for BND" in messages[0]
+    assert len(messages) == 2
+    assert "No market dividends for BND" in messages[0]
+    assert "Extra user dividend on 2023-03-20 for BND" in messages[1]
