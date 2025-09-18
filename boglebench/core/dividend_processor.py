@@ -2,10 +2,13 @@
 Handles dividend validation and correction.
 """
 
+from typing import Optional
+
 import pandas as pd
 
-from ..core.dividend_validator import (
-    DividendValidator,
+from ..core.dividend_validator import DividendValidator
+from ..core.helpers import (
+    get_shares_held_on_date,
     identify_any_dividend_transactions,
 )
 from ..utils.config import ConfigManager
@@ -78,6 +81,30 @@ class DividendProcessor:
             else:
                 self.logger.info("ℹ️ %s", msg)
 
+    def _get_shares_held_on_date(
+        self, ticker: str, date: pd.Timestamp, account: Optional[str] = None
+    ) -> float:
+        """
+        Retrieves the number of shares held for a specific ticker on a given date.
+
+        Args:
+            ticker: The stock ticker symbol.
+            date: The date for which to retrieve the share quantity.
+            account: Optional account identifier to filter by account.
+
+        Returns:
+            The number of shares held on the specified date.
+        """
+        shares_held = get_shares_held_on_date(
+            ticker,
+            date,
+            self.transactions_df,
+            account=account,
+            start_date=self.start_date,
+        )
+
+        return shares_held
+
     def _apply_corrections(self, differences: dict):
         """Applies dividend corrections to the transactions DataFrame."""
         self.logger.info(
@@ -87,6 +114,10 @@ class DividendProcessor:
             for _, row in df.iterrows():
                 date = row["date"]
                 new_div_per_share = row["value_per_share_market"]
+                account = row.get("account", None)
+
+                shares = self._get_shares_held_on_date(ticker, date, account)
+
                 mask = (
                     (self.transactions_df["ticker"] == ticker)
                     & (self.transactions_df["date"].dt.date == date.date())
@@ -96,21 +127,19 @@ class DividendProcessor:
                         )
                     )
                 )
+                if account:
+                    mask &= self.transactions_df["account"] == account
 
                 if not self.transactions_df.loc[mask].empty:
-                    quantity = self.transactions_df.loc[mask, "quantity"]
-                    if isinstance(quantity, pd.Series):
-                        shares = quantity.sum()
-                    else:
-                        shares = quantity
-
                     old_total = self.transactions_df.loc[mask, "total_value"]
                     if isinstance(old_total, pd.Series):
                         old_total_value = old_total.sum()
                     else:
                         old_total_value = old_total
 
-                    new_total_value = shares * new_div_per_share
+                    # Negative because dividends are cash outflows from the
+                    # portfolio perspective
+                    new_total_value = -shares * new_div_per_share
 
                     self.logger.info(
                         "Updating %s dividend on %s: total from $%.2f to $%.2f",
