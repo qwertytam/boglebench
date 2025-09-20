@@ -40,6 +40,13 @@ analysis:
     - "tracking_error"
     - "correlation"
 
+  attribution_analysis:
+    enabled: true
+    method: "Brinson" # Options: Brinson, Brinson-Fachler
+    transaction_groups: # Columns in transactions CSV to group by
+      - "group_asset_class" # Must start with "group"
+      - "group_sector"
+
 # Benchmark settings
 benchmark:
   rebalance_frequency: "monthly" # Options: daily, weekly, monthly, quarterly, yearly, none

@@ -64,7 +64,7 @@ def is_series_valid(series: pd.Series) -> bool:
 def _clean_transaction_data(
     df: pd.DataFrame,
     default_tz: Union[str, tzinfo] = DateAndTimeConstants.TZ_UTC.value,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, list[str]]:
     """Clean and validate transaction data."""
     # Make a copy to avoid modifying original
     df = df.copy()
@@ -110,9 +110,6 @@ def _clean_transaction_data(
 
     opt_columns = [
         "account",
-        "group1",
-        "group2",
-        "group3",
         "div_type",
         "div_pay_date",
         "div_record_date",
@@ -149,6 +146,14 @@ def _clean_transaction_data(
     for date_col in ["div_pay_date", "div_ex_date", "div_record_date"]:
         if date_col in df.columns:
             df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+
+    # Get attribution groups if present
+    attrib_group_cols = []
+    attrib_group_cols = [col for col in df.columns if col.startswith("group")]
+    if attrib_group_cols:
+        logger.debug(
+            "ℹ️  Found attribution group columns: %s", attrib_group_cols
+        )
 
     # Clean account names (strip whitespace, title case)
     df["account"] = df["account"].str.strip().str.title()
@@ -247,10 +252,12 @@ def _clean_transaction_data(
     # Sort by date
     df = df.sort_values("date").reset_index(drop=True)
 
-    return df
+    return df, attrib_group_cols
 
 
-def load_validate_transactions(file_path: Path) -> pd.DataFrame:
+def load_validate_transactions(
+    file_path: Path,
+) -> tuple[pd.DataFrame, list[str]]:
     """
     Load and validate transaction data from CSV file.
 
@@ -258,7 +265,8 @@ def load_validate_transactions(file_path: Path) -> pd.DataFrame:
         file_path: Path to transactions CSV
 
     Returns:
-        DataFrame with processed transaction data
+        tuple[pd.DataFrame, list[str]]: DataFrame with processed transaction
+        data and list of attribution group columns
 
     Raises:
         FileNotFoundError: If transaction file doesn't exist
@@ -277,7 +285,7 @@ def load_validate_transactions(file_path: Path) -> pd.DataFrame:
         raise ValueError(f"Error reading CSV file: {e}") from e
 
     # Clean and validate data
-    df = _clean_transaction_data(df)
+    df, attrib_group_cols = _clean_transaction_data(df)
 
     logger.debug(
         "✅ Loaded %d transactions for %d unique assets with date range: %s to %s",
@@ -287,4 +295,4 @@ def load_validate_transactions(file_path: Path) -> pd.DataFrame:
         df["date"].max(),
     )
 
-    return df
+    return df, attrib_group_cols

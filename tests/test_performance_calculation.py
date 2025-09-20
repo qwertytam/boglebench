@@ -319,6 +319,8 @@ class TestPerformanceCalculation:
         accuracy = 0.001 / 100  # 0.001% accuracy
 
         if scenario_name == "simple_case":
+            summary = results.summary()
+            print(summary)
             # Check initial and final portfolio values
             purchase_price = 180.00
             start_price = 179.58  # price at close on first trading day

@@ -18,6 +18,7 @@ from typing import Dict, Optional, Union
 
 import pandas as pd
 
+from ..core.attribution import AttributionCalculator
 from ..core.composite_benchmark import CompositeBenchmarkBuilder
 from ..core.constants import DateAndTimeConstants, Defaults
 from ..core.dates import AnalysisPeriod
@@ -68,6 +69,7 @@ class BogleBenchAnalyzer:
         self.portfolio_history = pd.DataFrame()
         self.benchmark_data = pd.DataFrame()
         self.performance_results = PerformanceResults()
+        self.attrib_group_cols: list[str] = []
 
         self.config = ConfigManager(config_path)
 
@@ -135,7 +137,9 @@ class BogleBenchAnalyzer:
             file_path = str(self.config.get_transactions_file_path())
         self.logger.info("📄 Loading transactions from: %s", file_path)
 
-        self.transactions = load_validate_transactions(Path(file_path))
+        self.transactions, self.attrib_group_cols = load_validate_transactions(
+            Path(file_path)
+        )
         self.logger.info("✅ Loaded %d transactions", len(self.transactions))
 
         return self.transactions
@@ -286,7 +290,6 @@ class BogleBenchAnalyzer:
                 )
             },
         }
-
         benchmark_metrics = {}
         if "benchmark_returns" in self.portfolio_history.columns:
             benchmark_metrics = calculate_metrics(
@@ -309,12 +312,36 @@ class BogleBenchAnalyzer:
                 annual_risk_free_rate,
             )
 
+        # Calculate performance attribution
+        self.logger.info("📊 Calculating performance attribution...")
+        attrib_calculator = AttributionCalculator(
+            portfolio_history=self.portfolio_history,
+            transactions=self.transactions,
+            attrib_group_cols=self.attrib_group_cols,
+        )
+
+        # Calculate attribution by holding and account
+        holding_attribution = attrib_calculator.calculate(group_by="ticker")
+        account_attribution = attrib_calculator.calculate(group_by="account")
+
+        # Calculate for all discovered factor columns
+        factor_attributions = {}
+        factor_columns = sorted(list(set(self.attrib_group_cols)))
+        for factor in factor_columns:
+            self.logger.info("Calculating attribution for factor: %s", factor)
+            factor_attributions[factor] = attrib_calculator.calculate(
+                group_by=factor
+            )
+
         self.performance_results = PerformanceResults(
             transactions=self.transactions,
             portfolio_metrics=portfolio_metrics,
             benchmark_metrics=benchmark_metrics,
             relative_metrics=relative_metrics,
             portfolio_history=self.portfolio_history,
+            holding_attribution=holding_attribution,
+            account_attribution=account_attribution,
+            factor_attributions=factor_attributions,
             config=self.config,
         )
 

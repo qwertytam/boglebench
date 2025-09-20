@@ -1,7 +1,7 @@
 """Results container and reporting for portfolio performance analysis."""
 
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Callable, Dict, Mapping, Optional
 
 import pandas as pd
 
@@ -21,6 +21,9 @@ class PerformanceResults:
         benchmark_metrics: Optional[Dict] = None,
         relative_metrics: Optional[Dict] = None,
         portfolio_history: Optional[pd.DataFrame] = None,
+        holding_attribution: Optional[pd.DataFrame] = None,
+        account_attribution: Optional[pd.DataFrame] = None,
+        factor_attributions: Optional[Dict] = None,
         config: Optional[ConfigManager] = None,
     ):
         self.transactions = transactions
@@ -28,6 +31,9 @@ class PerformanceResults:
         self.benchmark_metrics = benchmark_metrics
         self.relative_metrics = relative_metrics
         self.portfolio_history = portfolio_history
+        self.holding_attribution = holding_attribution
+        self.account_attribution = account_attribution
+        self.factor_attributions = factor_attributions
         self.config = config
 
         self.logger = get_logger("core.results")
@@ -114,6 +120,38 @@ class PerformanceResults:
         lines.append(
             "   Focus on low costs, diversification, and long-term discipline."
         )
+
+        # Format attribution tables if they exist
+        if self.holding_attribution is not None:
+            lines.append("\n🏷️  HOLDING-LEVEL ATTRIBUTION")
+            lines.append(
+                self.holding_attribution.to_string(
+                    float_format="{:,.2%}".format,
+                    formatters=self._get_formatters(),
+                    index=True,
+                )
+            )
+
+        if self.account_attribution is not None:
+            lines.append("\n🏦 ACCOUNT-LEVEL ATTRIBUTION")
+            lines.append(
+                self.account_attribution.to_string(
+                    float_format="{:,.2%}".format,
+                    formatters=self._get_formatters(),
+                    index=True,
+                )
+            )
+
+        if self.factor_attributions:
+            for factor, df in self.factor_attributions.items():
+                lines.append(f"\n🔍 FACTOR-LEVEL ATTRIBUTION: {factor}")
+                lines.append(
+                    df.to_string(
+                        float_format="{:,.2%}".format,
+                        formatters=self._get_formatters(),
+                        index=True,
+                    )
+                )
 
         return "\n".join(lines)
 
@@ -339,3 +377,13 @@ class PerformanceResults:
             pd.DataFrame(relative_data).to_csv(relative_file, index=False)
 
         return str(output_path)
+
+    def _get_formatters(self) -> Mapping[str | int, Callable]:
+        """Returns a mapping of formatters for pandas to_string."""
+        return {
+            "Avg. Weight": "{:,.1%}".format,
+            "Return (TWR)": "{:,.2%}".format,
+            "Contribution to Portfolio Return": "{:,.2%}".format,
+            "Excess Return vs. Benchmark": "{:,.2%}".format,
+            "Contribution to Excess Return": "{:,.2%}".format,
+        }

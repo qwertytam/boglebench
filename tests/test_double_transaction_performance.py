@@ -362,6 +362,7 @@ class TestMultiTransactionPerformance:
         analyzer.build_portfolio_history()
         results = analyzer.calculate_performance()
         summary = results.summary()
+        print(summary)
 
         expected_periods = 10
 
