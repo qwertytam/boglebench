@@ -261,6 +261,13 @@ class PortfolioHistoryBuilder:
                 for inv, inc in zip(inv_cfs, inc_cfs)
             ]
 
+        # Add Ticker-level returns
+        for ticker in self.tickers:
+            price_col = f"{ticker}_price"
+            # Calculate the daily percentage change of the price.
+            # This is the true market return for the ticker.
+            df[f"{ticker}_return"] = df[price_col].pct_change().fillna(0)
+
         # Add returns
         df["portfolio_daily_return_mod_dietz"] = (
             calculate_modified_dietz_returns(df, config=self.config)
