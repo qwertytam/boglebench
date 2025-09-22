@@ -189,6 +189,17 @@ class PerformanceResults:
                         )
                         lines.append("\n")
 
+                    if (
+                        self.brinson_summary is not None
+                        and category in self.brinson_summary.index
+                    ):
+                        total_selection = self.brinson_summary.loc[
+                            category, "Selection Effect"
+                        ]
+                        lines.append(
+                            f"\nTotal Selection Effect for {category}: {total_selection:.2%}"
+                        )
+
         return "\n".join(lines)
 
     def get_portfolio_returns(self) -> pd.Series:
