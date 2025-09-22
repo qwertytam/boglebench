@@ -39,7 +39,7 @@ def scenario_single_stock_cash_dividend():
         [
             {
                 "date": "2023-01-02",
-                "ticker": "TICKA",
+                "symbol": "TICKA",
                 "transaction_type": "BUY",
                 "quantity": 100,
                 "value_per_share": 10.00,
@@ -48,7 +48,7 @@ def scenario_single_stock_cash_dividend():
             },
             {
                 "date": "2023-01-04",
-                "ticker": "TICKA",
+                "symbol": "TICKA",
                 "transaction_type": "DIVIDEND",
                 "quantity": 0,  # Cash dividend, no shares involved
                 "value_per_share": 0,  # Not used for cash dividend
@@ -83,7 +83,7 @@ def scenario_single_stock_full_reinvestment():
         [
             {
                 "date": "2023-01-02",
-                "ticker": "TICKB",
+                "symbol": "TICKB",
                 "transaction_type": "BUY",
                 "quantity": 100,
                 "value_per_share": 20.00,
@@ -92,7 +92,7 @@ def scenario_single_stock_full_reinvestment():
             },
             {
                 "date": "2023-01-04",
-                "ticker": "TICKB",
+                "symbol": "TICKB",
                 "transaction_type": "DIVIDEND",
                 "quantity": 0,  # Cash dividend, no shares involved
                 "value_per_share": 0,  # Not used for cash dividend
@@ -101,7 +101,7 @@ def scenario_single_stock_full_reinvestment():
             },
             {
                 "date": "2023-01-04",
-                "ticker": "TICKB",
+                "symbol": "TICKB",
                 "transaction_type": "DIVIDEND_REINVEST",
                 "quantity": 2.5,  # $50 dividend / $20 share price = 2.5 shares
                 "value_per_share": 20.0,
@@ -138,7 +138,7 @@ def scenario_single_stock_partial_reinvestment():
         [
             {
                 "date": "2023-01-02",
-                "ticker": "TICKC",
+                "symbol": "TICKC",
                 "transaction_type": "BUY",
                 "quantity": 100,
                 "value_per_share": 30.00,
@@ -147,7 +147,7 @@ def scenario_single_stock_partial_reinvestment():
             },
             {
                 "date": "2023-01-04",
-                "ticker": "TICKC",
+                "symbol": "TICKC",
                 "transaction_type": "DIVIDEND",  # $100 total value
                 "quantity": 0,  # Cash dividend, no shares involved
                 "value_per_share": 0,  # Not used for cash dividend
@@ -156,7 +156,7 @@ def scenario_single_stock_partial_reinvestment():
             },
             {
                 "date": "2023-01-04",
-                "ticker": "TICKC",
+                "symbol": "TICKC",
                 # $75 reinvested portion
                 "transaction_type": "DIVIDEND_REINVEST",
                 "quantity": 2.5,  # $75 / $30 share price
@@ -193,7 +193,7 @@ def scenario_dividend_after_partial_sale():
         [
             {
                 "date": "2023-01-02",
-                "ticker": "TICKD",
+                "symbol": "TICKD",
                 "transaction_type": "BUY",
                 "quantity": 200,
                 "value_per_share": 10.00,
@@ -202,7 +202,7 @@ def scenario_dividend_after_partial_sale():
             },
             {
                 "date": "2023-01-03",
-                "ticker": "TICKD",
+                "symbol": "TICKD",
                 "transaction_type": "SELL",
                 "quantity": 50,  # Sell 50 shares
                 "value_per_share": 10.10,
@@ -211,7 +211,7 @@ def scenario_dividend_after_partial_sale():
             },
             {
                 "date": "2023-01-05",
-                "ticker": "TICKD",
+                "symbol": "TICKD",
                 "transaction_type": "DIVIDEND",
                 "quantity": 0,  # Cash dividend, no shares involved
                 "value_per_share": 0,  # Not used for cash dividend
@@ -287,9 +287,9 @@ class TestDividendScenarios:
         transactions_df.to_csv(transactions_file_path, index=False)
 
         market_data_path = temp_config.get_market_data_path()
-        for ticker, df in market_data_dict.items():
+        for symbol, df in market_data_dict.items():
             df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True)
-            df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
+            df.to_parquet(market_data_path / f"{symbol}.parquet", index=False)
 
         output_path = temp_config.get_output_path()
 

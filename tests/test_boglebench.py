@@ -26,7 +26,7 @@ class TestBogleBenchAnalyzer:
                     "2023-03-15",
                     "2023-04-15",
                 ],
-                "ticker": ["AAPL", "MSFT", "AAPL", "SPY"],
+                "symbol": ["AAPL", "MSFT", "AAPL", "SPY"],
                 "transaction_type": ["BUY", "BUY", "BUY", "BUY"],
                 "quantity": [100, 50, 50, 25],
                 "value_per_share": [150.50, 240.25, 155.75, 380.00],
@@ -96,7 +96,7 @@ class TestBogleBenchAnalyzer:
         assert analyzer.transactions is not None
         assert "total_value" in result.columns
         assert "account" in result.columns
-        assert result["ticker"].tolist() == ["AAPL", "MSFT", "AAPL", "SPY"]
+        assert result["symbol"].tolist() == ["AAPL", "MSFT", "AAPL", "SPY"]
 
     def test_load_transactions_missing_file(self, temp_config):
         """Test loading transactions with missing file."""
@@ -128,7 +128,7 @@ class TestBogleBenchAnalyzer:
 
         # Check cleaning results
         assert len(cleaned) == 4
-        assert cleaned["ticker"].tolist() == ["AAPL", "MSFT", "SPY", "SPY"]
+        assert cleaned["symbol"].tolist() == ["AAPL", "MSFT", "SPY", "SPY"]
         assert cleaned["transaction_type"].tolist() == [
             "BUY",
             "BUY",
@@ -188,7 +188,7 @@ class TestBogleBenchAnalyzer:
         assert "group2" in result.columns
         assert "group3" in result.columns
         assert "notes" in result.columns
-        assert result["ticker"].tolist() == [
+        assert result["symbol"].tolist() == [
             "AAPL",
             "MSFT",
             "SPY",
@@ -208,7 +208,7 @@ def test_basic_workflow():
         transactions = pd.DataFrame(
             {
                 "date": ["2023-01-15", "2023-02-15"],
-                "ticker": ["AAPL", "MSFT"],
+                "symbol": ["AAPL", "MSFT"],
                 "transaction_type": ["BUY", "BUY"],
                 "quantity": [100, 50],
                 "value_per_share": [150.50, 240.25],

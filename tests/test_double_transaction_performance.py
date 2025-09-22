@@ -71,9 +71,9 @@ class TestMultiTransactionPerformance:
         )
 
         market_data_path = temp_config.get_market_data_path()
-        for ticker, df in market_data.items():
+        for symbol, df in market_data.items():
             df["date"] = pd.to_datetime(df["date"], utc=True, errors="coerce")
-            df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
+            df.to_parquet(market_data_path / f"{symbol}.parquet", index=False)
 
         output_path = temp_config.get_output_path()
 

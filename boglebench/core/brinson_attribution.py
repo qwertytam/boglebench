@@ -168,7 +168,6 @@ class BrinsonAttributionCalculator:
         # To use the history builder, we need to create a "dummy" transaction list
         # We assume the benchmark is bought on day one and held.
         benchmark_trans["date"] = start_date
-        benchmark_trans["ticker"] = benchmark_trans["symbol"]
         benchmark_trans["quantity"] = benchmark_trans[
             "weight"
         ]  # Use weight as a proxy for quantity
@@ -210,7 +209,6 @@ class BrinsonAttributionCalculator:
         elif source == "benchmark":
             trans_df = pd.DataFrame(self.benchmark_components).rename(
                 columns={
-                    "symbol": "ticker",
                     "asset_class": "asset_class",
                 }
             )
@@ -223,26 +221,26 @@ class BrinsonAttributionCalculator:
         categories = trans_df[group_by].unique()
 
         for category in categories:
-            tickers_in_cat = trans_df[trans_df[group_by] == category][
-                "ticker"
+            symbols_in_cat = trans_df[trans_df[group_by] == category][
+                "symbol"
             ].unique()
 
-            # Aggregate returns (weighted average of ticker returns)
+            # Aggregate returns (weighted average of symbol returns)
             cat_return = pd.Series(0.0, index=history_df.index)
             cat_total_value = pd.Series(0.0, index=history_df.index)
 
-            for ticker in tickers_in_cat:
-                return_col = f"{ticker}_return"
-                value_col = f"{ticker}_total_value"
+            for symbol in symbols_in_cat:
+                return_col = f"{symbol}_return"
+                value_col = f"{symbol}_total_value"
                 if (
                     return_col in history_df.columns
                     and value_col in history_df.columns
                 ):
-                    ticker_start_value = (
+                    symbol_start_value = (
                         history_df[value_col].shift(1).fillna(0)
                     )
-                    cat_return += ticker_start_value * history_df[return_col]
-                    cat_total_value += ticker_start_value
+                    cat_return += symbol_start_value * history_df[return_col]
+                    cat_total_value += symbol_start_value
 
             grouped_returns[category] = (
                 (cat_return / cat_total_value)
@@ -252,9 +250,9 @@ class BrinsonAttributionCalculator:
 
             # Aggregate weights
             weight_cols = [
-                f"{ticker}_weight"
-                for ticker in tickers_in_cat
-                if f"{ticker}_weight" in history_df.columns
+                f"{symbol}_weight"
+                for symbol in symbols_in_cat
+                if f"{symbol}_weight" in history_df.columns
             ]
             if weight_cols:
                 grouped_weights[category] = history_df[weight_cols].sum(axis=1)
@@ -266,14 +264,14 @@ class BrinsonAttributionCalculator:
         group_by: str,
         bench_returns: pd.DataFrame,
     ) -> Dict[str, pd.DataFrame]:
-        """Calculates the contribution of each individual ticker to the
+        """Calculates the contribution of each individual symbol to the
         Selection Effect."""
         drilldown = {}
-        port_tickers_by_cat = self.transactions.groupby(group_by)[
-            "ticker"
+        port_symbols_by_cat = self.transactions.groupby(group_by)[
+            "symbol"
         ].unique()
 
-        for category, tickers in port_tickers_by_cat.items():
+        for category, symbols in port_symbols_by_cat.items():
             cat_results = {}
             if category in bench_returns:
                 prod_result = (1 + bench_returns[category]).prod()
@@ -284,44 +282,44 @@ class BrinsonAttributionCalculator:
             else:
                 bench_cat_return = 0
 
-            for ticker in tickers:
-                ticker_return_col = f"{ticker}_return"
-                if ticker_return_col in self.portfolio_history.columns:
-                    # Calculate TWR for this specific ticker
-                    ticker_values = self.portfolio_history[
-                        f"{ticker}_total_value"
+            for symbol in symbols:
+                symbol_return_col = f"{symbol}_return"
+                if symbol_return_col in self.portfolio_history.columns:
+                    # Calculate TWR for this specific symbol
+                    symbol_values = self.portfolio_history[
+                        f"{symbol}_total_value"
                     ]
-                    start_values = ticker_values.shift(1).fillna(0)
+                    start_values = symbol_values.shift(1).fillna(0)
 
                     # Ensure daily returns are only calculated when the position is held
-                    ticker_returns_daily = np.where(
+                    symbol_returns_daily = np.where(
                         start_values > 0,
-                        self.portfolio_history[ticker_return_col],
+                        self.portfolio_history[symbol_return_col],
                         0,
                     )
                     prod_result = (
                         1
                         + pd.Series(
-                            ticker_returns_daily,
+                            symbol_returns_daily,
                             index=self.portfolio_history.index,
                         )
                     ).prod()
                     if isinstance(prod_result, (int, float, np.number)):
-                        ticker_twr = float(prod_result) - 1.0
+                        symbol_twr = float(prod_result) - 1.0
                     else:
-                        ticker_twr = 0.0
+                        symbol_twr = 0.0
 
                     # Calculate contribution to selection
                     avg_weight_in_cat = self.portfolio_history[
-                        f"{ticker}_weight"
+                        f"{symbol}_weight"
                     ].mean()
                     contribution = avg_weight_in_cat * (
-                        ticker_twr - bench_cat_return
+                        symbol_twr - bench_cat_return
                     )
 
-                    cat_results[ticker] = {
+                    cat_results[symbol] = {
                         "Avg. Weight": avg_weight_in_cat,
-                        "Return (TWR)": ticker_twr,
+                        "Return (TWR)": symbol_twr,
                         "Contribution to Selection": contribution,
                     }
 

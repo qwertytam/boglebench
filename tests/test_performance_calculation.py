@@ -196,17 +196,17 @@ class TestPerformanceCalculation:
         shutil.copyfile(transactions_source, transactions_file_path)
 
         market_data_dict = {}
-        for ticker, filename in market_data_files.items():
+        for symbol, filename in market_data_files.items():
             market_data_path = test_data_dir / filename
-            market_data_dict[ticker] = pd.read_csv(
+            market_data_dict[symbol] = pd.read_csv(
                 market_data_path, parse_dates=["date"]
             )
         market_data_path = temp_config.get_market_data_path()
-        for ticker, df in market_data_dict.items():
+        for symbol, df in market_data_dict.items():
             df["date"] = pd.to_datetime(
                 df["date"], errors="coerce", format="%Y-%m-%d", utc=True
             )
-            df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
+            df.to_parquet(market_data_path / f"{symbol}.parquet", index=False)
 
         output_path = temp_config.get_output_path()
 

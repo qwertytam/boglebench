@@ -165,8 +165,8 @@ class BogleBenchCharts:
         holdings = self.results.get_account_holdings()
 
         if not holdings.empty:
-            # Aggregate by ticker across all accounts
-            asset_allocation = holdings.groupby("ticker")["value"].sum()
+            # Aggregate by symbol across all accounts
+            asset_allocation = holdings.groupby("symbol")["value"].sum()
 
             wedges, texts, autotexts = ax.pie(
                 asset_allocation.values,

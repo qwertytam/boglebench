@@ -204,19 +204,19 @@ class BogleBenchAnalyzer:
             None
 
         """
-        portfolio_tickers = self.transactions["ticker"].unique().tolist()
+        portfolio_symbols = self.transactions["symbol"].unique().tolist()
 
         benchmark_components = self.config.get_benchmark_components()
-        benchmark_tickers = [comp["symbol"] for comp in benchmark_components]
+        benchmark_symbols = [comp["symbol"] for comp in benchmark_components]
 
-        all_tickers = list(set(portfolio_tickers + benchmark_tickers))
+        all_symbols = list(set(portfolio_symbols + benchmark_symbols))
         self.logger.debug(
-            "Fetching market data for %d unique tickers: %s",
-            len(all_tickers),
-            all_tickers,
+            "Fetching market data for %d unique symbols: %s",
+            len(all_symbols),
+            all_symbols,
         )
         self.market_data = self.market_data_provider.get_market_data(
-            tickers=all_tickers,
+            symbols=all_symbols,
             start_date=start_date,
             end_date=end_date,
         )
@@ -331,7 +331,7 @@ class BogleBenchAnalyzer:
         )
 
         # Calculate attribution by holding and account
-        holding_attribution = attrib_calculator.calculate(group_by="ticker")
+        holding_attribution = attrib_calculator.calculate(group_by="symbol")
         account_attribution = attrib_calculator.calculate(group_by="account")
 
         # Calculate for all discovered factor columns

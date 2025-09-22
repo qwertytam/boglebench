@@ -72,7 +72,7 @@ def _clean_transaction_data(
     # Validate required columns
     reqd_columns = [
         "date",
-        "ticker",
+        "symbol",
         "transaction_type",
         "quantity",
         "value_per_share",
@@ -105,8 +105,8 @@ def _clean_transaction_data(
     except Exception as e:
         raise ValueError(f"Error parsing dates: {e}") from e
 
-    # Clean ticker symbols (uppercase, strip whitespace)
-    df["ticker"] = df["ticker"].str.upper().str.strip()
+    # Clean symbol symbols (uppercase, strip whitespace)
+    df["symbol"] = df["symbol"].str.upper().str.strip()
 
     opt_columns = [
         "account",
@@ -290,7 +290,7 @@ def load_validate_transactions(
     logger.debug(
         "✅ Loaded %d transactions for %d unique assets with date range: %s to %s",
         len(df),
-        df["ticker"].nunique(),
+        df["symbol"].nunique(),
         df["date"].min(),
         df["date"].max(),
     )

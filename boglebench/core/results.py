@@ -313,20 +313,20 @@ class PerformanceResults:
         holdings_data = []
 
         for account in accounts:
-            # Find all ticker columns for this account
-            ticker_cols = [
+            # Find all symbol columns for this account
+            symbol_cols = [
                 col
                 for col in self.portfolio_history.columns
                 if col.startswith(f"{account}_") and col.endswith("_shares")
             ]
 
-            for col in ticker_cols:
-                ticker = col.replace(f"{account}_", "").replace("_shares", "")
+            for col in symbol_cols:
+                symbol = col.replace(f"{account}_", "").replace("_shares", "")
                 shares = latest_data[col]
 
                 if shares != 0:  # Only include non-zero holdings
-                    value_col = f"{account}_{ticker}_value"
-                    price_col = f"{account}_{ticker}_price"
+                    value_col = f"{account}_{symbol}_value"
+                    price_col = f"{account}_{symbol}_price"
 
                     value = latest_data.get(value_col, 0)
                     price = latest_data.get(price_col, 0)
@@ -337,7 +337,7 @@ class PerformanceResults:
                     holdings_data.append(
                         {
                             "account": account,
-                            "ticker": ticker,
+                            "symbol": symbol,
                             "quantity": shares,
                             "price": price,
                             "value": value,

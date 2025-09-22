@@ -1,5 +1,5 @@
 """
-Calculates performance attribution by various groupings (ticker, account, factor).
+Calculates performance attribution by various groupings (symbol, account, factor).
 """
 
 import numpy as np
@@ -24,16 +24,16 @@ class AttributionCalculator:
         self.portfolio_history = portfolio_history
         self.transactions = transactions
         self.attrib_group_cols = attrib_group_cols
-        self.ticker_to_groups_map = self._create_ticker_map()
+        self.symbol_to_groups_map = self._create_symbol_map()
 
-    def _create_ticker_map(self) -> dict:
-        """Creates a map from ticker to its associated factor groups."""
+    def _create_symbol_map(self) -> dict:
+        """Creates a map from symbol to its associated factor groups."""
         factor_cols = sorted(list(set(self.attrib_group_cols)))
         if not factor_cols:
             return {}
         return (
-            self.transactions.drop_duplicates(subset=["ticker"], keep="last")
-            .set_index("ticker")[factor_cols]
+            self.transactions.drop_duplicates(subset=["symbol"], keep="last")
+            .set_index("symbol")[factor_cols]
             .to_dict("index")
         )
 
@@ -103,13 +103,13 @@ class AttributionCalculator:
         group_values = pd.DataFrame(index=history.index)
         group_cash_flows = pd.DataFrame(index=history.index)
 
-        if group_by == "ticker":
-            groups = self.transactions["ticker"].unique()
+        if group_by == "symbol":
+            groups = self.transactions["symbol"].unique()
 
-            def __find_ticker_value_col(g, col):
+            def __find_symbol_value_col(g, col):
                 return f"_{g}_value" in col
 
-            value_identifier = __find_ticker_value_col
+            value_identifier = __find_symbol_value_col
         elif group_by == "account":
             groups = self.transactions["account"].unique()
 
@@ -123,12 +123,12 @@ class AttributionCalculator:
             groups = self.transactions[group_by].unique()
 
             def factor_val_identifier(group_item, col):
-                tickers_in_group = [
+                symbols_in_group = [
                     t
-                    for t, groups_map in self.ticker_to_groups_map.items()
+                    for t, groups_map in self.symbol_to_groups_map.items()
                     if groups_map.get(group_by) == group_item
                 ]
-                return any(f"_{t}_value" in col for t in tickers_in_group)
+                return any(f"_{t}_value" in col for t in symbols_in_group)
 
             value_identifier = factor_val_identifier
 
@@ -180,40 +180,40 @@ class AttributionCalculator:
                 group_cash_flow = cash_flows[group_name]
             else:
                 # Otherwise, derive the cash flow from market effects
-                # This will apply to tickers and factors
+                # This will apply to symbols and factors
 
-                # Find all tickers within this group
-                if group_by == "ticker":
-                    tickers_in_group = [group_name]
+                # Find all symbols within this group
+                if group_by == "symbol":
+                    symbols_in_group = [group_name]
                 else:  # Factor
-                    tickers_in_group = [
+                    symbols_in_group = [
                         t
-                        for t, groups_map in self.ticker_to_groups_map.items()
+                        for t, groups_map in self.symbol_to_groups_map.items()
                         if groups_map.get(group_by) == group_name
                     ]
 
-                if not tickers_in_group:
+                if not symbols_in_group:
                     continue
 
-                # Calculate the weighted average market return for all tickers in the group
+                # Calculate the weighted average market return for all symbols in the group
                 market_effect = pd.Series(0.0, index=history_df.index)
-                for ticker in tickers_in_group:
-                    return_col = f"{ticker}_return"
-                    # Find all value columns for this ticker across all accounts
-                    ticker_value_cols = [
+                for symbol in symbols_in_group:
+                    return_col = f"{symbol}_return"
+                    # Find all value columns for this symbol across all accounts
+                    symbol_value_cols = [
                         c
                         for c in history_df.columns
-                        if f"_{ticker}_value" in c
+                        if f"_{symbol}_value" in c
                     ]
-                    if return_col in history_df.columns and ticker_value_cols:
-                        ticker_start_value = (
-                            history_df[ticker_value_cols]
+                    if return_col in history_df.columns and symbol_value_cols:
+                        symbol_start_value = (
+                            history_df[symbol_value_cols]
                             .sum(axis=1)
                             .shift(1)
                             .fillna(0)
                         )
                         market_effect += (
-                            ticker_start_value * history_df[return_col]
+                            symbol_start_value * history_df[return_col]
                         )
 
                 group_cash_flow = (

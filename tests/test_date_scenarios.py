@@ -51,7 +51,7 @@ def transactions_fixture():
         [
             {
                 "date": "2023-01-02",
-                "ticker": "TICK",
+                "symbol": "TICK",
                 "transaction_type": "BUY",
                 "quantity": 10,
                 "value_per_share": 103.00,
@@ -60,7 +60,7 @@ def transactions_fixture():
             },
             {
                 "date": "2023-01-03",
-                "ticker": "TICK",
+                "symbol": "TICK",
                 "transaction_type": "BUY",
                 "quantity": 1,
                 "value_per_share": 104.00,
@@ -69,7 +69,7 @@ def transactions_fixture():
             },
             {
                 "date": "2023-01-04",
-                "ticker": "TICK",
+                "symbol": "TICK",
                 "transaction_type": "SELL",
                 "quantity": 1,
                 "value_per_share": 105.00,
@@ -78,7 +78,7 @@ def transactions_fixture():
             },
             {
                 "date": "2023-01-04",
-                "ticker": "TICK",
+                "symbol": "TICK",
                 "transaction_type": "DIVIDEND",
                 "quantity": 0.0,
                 "value_per_share": 0,
@@ -87,7 +87,7 @@ def transactions_fixture():
             },
             {
                 "date": "2023-01-06",
-                "ticker": "TICK",
+                "symbol": "TICK",
                 "transaction_type": "SELL",
                 "quantity": 5,
                 "value_per_share": 104.00,
@@ -159,8 +159,8 @@ class TestDateScenarios:
         transactions_fixture.to_csv(transactions_file_path, index=False)
 
         market_data_path = temp_config.get_market_data_path()
-        for ticker, df in market_data_fixture.items():
-            df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
+        for symbol, df in market_data_fixture.items():
+            df.to_parquet(market_data_path / f"{symbol}.parquet", index=False)
 
         output_path = temp_config.get_output_path()
 

@@ -1,4 +1,4 @@
-date,ticker,transaction_type,quantity,value_per_share,account,group1,group2,group3,notes,total_value
+date,symbol,transaction_type,quantity,value_per_share,account,group1,group2,group3,notes,total_value
 2023-01-15,AAPL,BUY,100,150.50,Schwab_401k,Tech,Large Cap,US,Initial purchase,15050.0
 2023-01-15,MSFT,BUY,50,240.25,Schwab_401k,Tech,Large Cap,US,Diversification,12012.5
 2023-01-15,SPY,BUY,25,380.00,Fidelity_IRA,Index,Broad Market,US,Core holding,9500.0

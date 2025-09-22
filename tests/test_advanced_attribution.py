@@ -110,14 +110,14 @@ class TestAdvancedAttribution:
         market_data_path = (
             Path(temp_config.get("data.base_path")) / "market_data"
         )
-        for ticker, df in market_data_dict.items():
-            df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
+        for symbol, df in market_data_dict.items():
+            df.to_parquet(market_data_path / f"{symbol}.parquet", index=False)
 
         market_data_path = (
             Path(temp_config.get("data.base_path")) / "market_data"
         )
-        for ticker, df in market_data_dict.items():
-            df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
+        for symbol, df in market_data_dict.items():
+            df.to_parquet(market_data_path / f"{symbol}.parquet", index=False)
 
         return market_data_dict
 
@@ -165,7 +165,7 @@ class TestAdvancedAttribution:
     def test_brinson_outperformance_scenario(self, scenario_analyzer):
         """Test Case 1.1: Verify Allocation & Selection for outperformance."""
         transactions_data = """
-date,ticker,transaction_type,quantity,value_per_share,total_value,account,asset_class
+date,symbol,transaction_type,quantity,value_per_share,total_value,account,asset_class
 2023-01-02,AAPL,BUY,100,150,15000,Test_Account,US Equity
         """
         analyzer = scenario_analyzer
@@ -184,7 +184,7 @@ date,ticker,transaction_type,quantity,value_per_share,total_value,account,asset_
     def test_brinson_selection_drilldown(self, scenario_analyzer):
         """Test Case 1.4: Verify the drill-down report math."""
         transactions_data = """
-date,ticker,transaction_type,quantity,value_per_share,total_value,account,asset_class
+date,symbol,transaction_type,quantity,value_per_share,total_value,account,asset_class
 2023-01-02,AAPL,BUY,50,150,7500,Test_Account,US Equity
 2023-01-02,MSFT,BUY,50,100,5000,Test_Account,US Equity
 """
@@ -213,7 +213,7 @@ date,ticker,transaction_type,quantity,value_per_share,total_value,account,asset_
     def test_overlapping_holdings_round_trip(self, scenario_analyzer):
         """Test Case 4.1: Test performance with an overlapping round-trip trade."""
         transactions_data = """
-date,ticker,transaction_type,quantity,value_per_share,total_value,account,asset_class
+date,symbol,transaction_type,quantity,value_per_share,total_value,account,asset_class
 2023-01-02,MSFT,BUY,10,100,1000,Test_Account,US Equity
 2023-01-05,AAPL,BUY,20,153.4,3068,Test_Account,US Equity
 2023-01-10,AAPL,SELL,20,160.1,3202,Test_Account,US Equity
@@ -246,7 +246,7 @@ date,ticker,transaction_type,quantity,value_per_share,total_value,account,asset_
     def test_short_selling_scenario(self, scenario_analyzer):
         """Test Case 4.2: Test handling of a short-selling transaction."""
         transactions_data = """
-date,ticker,transaction_type,quantity,value_per_share,total_value,account,asset_class
+date,symbol,transaction_type,quantity,value_per_share,total_value,account,asset_class
 2023-01-05,TSLA,SELL,20,200,4000,Test_Account,US Equity
 2023-01-11,TSLA,BUY,20,180,3600,Test_Account,US Equity
 """

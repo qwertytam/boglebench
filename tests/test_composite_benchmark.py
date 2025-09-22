@@ -15,7 +15,7 @@ from boglebench.utils.config import ConfigManager
 
 @pytest.fixture
 def mock_market_data():
-    """Provides mock market data for two tickers, VTI and VXUS."""
+    """Provides mock market data for two symbols, VTI and VXUS."""
     dates = pd.to_datetime(
         pd.date_range("2023-01-01", "2023-03-30", freq="D"), utc=True
     )
@@ -68,7 +68,7 @@ def transactions_fixture():
         [
             {
                 "date": "2023-01-02",
-                "ticker": "VTI",
+                "symbol": "VTI",
                 "transaction_type": "BUY",
                 "quantity": 10,
                 "value_per_share": 100.00,
@@ -134,8 +134,8 @@ def test_composite_benchmark_calculation(
 
         market_data_path = config.get_market_data_path()
         market_data_path.mkdir(exist_ok=True)
-        for ticker, df in mock_market_data.items():
-            df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
+        for symbol, df in mock_market_data.items():
+            df.to_parquet(market_data_path / f"{symbol}.parquet", index=False)
 
         # --- Execution ---
         analyzer = BogleBenchAnalyzer(config_path=temp_config_file)
