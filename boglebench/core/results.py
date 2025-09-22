@@ -24,6 +24,8 @@ class PerformanceResults:
         holding_attribution: Optional[pd.DataFrame] = None,
         account_attribution: Optional[pd.DataFrame] = None,
         factor_attributions: Optional[Dict] = None,
+        brinson_summary: Optional[pd.DataFrame] = None,
+        selection_drilldown: Optional[dict[str, pd.DataFrame]] = None,
         config: Optional[ConfigManager] = None,
     ):
         self.transactions = transactions
@@ -34,6 +36,8 @@ class PerformanceResults:
         self.holding_attribution = holding_attribution
         self.account_attribution = account_attribution
         self.factor_attributions = factor_attributions
+        self.brinson_summary = brinson_summary
+        self.selection_drilldown = selection_drilldown
         self.config = config
 
         self.logger = get_logger("core.results")
@@ -152,6 +156,38 @@ class PerformanceResults:
                         index=True,
                     )
                 )
+
+        # --- 3. NEW: Add the Brinson Attribution section to the summary ---
+        if self.brinson_summary is not None and not self.brinson_summary.empty:
+            group_by = self.config.get(
+                "reporting.attribution_group_by", "asset_class"
+            )
+            lines.append(
+                f"\n🎯 BRINSON ATTRIBUTION vs. Benchmark (by {group_by})\n"
+            )
+
+            # Format the main Brinson summary table
+            brinson_df = self.brinson_summary[
+                ["Allocation Effect", "Selection Effect", "Total Effect"]
+            ]
+            lines.append(
+                brinson_df.to_string(float_format=lambda x: f"{x:,.2%}")
+            )
+            lines.append("\n")
+
+            # Add the detailed selection drill-down tables
+            if self.selection_drilldown:
+                for category, drilldown_df in self.selection_drilldown.items():
+                    if not drilldown_df.empty:
+                        lines.append(
+                            f"\n🔎 SELECTION DETAIL FOR '{category}'\n"
+                        )
+                        lines.append(
+                            drilldown_df.to_string(
+                                float_format=lambda x: f"{x:,.2%}"
+                            )
+                        )
+                        lines.append("\n")
 
         return "\n".join(lines)
 

@@ -73,7 +73,16 @@ class AttributionCalculator:
             benchmark_return_series = self.portfolio_history.set_index("date")[
                 "benchmark_return"
             ]
-            benchmark_twr = (1 + benchmark_return_series).prod() - 1
+            prod_result = (1 + benchmark_return_series).prod()
+            if isinstance(prod_result, (int, float, np.number)):
+                benchmark_twr = float(prod_result) - 1.0
+            else:
+                logger.error(
+                    "AttributionCalculator: Unexpected product result type: %s",
+                    type(prod_result),
+                )
+                benchmark_twr = 0.0
+
             summary["Excess Return vs. Benchmark"] = twr - benchmark_twr
             summary["Contribution to Excess Return"] = avg_weight * (
                 twr - benchmark_twr
@@ -96,10 +105,18 @@ class AttributionCalculator:
 
         if group_by == "ticker":
             groups = self.transactions["ticker"].unique()
-            value_identifier = lambda g, col: f"_{g}_value" in col
+
+            def __find_ticker_value_col(g, col):
+                return f"_{g}_value" in col
+
+            value_identifier = __find_ticker_value_col
         elif group_by == "account":
             groups = self.transactions["account"].unique()
-            value_identifier = lambda g, col: col.startswith(f"{g}_")
+
+            def __find_account_value_col(g, col):
+                return col.startswith(f"{g}_")
+
+            value_identifier = __find_account_value_col
         else:  # Factor
             if group_by not in self.transactions.columns:
                 return pd.DataFrame(), pd.DataFrame()
@@ -124,7 +141,11 @@ class AttributionCalculator:
 
             # Only aggregate explicit cash flows for accounts
             if group_by == "account":
-                cf_identifier = lambda g, col: col.startswith(f"{g}_cash_flow")
+
+                def __find_account_cash_flow_col(g, col):
+                    return col.startswith(f"{g}_cash_flow")
+
+                cf_identifier = __find_account_cash_flow_col
                 cols_for_group_cf = [
                     c for c in cash_flow_cols if cf_identifier(group, c)
                 ]

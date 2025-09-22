@@ -24,6 +24,7 @@ settings:
 analysis:
   start_date: null # If null, uses first transaction date
   end_date: null # If null, uses today
+  # Optional: Specify a risk-free rate for Sharpe Ratio calculation.
   risk_free_rate: 0.02 # 2% annual risk-free rate
 
   # Performance metrics to calculate
@@ -44,7 +45,7 @@ analysis:
     enabled: true
     method: "Brinson" # Options: Brinson, Brinson-Fachler
     transaction_groups: # Columns in transactions CSV to group by
-      - "group_asset_class" # Must start with "group"
+      - "asset_class" # Must start with "group"
       - "group_sector"
 
 # Benchmark settings
@@ -52,8 +53,15 @@ benchmark:
   rebalance_frequency: "monthly" # Options: daily, weekly, monthly, quarterly, yearly, none
   name: "Vanguard 60/40" # Descriptive name for reports
   components:
-    - { symbol: "VTI", weight: 0.60 } # Vanguard Total Stock Market ETF
-    - { symbol: "BND", weight: 0.40 } # Vanguard Total Bond Market ETF
+    - symbol: "VTI" # Vanguard Total Stock Market ETF
+      weight: 0.30
+      asset_class: "US Equity"
+    - symbol: VXUS # Vanguard Total International Stock ETF
+      weight: 0.40
+      asset_class: "International Equity"
+    - symbol: "BND" # Vanguard Total Bond Market ETF
+      weight: 0.40
+      asset_class: "US Bond"
 
   # Risk analysis settings
   risk_analysis:
@@ -129,3 +137,13 @@ validation:
   warn_on_weekends: true
   warn_on_holidays: true
   warn_on_missing_data: true
+
+# Reporting
+# ---------
+# Configure the output of the analysis summary.
+reporting:
+  # Set to true to include the detailed attribution analysis in the summary.
+  show_brinson_attribution: true
+  # The category to group by for the Brinson attribution analysis.
+  # This must be a column in both your transactions file and benchmark components.
+  attribution_group_by: "asset_class"

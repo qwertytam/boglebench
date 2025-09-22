@@ -19,6 +19,7 @@ from typing import Dict, Optional, Union
 import pandas as pd
 
 from ..core.attribution import AttributionCalculator
+from ..core.brinson_attribution import BrinsonAttributionCalculator
 from ..core.composite_benchmark import CompositeBenchmarkBuilder
 from ..core.constants import DateAndTimeConstants, Defaults
 from ..core.dates import AnalysisPeriod
@@ -70,6 +71,8 @@ class BogleBenchAnalyzer:
         self.benchmark_data = pd.DataFrame()
         self.performance_results = PerformanceResults()
         self.attrib_group_cols: list[str] = []
+        self.start_date: Optional[pd.Timestamp] = None
+        self.end_date: Optional[pd.Timestamp] = None
 
         self.config = ConfigManager(config_path)
 
@@ -160,6 +163,13 @@ class BogleBenchAnalyzer:
         if not period.start_date or not period.end_date:
             raise ValueError("Could not determine valid start and end dates")
 
+        self.start_date = period.start_date
+        self.end_date = period.end_date
+        self.logger.info(
+            "📅 Analysis period: %s to %s",
+            self.start_date,
+            self.end_date,
+        )
         self._fetch_market_data(period.start_date, period.end_date)
 
         processor = DividendProcessor(
@@ -333,6 +343,44 @@ class BogleBenchAnalyzer:
                 group_by=factor
             )
 
+        # Calculate Brinson-Fachler attribution if 'sector' is available
+        brinson_summary = None
+        selection_drilldown = None
+        if self.config.get("reporting.show_brinson_attribution", False):
+            self.logger.info("📊 Running Brinson attribution analysis...")
+            brinson_calculator = BrinsonAttributionCalculator(
+                config=self.config,
+                portfolio_history=self.portfolio_history,
+                transactions=self.transactions,
+                market_data=self.market_data,
+            )
+            group_by = self.config.get(
+                "reporting.attribution_group_by", "asset_class"
+            )
+            if isinstance(group_by, Dict):
+                group_by = group_by.get("value", "asset_class")
+            if group_by is None or not isinstance(group_by, str):
+                group_by = "asset_class"
+                self.logger.warning(
+                    "Invalid group_by for Brinson attribution. Using default 'asset_class'."
+                )
+            if self.start_date is None or self.end_date is None:
+                raise ValueError("Start date and end date must both be set")
+
+            if group_by not in self.transactions.columns:
+                self.logger.error(
+                    "Grouping column '%s' not found in transactions. "
+                    "Skipping Brinson attribution.",
+                    group_by,
+                )
+            else:
+                brinson_summary, selection_drilldown = (
+                    brinson_calculator.calculate(
+                        group_by, self.start_date, self.end_date
+                    )
+                )
+                self.logger.info("✅ Brinson attribution analysis complete!")
+
         self.performance_results = PerformanceResults(
             transactions=self.transactions,
             portfolio_metrics=portfolio_metrics,
@@ -342,6 +390,8 @@ class BogleBenchAnalyzer:
             holding_attribution=holding_attribution,
             account_attribution=account_attribution,
             factor_attributions=factor_attributions,
+            brinson_summary=brinson_summary,
+            selection_drilldown=selection_drilldown,
             config=self.config,
         )
 
