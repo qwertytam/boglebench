@@ -1,0 +1,333 @@
+"""
+Performs Brinson-Fachler performance attribution analysis.
+
+This module breaks down the active return (portfolio return vs. benchmark return)
+into Allocation and Selection effects.
+"""
+
+from typing import Dict, Tuple
+
+import numpy as np
+import pandas as pd
+
+from ..utils.config import ConfigManager
+from ..utils.logging_config import get_logger
+from .history_builder import PortfolioHistoryBuilder
+
+logger = get_logger(__name__)
+
+
+class BrinsonAttributionCalculator:
+    """
+    Calculates Brinson-Fachler attribution effects (Allocation and Selection).
+    """
+
+    def __init__(
+        self,
+        config: ConfigManager,
+        portfolio_history: pd.DataFrame,
+        transactions: pd.DataFrame,
+        market_data: Dict[str, pd.DataFrame],
+    ):
+        self.config = config
+        self.portfolio_history = portfolio_history.set_index("date")
+        self.transactions = transactions
+        self.market_data = market_data
+        self.benchmark_components = self.config.get("benchmark.components", [])
+
+    def calculate(
+        self, group_by: str, start_date: pd.Timestamp, end_date: pd.Timestamp
+    ) -> tuple[pd.DataFrame, Dict]:
+        """
+        The main method to perform the full attribution analysis.
+
+        Args:
+            group_by (str): The category to group by (e.g., 'asset_class').
+
+        Returns:
+            A tuple containing:
+            - A DataFrame with the high-level attribution effects.
+            - A dictionary with the detailed selection drill-down for each
+            category.
+        """
+        if not self.benchmark_components:
+            return pd.DataFrame(), {}
+
+        if group_by not in self.transactions.columns:
+            raise ValueError(
+                f"Grouping column '{group_by}' not found in transactions."
+            )
+
+        # 1. Build a daily history for the benchmark, just like the portfolio
+        benchmark_history = self._build_benchmark_history(start_date, end_date)
+
+        # 2. Get portfolio and benchmark returns and weights, grouped by the
+        # category
+        port_returns, port_weights = self._get_grouped_data(
+            self.portfolio_history, group_by, source="portfolio"
+        )
+        bench_returns, bench_weights = self._get_grouped_data(
+            benchmark_history, group_by, source="benchmark"
+        )
+
+        # 3. Get total returns for the portfolio and benchmark
+        prod_result = (
+            1 + self.portfolio_history["portfolio_daily_return_twr"]
+        ).prod()
+        if isinstance(prod_result, (int, float, np.number)):
+            total_port_return = float(prod_result) - 1.0
+        else:
+            total_port_return = 0.0
+
+        logger.debug(
+            "Total Portfolio Return (TWR): %.4f%%", total_port_return * 100
+        )
+
+        prod_result = (
+            1 + benchmark_history["portfolio_daily_return_twr"]
+        ).prod()
+        if isinstance(prod_result, (int, float, np.number)):
+            total_bench_return = float(prod_result) - 1.0
+        else:
+            total_bench_return = 0.0
+
+        # 4. Calculate high-level attribution effects
+        attribution_results = {}
+        all_categories = sorted(
+            list(set(port_weights.columns) | set(bench_weights.columns))
+        )
+
+        for category in all_categories:
+            p_w = (
+                port_weights[category].mean()
+                if category in port_weights
+                else 0
+            )
+            b_w = (
+                bench_weights[category].mean()
+                if category in bench_weights
+                else 0
+            )
+            if category in port_weights:
+                prod_result = (1 + port_returns[category]).prod()
+                if isinstance(prod_result, (int, float, np.number)):
+                    p_r = float(prod_result) - 1.0
+                else:
+                    p_r = 0.0
+            else:
+                p_r = 0
+
+            if category in bench_returns:
+                prod_result = (1 + bench_returns[category]).prod()
+                if isinstance(prod_result, (int, float, np.number)):
+                    b_r = float(prod_result) - 1.0
+                else:
+                    b_r = 0.0
+            else:
+                b_r = 0
+
+            # Brinson-Fachler Formulas
+            allocation = (p_w - b_w) * (b_r - total_bench_return)
+            selection = p_w * (p_r - b_r)
+            interaction = (p_w - b_w) * (
+                p_r - b_r
+            )  # Optional, often combined with selection
+
+            attribution_results[category] = {
+                "Portfolio Weight": p_w,
+                "Benchmark Weight": b_w,
+                "Portfolio Return": p_r,
+                "Benchmark Return": b_r,
+                "Allocation Effect": allocation,
+                "Selection Effect": selection
+                + interaction,  # Combine for clarity
+            }
+
+        summary_df = pd.DataFrame.from_dict(
+            attribution_results, orient="index"
+        )
+        summary_df["Total Effect"] = (
+            summary_df["Allocation Effect"] + summary_df["Selection Effect"]
+        )
+
+        # 5. Calculate the selection drill-down for each category
+        selection_drilldown = self._calculate_selection_drilldown(
+            group_by, bench_returns
+        )
+
+        return summary_df, selection_drilldown
+
+    def _build_benchmark_history(
+        self, start_date: pd.Timestamp, end_date: pd.Timestamp
+    ) -> pd.DataFrame:
+        """
+        Creates a daily history DataFrame for the benchmark using its components.
+        This re-uses the main PortfolioHistoryBuilder for consistency.
+        """
+        benchmark_trans = pd.DataFrame(self.benchmark_components)
+        # To use the history builder, we need to create a "dummy" transaction list
+        # We assume the benchmark is bought on day one and held.
+        benchmark_trans["date"] = start_date
+        benchmark_trans["ticker"] = benchmark_trans["symbol"]
+        benchmark_trans["quantity"] = benchmark_trans[
+            "weight"
+        ]  # Use weight as a proxy for quantity
+        benchmark_trans["value_per_share"] = (
+            1.0  # Price is irrelevant, value is derived from market data
+        )
+        benchmark_trans["total_value"] = benchmark_trans["weight"]
+        benchmark_trans["transaction_type"] = "BUY"
+        benchmark_trans["account"] = "Benchmark"
+
+        benchmark_trans["group_asset_class"] = benchmark_trans["asset_class"]
+
+        # Use the same history builder to ensure calculations are consistent
+        builder = PortfolioHistoryBuilder(
+            config=self.config,
+            transactions=benchmark_trans,
+            market_data=self.market_data,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        history = builder.build()
+        return history.set_index("date")
+
+    def _get_grouped_data(
+        self, history_df: pd.DataFrame, group_by: str, source: str
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        Aggregates daily returns and weights for a given history DataFrame by
+        the specified category.
+
+        Args:
+            history_df: The daily history DataFrame (portfolio or benchmark).
+            group_by: The category to group by (e.g., 'asset_class').
+            source: A string ('portfolio' or 'benchmark') to determine which
+                    transaction list to use for grouping.
+        """
+        if source == "portfolio":
+            trans_df = self.transactions
+        elif source == "benchmark":
+            trans_df = pd.DataFrame(self.benchmark_components).rename(
+                columns={
+                    "symbol": "ticker",
+                    "asset_class": "asset_class",
+                }
+            )
+        else:
+            raise ValueError(f"Invalid source '{source}' specified.")
+
+        grouped_returns = pd.DataFrame(index=history_df.index)
+        grouped_weights = pd.DataFrame(index=history_df.index)
+
+        categories = trans_df[group_by].unique()
+
+        for category in categories:
+            tickers_in_cat = trans_df[trans_df[group_by] == category][
+                "ticker"
+            ].unique()
+
+            # Aggregate returns (weighted average of ticker returns)
+            cat_return = pd.Series(0.0, index=history_df.index)
+            cat_total_value = pd.Series(0.0, index=history_df.index)
+
+            for ticker in tickers_in_cat:
+                return_col = f"{ticker}_return"
+                value_col = f"{ticker}_total_value"
+                if (
+                    return_col in history_df.columns
+                    and value_col in history_df.columns
+                ):
+                    ticker_start_value = (
+                        history_df[value_col].shift(1).fillna(0)
+                    )
+                    cat_return += ticker_start_value * history_df[return_col]
+                    cat_total_value += ticker_start_value
+
+            grouped_returns[category] = (
+                (cat_return / cat_total_value)
+                .replace([np.inf, -np.inf], 0)
+                .fillna(0)
+            )
+
+            # Aggregate weights
+            weight_cols = [
+                f"{ticker}_weight"
+                for ticker in tickers_in_cat
+                if f"{ticker}_weight" in history_df.columns
+            ]
+            if weight_cols:
+                grouped_weights[category] = history_df[weight_cols].sum(axis=1)
+
+        return grouped_returns, grouped_weights
+
+    def _calculate_selection_drilldown(
+        self,
+        group_by: str,
+        bench_returns: pd.DataFrame,
+    ) -> Dict[str, pd.DataFrame]:
+        """Calculates the contribution of each individual ticker to the
+        Selection Effect."""
+        drilldown = {}
+        port_tickers_by_cat = self.transactions.groupby(group_by)[
+            "ticker"
+        ].unique()
+
+        for category, tickers in port_tickers_by_cat.items():
+            cat_results = {}
+            if category in bench_returns:
+                prod_result = (1 + bench_returns[category]).prod()
+                if isinstance(prod_result, (int, float, np.number)):
+                    bench_cat_return = float(prod_result) - 1.0
+                else:
+                    bench_cat_return = 0.0
+            else:
+                bench_cat_return = 0
+
+            for ticker in tickers:
+                ticker_return_col = f"{ticker}_return"
+                if ticker_return_col in self.portfolio_history.columns:
+                    # Calculate TWR for this specific ticker
+                    ticker_values = self.portfolio_history[
+                        f"{ticker}_total_value"
+                    ]
+                    start_values = ticker_values.shift(1).fillna(0)
+
+                    # Ensure daily returns are only calculated when the position is held
+                    ticker_returns_daily = np.where(
+                        start_values > 0,
+                        self.portfolio_history[ticker_return_col],
+                        0,
+                    )
+                    prod_result = (
+                        1
+                        + pd.Series(
+                            ticker_returns_daily,
+                            index=self.portfolio_history.index,
+                        )
+                    ).prod()
+                    if isinstance(prod_result, (int, float, np.number)):
+                        ticker_twr = float(prod_result) - 1.0
+                    else:
+                        ticker_twr = 0.0
+
+                    # Calculate contribution to selection
+                    avg_weight_in_cat = self.portfolio_history[
+                        f"{ticker}_weight"
+                    ].mean()
+                    contribution = avg_weight_in_cat * (
+                        ticker_twr - bench_cat_return
+                    )
+
+                    cat_results[ticker] = {
+                        "Avg. Weight": avg_weight_in_cat,
+                        "Return (TWR)": ticker_twr,
+                        "Contribution to Selection": contribution,
+                    }
+
+            if cat_results:
+                drilldown[str(category)] = pd.DataFrame.from_dict(
+                    cat_results, orient="index"
+                ).sort_values(by="Contribution to Selection", ascending=False)
+
+        return drilldown
