@@ -259,3 +259,7 @@ IRR (or money-weighted return) is the discount rate that sets the **net present 
 - **TWR**: Breaks into subperiods; removes impact of external flows; preferred for manager evaluation.
 - **IRR**: True money-weighted return; reflects investor experience; best for portfolios with irregular flows or where timing decisions matter.
 - **This package**: Treats internal flows as external, ensuring that dividends and interest are explicitly included in return calculations.
+
+## Known Bugs
+
+- Returns and other metrics will be incorrect for a net short portfolio and account position

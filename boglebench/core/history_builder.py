@@ -4,6 +4,7 @@ Builds the daily portfolio history from transactions and market data.
 
 from typing import Dict, Union
 
+import numpy as np
 import pandas as pd
 import pandas_market_calendars as mcal  # type: ignore
 
@@ -264,9 +265,16 @@ class PortfolioHistoryBuilder:
         # Add Ticker-level returns
         for symbol in self.symbols:
             price_col = f"{symbol}_price"
+            qty_col = f"{symbol}_total_shares"
+            short_position_multiplier = pd.Series(
+                np.where(df[qty_col] <= 0, -1, 1), index=df.index
+            )
             # Calculate the daily percentage change of the price.
             # This is the true market return for the symbol.
-            df[f"{symbol}_return"] = df[price_col].pct_change().fillna(0)
+            df[f"{symbol}_return"] = (
+                df[price_col].pct_change().fillna(0)
+                * short_position_multiplier
+            )
 
         # Add returns
         df["portfolio_daily_return_mod_dietz"] = (
