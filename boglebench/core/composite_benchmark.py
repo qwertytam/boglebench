@@ -62,8 +62,21 @@ class CompositeBenchmarkBuilder:
 
         daily_values = []
         for date, row in adj_close_df.iterrows():
-            market_value = (row * shares).sum()
+            market_values = row * shares
+            market_value = market_values.sum()
+            weights = (
+                market_values / market_value
+                if market_value > 0
+                else [0] * len(self.symbols)
+            )
             daily_values.append({"date": date, "value": market_value})
+
+            for symbol, weight in zip(self.symbols, weights):
+                daily_values[-1][f"{symbol}_weight"] = weight
+                daily_values[-1][f"{symbol}_total_value"] = market_values[
+                    symbol
+                ]
+            daily_values[-1]["total_value"] = market_value
 
             # Check for rebalancing
             if not isinstance(date, pd.Timestamp):
@@ -84,15 +97,24 @@ class CompositeBenchmarkBuilder:
 
         # Convert daily values to a DataFrame that mimics market data
         benchmark_df = pd.DataFrame(daily_values)
-        benchmark_df["adj_close"] = benchmark_df["value"]
+        benchmark_df = benchmark_df.rename(columns={"value": "adj_close"})
         benchmark_df["dividend"] = (
             0.0  # Simplification: dividends are handled by adj_close
         )
         benchmark_df["split_coefficient"] = 0.0  # No splits in composite
 
-        return benchmark_df[
-            ["date", "adj_close", "dividend", "split_coefficient"]
-        ]
+        benchmark_df = benchmark_df.sort_values("date").reset_index(drop=True)
+
+        benchmark_df["benchmark_return"] = (
+            benchmark_df["adj_close"].pct_change().fillna(0.0)
+        )
+
+        for symbol in self.symbols:
+            benchmark_df[f"{symbol}_return"] = (
+                benchmark_df[f"{symbol}_total_value"].pct_change().fillna(0.0)
+            )
+
+        return benchmark_df
 
     def _prepare_price_data(self) -> pd.DataFrame:
         """Creates a merged DataFrame of adjusted close prices for all components."""

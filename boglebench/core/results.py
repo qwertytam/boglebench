@@ -21,6 +21,7 @@ class PerformanceResults:
         benchmark_metrics: Optional[Dict] = None,
         relative_metrics: Optional[Dict] = None,
         portfolio_history: Optional[pd.DataFrame] = None,
+        benchmark_history: Optional[pd.DataFrame] = None,
         holding_attribution: Optional[pd.DataFrame] = None,
         account_attribution: Optional[pd.DataFrame] = None,
         factor_attributions: Optional[Dict] = None,
@@ -33,6 +34,7 @@ class PerformanceResults:
         self.benchmark_metrics = benchmark_metrics
         self.relative_metrics = relative_metrics
         self.portfolio_history = portfolio_history
+        self.benchmark_history = benchmark_history
         self.holding_attribution = holding_attribution
         self.account_attribution = account_attribution
         self.factor_attributions = factor_attributions

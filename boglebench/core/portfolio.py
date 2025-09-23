@@ -18,7 +18,6 @@ from typing import Dict, Optional, Union
 
 import pandas as pd
 
-from ..core.attribution import AttributionCalculator
 from ..core.brinson_attribution import BrinsonAttributionCalculator
 from ..core.composite_benchmark import CompositeBenchmarkBuilder
 from ..core.constants import DateAndTimeConstants, Defaults
@@ -68,7 +67,7 @@ class BogleBenchAnalyzer:
         self.transactions = pd.DataFrame()
         self.market_data: Dict[str, pd.DataFrame] = {}
         self.portfolio_history = pd.DataFrame()
-        self.benchmark_data = pd.DataFrame()
+        self.benchmark_history = pd.DataFrame()
         self.performance_results = PerformanceResults()
         self.attrib_group_cols: list[str] = []
         self.start_date: Optional[pd.Timestamp] = None
@@ -228,9 +227,9 @@ class BogleBenchAnalyzer:
             start_date=start_date,
             end_date=end_date,
         )
-        self.benchmark_data = builder.build()
+        self.benchmark_history = builder.build()
 
-        if self.benchmark_data.empty:
+        if self.benchmark_history.empty:
             self.logger.warning(
                 "Composite benchmark data is empty or not found in market data."
                 " No benchmark comparison will be available."
@@ -245,6 +244,7 @@ class BogleBenchAnalyzer:
             PerformanceResults object containing all metrics and analysis
         """
         if self.portfolio_history.empty:
+            self.logger.debug("Portfolio history empty, building now...")
             self.build_portfolio_history()
 
         if self.portfolio_history.empty:
@@ -254,9 +254,6 @@ class BogleBenchAnalyzer:
             )
 
         self.logger.info("📊 Calculating performance metrics...")
-
-        # Align benchmark before calculating metrics
-        self._align_benchmark_returns()
 
         annual_trading_days = self.config.get(
             "settings.annual_trading_days",
@@ -301,11 +298,11 @@ class BogleBenchAnalyzer:
             },
         }
         benchmark_metrics = {}
-        if "benchmark_returns" in self.portfolio_history.columns:
+        if "benchmark_return" in self.benchmark_history.columns:
             benchmark_metrics = calculate_metrics(
                 # Skip first day invested as benchmark return is calculated
                 # as period-over-period change
-                self.portfolio_history["benchmark_returns"][1:],
+                self.benchmark_history["benchmark_return"][1:],
                 "Benchmark",
                 annual_trading_days,
                 annual_risk_free_rate,
@@ -317,36 +314,19 @@ class BogleBenchAnalyzer:
                 # Skip first day invested as benchmark return is calculated
                 # as period-over-period change
                 self.portfolio_history["portfolio_daily_return_twr"][1:],
-                self.portfolio_history["benchmark_returns"][1:],
+                self.benchmark_history["benchmark_return"][1:],
                 annual_trading_days,
                 annual_risk_free_rate,
             )
 
-        # Calculate performance attribution
-        self.logger.info("📊 Calculating performance attribution...")
-        attrib_calculator = AttributionCalculator(
-            portfolio_history=self.portfolio_history,
-            transactions=self.transactions,
-            attrib_group_cols=self.attrib_group_cols,
-        )
-
-        # Calculate attribution by holding and account
-        holding_attribution = attrib_calculator.calculate(group_by="symbol")
-        account_attribution = attrib_calculator.calculate(group_by="account")
-
-        # Calculate for all discovered factor columns
-        factor_attributions = {}
-        factor_columns = sorted(list(set(self.attrib_group_cols)))
-        for factor in factor_columns:
-            self.logger.info("Calculating attribution for factor: %s", factor)
-            factor_attributions[factor] = attrib_calculator.calculate(
-                group_by=factor
-            )
-
-        # Calculate Brinson-Fachler attribution if 'sector' is available
+        # Calculate Brinson-Fachler attribution
         brinson_summary = None
         selection_drilldown = None
-        if self.config.get("analysis.attribution_analysis.enabled", False):
+        if (
+            self.config.get("analysis.attribution_analysis.enabled", False)
+            and self.benchmark_history is not None
+            and not self.benchmark_history.empty
+        ):
             self.logger.info("📊 Running attribution analysis...")
 
             if (
@@ -359,8 +339,8 @@ class BogleBenchAnalyzer:
                 brinson_calculator = BrinsonAttributionCalculator(
                     config=self.config,
                     portfolio_history=self.portfolio_history,
+                    benchmark_history=self.benchmark_history,
                     transactions=self.transactions,
-                    market_data=self.market_data,
                 )
                 group_by = self.config.get(
                     "reporting.attribution_group_by", "group1"
@@ -385,9 +365,7 @@ class BogleBenchAnalyzer:
                     )
                 else:
                     brinson_summary, selection_drilldown = (
-                        brinson_calculator.calculate(
-                            group_by, self.start_date, self.end_date
-                        )
+                        brinson_calculator.calculate(group_by)
                     )
                     self.logger.info(
                         "✅ Brinson attribution analysis complete!"
@@ -399,9 +377,7 @@ class BogleBenchAnalyzer:
             benchmark_metrics=benchmark_metrics,
             relative_metrics=relative_metrics,
             portfolio_history=self.portfolio_history,
-            holding_attribution=holding_attribution,
-            account_attribution=account_attribution,
-            factor_attributions=factor_attributions,
+            benchmark_history=self.benchmark_history,
             brinson_summary=brinson_summary,
             selection_drilldown=selection_drilldown,
             config=self.config,
@@ -409,36 +385,3 @@ class BogleBenchAnalyzer:
 
         self.logger.info("✅ Performance analysis complete!")
         return self.performance_results
-
-    def _align_benchmark_returns(self) -> None:
-        """Align benchmark returns with portfolio dates."""
-        if self.benchmark_data.empty:
-            self.logger.warning(
-                "No benchmark data available to align returns."
-            )
-            return
-
-        # Convert benchmark data to returns
-        benchmark_df = self.benchmark_data.copy()
-        benchmark_df["date"] = pd.to_datetime(
-            benchmark_df["date"], utc=True
-        ).dt.normalize()
-        benchmark_df = benchmark_df.sort_values("date")
-
-        # Calculate period on period returns
-        # Use adjusted close prices for benchmark returns
-        benchmark_df["benchmark_returns"] = benchmark_df[
-            "adj_close"
-        ].pct_change()
-
-        # Use merge_asof for robust alignment
-        self.portfolio_history = pd.merge_asof(
-            self.portfolio_history.sort_values("date"),
-            benchmark_df[["date", "benchmark_returns"]].sort_values("date"),
-            on="date",
-            direction="backward",
-        )
-
-        self.portfolio_history["benchmark_returns"] = self.portfolio_history[
-            "benchmark_returns"
-        ].fillna(0)

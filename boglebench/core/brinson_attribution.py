@@ -12,7 +12,6 @@ import pandas as pd
 
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger
-from .history_builder import PortfolioHistoryBuilder
 
 logger = get_logger(__name__)
 
@@ -26,18 +25,16 @@ class BrinsonAttributionCalculator:
         self,
         config: ConfigManager,
         portfolio_history: pd.DataFrame,
+        benchmark_history: pd.DataFrame,
         transactions: pd.DataFrame,
-        market_data: Dict[str, pd.DataFrame],
     ):
         self.config = config
         self.portfolio_history = portfolio_history.set_index("date")
+        self.benchmark_history = benchmark_history.set_index("date")
         self.transactions = transactions
-        self.market_data = market_data
         self.benchmark_components = self.config.get("benchmark.components", [])
 
-    def calculate(
-        self, group_by: str, start_date: pd.Timestamp, end_date: pd.Timestamp
-    ) -> tuple[pd.DataFrame, Dict]:
+    def calculate(self, group_by: str) -> tuple[pd.DataFrame, Dict]:
         """
         The main method to perform the full attribution analysis.
 
@@ -50,7 +47,7 @@ class BrinsonAttributionCalculator:
             - A dictionary with the detailed selection drill-down for each
             category.
         """
-        if not self.benchmark_components:
+        if not self.benchmark_components or self.benchmark_history.empty:
             return pd.DataFrame(), {}
 
         if group_by not in self.transactions.columns:
@@ -58,19 +55,16 @@ class BrinsonAttributionCalculator:
                 f"Grouping column '{group_by}' not found in transactions."
             )
 
-        # 1. Build a daily history for the benchmark, just like the portfolio
-        benchmark_history = self._build_benchmark_history(start_date, end_date)
-
-        # 2. Get portfolio and benchmark returns and weights, grouped by the
+        # Get portfolio and benchmark returns and weights, grouped by the
         # category
         port_returns, port_weights = self._get_grouped_data(
             self.portfolio_history, group_by, source="portfolio"
         )
         bench_returns, bench_weights = self._get_grouped_data(
-            benchmark_history, group_by, source="benchmark"
+            self.benchmark_history, group_by, source="benchmark"
         )
 
-        # 3. Get total returns for the portfolio and benchmark
+        # Get total returns for the portfolio and benchmark
         prod_result = (
             1 + self.portfolio_history["portfolio_daily_return_twr"]
         ).prod()
@@ -83,15 +77,13 @@ class BrinsonAttributionCalculator:
             "Total Portfolio Return (TWR): %.4f%%", total_port_return * 100
         )
 
-        prod_result = (
-            1 + benchmark_history["portfolio_daily_return_twr"]
-        ).prod()
+        prod_result = (1 + self.benchmark_history["benchmark_return"]).prod()
         if isinstance(prod_result, (int, float, np.number)):
             total_bench_return = float(prod_result) - 1.0
         else:
             total_bench_return = 0.0
 
-        # 4. Calculate high-level attribution effects
+        # Calculate high-level attribution effects
         attribution_results = {}
         all_categories = sorted(
             list(set(port_weights.columns) | set(bench_weights.columns))
@@ -139,7 +131,9 @@ class BrinsonAttributionCalculator:
                 "Portfolio Return": p_r,
                 "Benchmark Return": b_r,
                 "Allocation Effect": allocation,
-                "Selection Effect": selection
+                "Selection Effect": selection,
+                "Interaction Effect": interaction,
+                "Combined Selection Effect": selection
                 + interaction,  # Combine for clarity
             }
 
@@ -156,38 +150,6 @@ class BrinsonAttributionCalculator:
         )
 
         return summary_df, selection_drilldown
-
-    def _build_benchmark_history(
-        self, start_date: pd.Timestamp, end_date: pd.Timestamp
-    ) -> pd.DataFrame:
-        """
-        Creates a daily history DataFrame for the benchmark using its components.
-        This re-uses the main PortfolioHistoryBuilder for consistency.
-        """
-        benchmark_trans = pd.DataFrame(self.benchmark_components)
-        # To use the history builder, we need to create a "dummy" transaction list
-        # We assume the benchmark is bought on day one and held.
-        benchmark_trans["date"] = start_date
-        benchmark_trans["quantity"] = benchmark_trans[
-            "weight"
-        ]  # Use weight as a proxy for quantity
-        benchmark_trans["value_per_share"] = (
-            1.0  # Price is irrelevant, value is derived from market data
-        )
-        benchmark_trans["total_value"] = benchmark_trans["weight"]
-        benchmark_trans["transaction_type"] = "BUY"
-        benchmark_trans["account"] = "Benchmark"
-
-        # Use the same history builder to ensure calculations are consistent
-        builder = PortfolioHistoryBuilder(
-            config=self.config,
-            transactions=benchmark_trans,
-            market_data=self.market_data,
-            start_date=start_date,
-            end_date=end_date,
-        )
-        history = builder.build()
-        return history.set_index("date")
 
     def _get_grouped_data(
         self, history_df: pd.DataFrame, group_by: str, source: str
