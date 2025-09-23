@@ -417,6 +417,11 @@ class TestMultiTransactionPerformance:
         assert "portfolio_daily_return_mod_dietz" in portfolio_history.columns
         assert "portfolio_daily_return_twr" in portfolio_history.columns
 
+        # Verify benchmark history was built correctly
+        benchmark_history = results.benchmark_history
+        assert len(benchmark_history) == 10  # 10 trading days
+        assert "adj_close" in benchmark_history.columns
+
         # Verify returns
         accuracy = 0.001 / 100  # 0.001% accuracy
 
@@ -609,10 +614,10 @@ class TestMultiTransactionPerformance:
             ]
         )
 
-        assert portfolio_history["benchmark_returns"].notna().all()
+        assert benchmark_history["benchmark_return"].notna().all()
         assert (
             abs(
-                portfolio_history["benchmark_returns"]
+                benchmark_history["benchmark_return"]
                 - expected_bm_daily_returns
             ).max()
             < accuracy

@@ -366,7 +366,6 @@ class TestPerformanceCalculation:
                 "Test_Account_twr_return",
                 "market_value_change",
                 "market_value_return",
-                "benchmark_returns",
             ]
 
             for col in expected_columns:
