@@ -42,7 +42,7 @@ class BrinsonAttributionCalculator:
         The main method to perform the full attribution analysis.
 
         Args:
-            group_by (str): The category to group by (e.g., 'asset_class').
+            group_by (str): The category to group by (e.g., 'group_asset_class').
 
         Returns:
             A tuple containing:
@@ -178,8 +178,6 @@ class BrinsonAttributionCalculator:
         benchmark_trans["transaction_type"] = "BUY"
         benchmark_trans["account"] = "Benchmark"
 
-        benchmark_trans["group_asset_class"] = benchmark_trans["asset_class"]
-
         # Use the same history builder to ensure calculations are consistent
         builder = PortfolioHistoryBuilder(
             config=self.config,
@@ -200,18 +198,14 @@ class BrinsonAttributionCalculator:
 
         Args:
             history_df: The daily history DataFrame (portfolio or benchmark).
-            group_by: The category to group by (e.g., 'asset_class').
+            group_by: The category to group by (e.g., 'group_asset_class').
             source: A string ('portfolio' or 'benchmark') to determine which
                     transaction list to use for grouping.
         """
         if source == "portfolio":
             trans_df = self.transactions
         elif source == "benchmark":
-            trans_df = pd.DataFrame(self.benchmark_components).rename(
-                columns={
-                    "asset_class": "asset_class",
-                }
-            )
+            trans_df = pd.DataFrame(self.benchmark_components)
         else:
             raise ValueError(f"Invalid source '{source}' specified.")
 

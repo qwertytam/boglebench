@@ -346,40 +346,52 @@ class BogleBenchAnalyzer:
         # Calculate Brinson-Fachler attribution if 'sector' is available
         brinson_summary = None
         selection_drilldown = None
-        if self.config.get("reporting.show_brinson_attribution", False):
-            self.logger.info("📊 Running Brinson attribution analysis...")
-            brinson_calculator = BrinsonAttributionCalculator(
-                config=self.config,
-                portfolio_history=self.portfolio_history,
-                transactions=self.transactions,
-                market_data=self.market_data,
-            )
-            group_by = self.config.get(
-                "reporting.attribution_group_by", "asset_class"
-            )
-            if isinstance(group_by, Dict):
-                group_by = group_by.get("value", "asset_class")
-            if group_by is None or not isinstance(group_by, str):
-                group_by = "asset_class"
-                self.logger.warning(
-                    "Invalid group_by for Brinson attribution. Using default 'asset_class'."
-                )
-            if self.start_date is None or self.end_date is None:
-                raise ValueError("Start date and end date must both be set")
+        if self.config.get("analysis.attribution_analysis.enabled", False):
+            self.logger.info("📊 Running attribution analysis...")
 
-            if group_by not in self.transactions.columns:
-                self.logger.error(
-                    "Grouping column '%s' not found in transactions. "
-                    "Skipping Brinson attribution.",
-                    group_by,
+            if (
+                self.config.get(
+                    "analysis.attribution_analysis.method", "Brinson"
                 )
-            else:
-                brinson_summary, selection_drilldown = (
-                    brinson_calculator.calculate(
-                        group_by, self.start_date, self.end_date
+                == "Brinson"
+            ):
+                self.logger.info("Calculating Brinson attribution...")
+                brinson_calculator = BrinsonAttributionCalculator(
+                    config=self.config,
+                    portfolio_history=self.portfolio_history,
+                    transactions=self.transactions,
+                    market_data=self.market_data,
+                )
+                group_by = self.config.get(
+                    "reporting.attribution_group_by", "group1"
+                )
+                if isinstance(group_by, Dict):
+                    group_by = group_by.get("value", "group1")
+                if group_by is None or not isinstance(group_by, str):
+                    group_by = "group1"
+                    self.logger.warning(
+                        "Invalid group_by for Brinson attribution. Using default 'group1'."
                     )
-                )
-                self.logger.info("✅ Brinson attribution analysis complete!")
+                if self.start_date is None or self.end_date is None:
+                    raise ValueError(
+                        "Start date and end date must both be set"
+                    )
+
+                if group_by not in self.transactions.columns:
+                    self.logger.error(
+                        "Grouping column '%s' not found in transactions. "
+                        "Skipping Brinson attribution.",
+                        group_by,
+                    )
+                else:
+                    brinson_summary, selection_drilldown = (
+                        brinson_calculator.calculate(
+                            group_by, self.start_date, self.end_date
+                        )
+                    )
+                    self.logger.info(
+                        "✅ Brinson attribution analysis complete!"
+                    )
 
         self.performance_results = PerformanceResults(
             transactions=self.transactions,

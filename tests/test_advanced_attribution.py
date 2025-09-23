@@ -29,12 +29,13 @@ class TestAdvancedAttribution:
 
             config = ConfigManager()
             config.config["data"]["base_path"] = str(config_dir)
-            config.config["analysis"]["start_date"] = "2023-01-01"
-            config.config["analysis"]["end_date"] = "2023-01-15"
+            config.config["analysis"]["start_date"] = "2023-01-03"
+            config.config["analysis"]["end_date"] = "2023-01-24"
 
-            config.config["reporting"] = {
-                "show_brinson_attribution": True,
-                "attribution_group_by": "asset_class",
+            config.config["analysis"]["attribution_analysis"] = {
+                "enabled": True,
+                "method": "Brinson",
+                "transaction_groups": ["group_asset_class", "group_sector"],
             }
             config.config["benchmark"] = {
                 "name": "Custom 60/40",
@@ -42,12 +43,14 @@ class TestAdvancedAttribution:
                     {
                         "symbol": "VTI",
                         "weight": 0.60,
-                        "asset_class": "US Equity",
+                        "group_asset_class": "US Equity",
+                        "group_sector": "Total Market",
                     },
                     {
                         "symbol": "VXUS",
                         "weight": 0.40,
-                        "asset_class": "International Equity",
+                        "group_asset_class": "International Equity",
+                        "group_sector": "Total Market",
                     },
                 ],
             }
@@ -57,7 +60,24 @@ class TestAdvancedAttribution:
     def market_data(self, temp_config):
         """Generate predictable market data parquet files for various scenarios."""
         dates = pd.to_datetime(
-            pd.date_range(start="2023-01-01", end="2023-01-15", tz="UTC")
+            [
+                "2023-01-03",
+                "2023-01-04",
+                "2023-01-05",
+                "2023-01-06",
+                "2023-01-09",
+                "2023-01-10",
+                "2023-01-11",
+                "2023-01-12",
+                "2023-01-13",
+                "2023-01-17",
+                "2023-01-18",
+                "2023-01-19",
+                "2023-01-20",
+                "2023-01-23",
+                "2023-01-24",
+            ],
+            utc=True,
         )
         market_data_dict = {
             "MSFT": pd.DataFrame(
@@ -165,8 +185,8 @@ class TestAdvancedAttribution:
     def test_brinson_outperformance_scenario(self, scenario_analyzer):
         """Test Case 1.1: Verify Allocation & Selection for outperformance."""
         transactions_data = """
-date,symbol,transaction_type,quantity,value_per_share,total_value,account,asset_class
-2023-01-02,AAPL,BUY,100,150,15000,Test_Account,US Equity
+date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_asset_class
+2023-01-03,AAPL,BUY,100,150,15000,Test_Account,US Equity
         """
         analyzer = scenario_analyzer
         self._write_transactions(analyzer, transactions_data)
@@ -184,9 +204,9 @@ date,symbol,transaction_type,quantity,value_per_share,total_value,account,asset_
     def test_brinson_selection_drilldown(self, scenario_analyzer):
         """Test Case 1.4: Verify the drill-down report math."""
         transactions_data = """
-date,symbol,transaction_type,quantity,value_per_share,total_value,account,asset_class
-2023-01-02,AAPL,BUY,50,150,7500,Test_Account,US Equity
-2023-01-02,MSFT,BUY,50,100,5000,Test_Account,US Equity
+date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_asset_class
+2023-01-03,AAPL,BUY,50,150,7500,Test_Account,US Equity
+2023-01-03,MSFT,BUY,50,100,5000,Test_Account,US Equity
 """
         analyzer = scenario_analyzer
         self._write_transactions(analyzer, transactions_data)
@@ -213,9 +233,9 @@ date,symbol,transaction_type,quantity,value_per_share,total_value,account,asset_
     def test_overlapping_holdings_round_trip(self, scenario_analyzer):
         """Test Case 4.1: Test performance with an overlapping round-trip trade."""
         transactions_data = """
-date,symbol,transaction_type,quantity,value_per_share,total_value,account,asset_class
-2023-01-02,MSFT,BUY,10,100,1000,Test_Account,US Equity
-2023-01-05,AAPL,BUY,20,153.4,3068,Test_Account,US Equity
+date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_asset_class
+2023-01-03,MSFT,BUY,10,100,1000,Test_Account,US Equity
+2023-01-06,AAPL,BUY,20,153.4,3068,Test_Account,US Equity
 2023-01-10,AAPL,SELL,20,160.1,3202,Test_Account,US Equity
 """
         analyzer = scenario_analyzer
@@ -246,9 +266,9 @@ date,symbol,transaction_type,quantity,value_per_share,total_value,account,asset_
     def test_short_selling_scenario(self, scenario_analyzer):
         """Test Case 4.2: Test handling of a short-selling transaction."""
         transactions_data = """
-date,symbol,transaction_type,quantity,value_per_share,total_value,account,asset_class
+date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_asset_class
 2023-01-05,TSLA,SELL,20,200,4000,Test_Account,US Equity
-2023-01-11,TSLA,BUY,20,180,3600,Test_Account,US Equity
+2023-01-17,TSLA,BUY,20,180,3600,Test_Account,US Equity
 """
         analyzer = scenario_analyzer
         self._write_transactions(analyzer, transactions_data)
