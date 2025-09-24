@@ -347,7 +347,7 @@ class TestDividendScenarios:
         final_day = portfolio_df.iloc[-1]
 
         if scenario_name == "cash_dividend":
-            assert final_day["Taxable_TICKA_shares"] == 100
+            assert final_day["Taxable_TICKA_quantity"] == 100
             # Cash dividend is a positive cash flow
             dividend_day_flow = portfolio_df[
                 portfolio_df["date"].dt.date
@@ -356,7 +356,7 @@ class TestDividendScenarios:
             assert dividend_day_flow == -50.00
 
         elif scenario_name == "full_reinvest":
-            assert final_day["Ira_TICKB_shares"] == 102.5
+            assert final_day["Ira_TICKB_quantity"] == 102.5
             # Reinvestment is also treated as a positive cash flow (dividend
             # in, buy out)
             dividend_day_flow = portfolio_df[
@@ -366,7 +366,7 @@ class TestDividendScenarios:
             assert dividend_day_flow == 0.00
 
         elif scenario_name == "partial_reinvest":
-            assert final_day["Taxable_TICKC_shares"] == 102.5
+            assert final_day["Taxable_TICKC_quantity"] == 102.5
             # Total cash flow is the sum of the cash and reinvested portions
             dividend_day_flow = portfolio_df[
                 portfolio_df["date"].dt.date
@@ -375,7 +375,7 @@ class TestDividendScenarios:
             assert dividend_day_flow == -25.00  # 25 cash + 75 reinvest
 
         elif scenario_name == "partial_sale":
-            assert final_day["Taxable_TICKD_shares"] == 150
+            assert final_day["Taxable_TICKD_quantity"] == 150
             dividend_day_flow = portfolio_df[
                 portfolio_df["date"].dt.date
                 == pd.to_datetime("2023-01-05").date()

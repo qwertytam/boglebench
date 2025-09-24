@@ -357,7 +357,7 @@ class TestPerformanceWithDividends:
         ].iloc[0]
 
         if scenario_name == "no_dividends":
-            assert final_day["Taxable_VOO_shares"] == 10
+            assert final_day["Taxable_VOO_quantity"] == 10
             assert final_day["VOO_price"] == 102
             assert final_day["total_value"] == 10 * 102.0
 
@@ -446,7 +446,7 @@ class TestPerformanceWithDividends:
             )
 
         elif scenario_name == "cash_dividends":
-            assert final_day["Ira_VTI_shares"] == 100  # Shares don't change
+            assert final_day["Ira_VTI_quantity"] == 100  # Shares don't change
             assert (
                 dividend_day["net_cash_flow"] == -75.0
             )  # Cash flow from dividend
@@ -525,7 +525,7 @@ class TestPerformanceWithDividends:
 
         elif scenario_name == "full_reinvestment":
             assert (
-                final_day["Taxable_VXUS_shares"] == 102
+                final_day["Taxable_VXUS_quantity"] == 102
             )  # 100 initial + 2 reinvested
             assert (
                 final_day["total_value"] == 102 * 41.0
@@ -603,7 +603,7 @@ class TestPerformanceWithDividends:
 
         elif scenario_name == "partial_reinvestment":
             assert (
-                final_day["Roth_BND_shares"] == 101
+                final_day["Roth_BND_quantity"] == 101
             )  # 100 initial + 1 reinvested
             assert (
                 final_day["total_value"] == 101 * 75.5

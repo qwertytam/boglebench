@@ -185,8 +185,8 @@ class TestAdvancedAttribution:
     def test_brinson_outperformance_scenario(self, scenario_analyzer):
         """Test Case 1.1: Verify Allocation & Selection for outperformance."""
         transactions_data = """
-date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_asset_class
-2023-01-03,AAPL,BUY,100,150,15000,Test_Account,US Equity
+date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_asset_class,group_sector
+2023-01-03,AAPL,BUY,100,150,15000,Test_Account,US Equity,Technology
         """
         analyzer = scenario_analyzer
         self._write_transactions(analyzer, transactions_data)
@@ -197,16 +197,18 @@ date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_
         brinson_summary = results.brinson_summary
         assert brinson_summary is not None
 
-        us_equity_results = brinson_summary.loc["US Equity"]
+        us_equity_results = brinson_summary["group_asset_class"].loc[
+            "US Equity"
+        ]
         assert us_equity_results["Allocation Effect"] > 0
         assert us_equity_results["Selection Effect"] > 0
 
     def test_brinson_selection_drilldown(self, scenario_analyzer):
         """Test Case 1.4: Verify the drill-down report math."""
         transactions_data = """
-date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_asset_class
-2023-01-03,AAPL,BUY,50,150,7500,Test_Account,US Equity
-2023-01-03,MSFT,BUY,50,100,5000,Test_Account,US Equity
+date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_asset_class,group_sector
+2023-01-03,AAPL,BUY,50,150,7500,Test_Account,US Equity,Technology
+2023-01-03,MSFT,BUY,50,100,5000,Test_Account,US Equity,Technology
 """
         analyzer = scenario_analyzer
         self._write_transactions(analyzer, transactions_data)
@@ -215,13 +217,13 @@ date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_
         results = analyzer.calculate_performance()
 
         brinson_summary = results.brinson_summary
-        selection_drilldown = results.selection_drilldown
+        selection_drilldown = results.selection_drilldown["group_asset_class"]
 
         assert "US Equity" in selection_drilldown
         drilldown_df = selection_drilldown["US Equity"]
-        total_selection_effect = brinson_summary.loc["US Equity"][
-            "Selection Effect"
-        ]
+        total_selection_effect = brinson_summary["group_asset_class"].loc[
+            "US Equity"
+        ]["Selection Effect"]
 
         atol = 0.05 / 100  # Allow small tolerance due to rounding
         rtol = 0.0
@@ -248,10 +250,10 @@ date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_
     def test_overlapping_holdings_round_trip(self, scenario_analyzer):
         """Test Case 4.1: Test performance with an overlapping round-trip trade."""
         transactions_data = """
-date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_asset_class
-2023-01-03,MSFT,BUY,10,100,1000,Test_Account,US Equity
-2023-01-06,AAPL,BUY,20,153.4,3068,Test_Account,US Equity
-2023-01-10,AAPL,SELL,20,160.1,3202,Test_Account,US Equity
+date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_asset_class,group_sector
+2023-01-03,MSFT,BUY,10,100,1000,Test_Account,US Equity,Technology
+2023-01-06,AAPL,BUY,20,153.4,3068,Test_Account,US Equity,Technology
+2023-01-10,AAPL,SELL,20,160.1,3202,Test_Account,US Equity,Technology
 """
         analyzer = scenario_analyzer
         self._write_transactions(analyzer, transactions_data)
@@ -261,19 +263,19 @@ date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_
 
         assert (
             history.loc[
-                history["date"] == "2023-01-04", "Test_Account_AAPL_shares"
+                history["date"] == "2023-01-04", "Test_Account_AAPL_quantity"
             ].iloc[0]
             == 0
         )
         assert (
             history.loc[
-                history["date"] == "2023-01-06", "Test_Account_AAPL_shares"
+                history["date"] == "2023-01-06", "Test_Account_AAPL_quantity"
             ].iloc[0]
             == 20
         )
         assert (
             history.loc[
-                history["date"] == "2023-01-11", "Test_Account_AAPL_shares"
+                history["date"] == "2023-01-11", "Test_Account_AAPL_quantity"
             ].iloc[0]
             == 0
         )
@@ -281,9 +283,9 @@ date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_
     def test_short_selling_scenario(self, scenario_analyzer):
         """Test Case 4.2: Test handling of a short-selling transaction."""
         transactions_data = """
-date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_asset_class
-2023-01-03,TSLA,SELL,20,200,4000,Test_Account,US Equity
-2023-01-24,TSLA,BUY,20,180,3600,Test_Account,US Equity
+date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_asset_class,group_sector
+2023-01-03,TSLA,SELL,20,200,4000,Test_Account,US Equity,Industrials
+2023-01-24,TSLA,BUY,20,180,3600,Test_Account,US Equity,Industrials
 """
         analyzer = scenario_analyzer
         self._write_transactions(analyzer, transactions_data)
@@ -292,7 +294,7 @@ date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_
         history = analyzer.portfolio_history
 
         tsla_shares_on_jan_6 = history.loc[
-            history["date"] == "2023-01-06", "Test_Account_TSLA_shares"
+            history["date"] == "2023-01-06", "Test_Account_TSLA_quantity"
         ].iloc[0]
         assert (
             tsla_shares_on_jan_6 == -20

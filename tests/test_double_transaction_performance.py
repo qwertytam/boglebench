@@ -143,7 +143,7 @@ class TestMultiTransactionPerformance:
         ]
         assert not june_5_data.empty, "No data found for June 5"
         assert (
-            june_5_data.iloc[0]["Test_Account_AAPL_shares"]
+            june_5_data.iloc[0]["Test_Account_AAPL_quantity"]
             == expected_quantity_aapl
         )
         assert (
@@ -153,7 +153,7 @@ class TestMultiTransactionPerformance:
             )
             < 1
         )
-        assert june_5_data.iloc[0]["Test_Account_MSFT_shares"] == 0
+        assert june_5_data.iloc[0]["Test_Account_MSFT_quantity"] == 0
 
         # June 8: 100 AAPL + 50 MSFT
         june_8_data = portfolio_history[
@@ -168,11 +168,11 @@ class TestMultiTransactionPerformance:
 
         assert not june_8_data.empty, "No data found for June 8"
         assert (
-            june_8_data.iloc[0]["Test_Account_AAPL_shares"]
+            june_8_data.iloc[0]["Test_Account_AAPL_quantity"]
             == expected_quantity_aapl
         )
         assert (
-            june_8_data.iloc[0]["Test_Account_MSFT_shares"]
+            june_8_data.iloc[0]["Test_Account_MSFT_quantity"]
             == expected_quantity_msft
         )
 
@@ -194,11 +194,11 @@ class TestMultiTransactionPerformance:
 
         assert not june_12_data.empty, "No data found for June 12"
         assert (
-            june_12_data.iloc[0]["Test_Account_AAPL_shares"]
+            june_12_data.iloc[0]["Test_Account_AAPL_quantity"]
             == expected_quantity_aapl
         )
         assert (
-            june_12_data.iloc[0]["Test_Account_MSFT_shares"]
+            june_12_data.iloc[0]["Test_Account_MSFT_quantity"]
             == expected_quantity_msft
         )
         # Only 25 MSFT shares
@@ -285,7 +285,7 @@ class TestMultiTransactionPerformance:
             == pd.Timestamp("2023-06-07").date()
         ]
         if not june_7_data.empty:
-            assert june_7_data.iloc[0]["Test_Account_MSFT_shares"] == 0
+            assert june_7_data.iloc[0]["Test_Account_MSFT_quantity"] == 0
 
         # After MSFT purchase, before sale (June 9): 50 MSFT shares
         june_9_data = portfolio_history[
@@ -293,7 +293,7 @@ class TestMultiTransactionPerformance:
             == pd.Timestamp("2023-06-09").date()
         ]
         if not june_9_data.empty:
-            assert june_9_data.iloc[0]["Test_Account_MSFT_shares"] == 50
+            assert june_9_data.iloc[0]["Test_Account_MSFT_quantity"] == 50
 
         # After partial sale (June 13): 25 MSFT shares remaining
         june_13_data = portfolio_history[
@@ -301,7 +301,7 @@ class TestMultiTransactionPerformance:
             == pd.Timestamp("2023-06-13").date()
         ]
         if not june_13_data.empty:
-            assert june_13_data.iloc[0]["Test_Account_MSFT_shares"] == 25
+            assert june_13_data.iloc[0]["Test_Account_MSFT_quantity"] == 25
 
     def test_transaction_data_validation(
         self, test_data_dir, scenario_analyzer

@@ -230,7 +230,7 @@ class TestDateScenarios:
         if scenario_name == "user_dates_outside_transaction_range":
             # This range has no transactions, so the portfolio should be all
             # zeros
-            assert portfolio_df["TICK_total_shares"].eq(0).all()
+            assert portfolio_df["TICK_total_quantity"].eq(0).all()
             assert portfolio_df["TICK_total_value"].eq(0).all()
             assert portfolio_df["total_value"].eq(0).all()
             assert portfolio_df["investment_cash_flow"].eq(0).all()
@@ -249,7 +249,7 @@ class TestDateScenarios:
             assert (
                 final_day["date"].date() == pd.to_datetime("2023-01-06").date()
             )
-            assert final_day["Taxable_TICK_shares"] == 5.0
+            assert final_day["Taxable_TICK_quantity"] == 5.0
 
         elif scenario_name == "no_user_start_end_dates":
             # Falls back to first transaction date and mocked end date
@@ -259,7 +259,7 @@ class TestDateScenarios:
             assert (
                 final_day["date"].date() == pd.to_datetime("2023-01-10").date()
             )
-            assert final_day["Taxable_TICK_shares"] == 5.0
+            assert final_day["Taxable_TICK_quantity"] == 5.0
 
         elif scenario_name == "user_start_end_inside_transaction_dates":
             assert (
@@ -269,8 +269,8 @@ class TestDateScenarios:
                 final_day["date"].date() == pd.to_datetime("2023-01-05").date()
             )
             # The initial buy is before the start date
-            assert first_day["Taxable_TICK_shares"] == 1.0
-            assert final_day["Taxable_TICK_shares"] == 0.0
+            assert first_day["Taxable_TICK_quantity"] == 1.0
+            assert final_day["Taxable_TICK_quantity"] == 0.0
 
         elif scenario_name == "user_end_date_only":
             assert (
@@ -279,7 +279,7 @@ class TestDateScenarios:
             assert (
                 final_day["date"].date() == pd.to_datetime("2023-01-06").date()
             )
-            assert final_day["Taxable_TICK_shares"] == 5.0
+            assert final_day["Taxable_TICK_quantity"] == 5.0
 
         elif scenario_name == "user_start_end_outside_transaction_dates":
             assert (
@@ -288,5 +288,5 @@ class TestDateScenarios:
             assert (
                 final_day["date"].date() == pd.to_datetime("2023-01-09").date()
             )
-            assert first_day["Taxable_TICK_shares"] == 0
-            assert final_day["Taxable_TICK_shares"] == 5.0
+            assert first_day["Taxable_TICK_quantity"] == 0
+            assert final_day["Taxable_TICK_quantity"] == 5.0
