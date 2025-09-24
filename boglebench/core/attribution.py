@@ -54,9 +54,20 @@ class AttributionCalculator:
         )
         avg_weight = daily_weights.mean()
 
-        group_returns = self._calculate_daily_twr(
-            group_values, group_cash_flows, self.portfolio_history, group_by
-        )
+        return_cols = [f"{group}_twr_return" for group in group_values.columns]
+        if not all(
+            col in self.portfolio_history.columns for col in return_cols
+        ):
+            group_returns = self._calculate_daily_twr(
+                group_values,
+                group_cash_flows,
+                self.portfolio_history,
+                group_by,
+            )
+        else:
+            group_returns = self.portfolio_history[return_cols].rename(
+                columns=lambda c: c.replace("_twr_return", "")
+            )
 
         twr = (1 + group_returns).prod() - 1
         contribution = avg_weight * twr
@@ -107,14 +118,15 @@ class AttributionCalculator:
             groups = self.transactions["symbol"].unique()
 
             def __find_symbol_value_col(g, col):
-                return f"_{g}_value" in col
+                # Returning total value of symbol across all accounts
+                return f"{g}_total_value" in col
 
             value_identifier = __find_symbol_value_col
         elif group_by == "account":
             groups = self.transactions["account"].unique()
 
             def __find_account_value_col(g, col):
-                return col.startswith(f"{g}_")
+                return col.startswith(f"{g}_total_value")
 
             value_identifier = __find_account_value_col
         else:  # Factor
@@ -128,7 +140,9 @@ class AttributionCalculator:
                     for t, groups_map in self.symbol_to_groups_map.items()
                     if groups_map.get(group_by) == group_item
                 ]
-                return any(f"_{t}_value" in col for t in symbols_in_group)
+                # Returning total value of all symbols in this factor group
+                # across all accounts
+                return any(f"{t}_total_value" in col for t in symbols_in_group)
 
             value_identifier = factor_val_identifier
 
@@ -139,20 +153,17 @@ class AttributionCalculator:
             if cols_for_group_val:
                 group_values[group] = history[cols_for_group_val].sum(axis=1)
 
-            # Only aggregate explicit cash flows for accounts
-            if group_by == "account":
+            def __find_cash_flow_col(g, col):
+                return col.endswith(f"{g}_cash_flow")
 
-                def __find_account_cash_flow_col(g, col):
-                    return col.startswith(f"{g}_cash_flow")
-
-                cf_identifier = __find_account_cash_flow_col
-                cols_for_group_cf = [
-                    c for c in cash_flow_cols if cf_identifier(group, c)
-                ]
-                if cols_for_group_cf:
-                    group_cash_flows[group] = history[cols_for_group_cf].sum(
-                        axis=1
-                    )
+            cf_identifier = __find_cash_flow_col
+            cols_for_group_cf = [
+                c for c in cash_flow_cols if cf_identifier(group, c)
+            ]
+            if cols_for_group_cf:
+                group_cash_flows[group] = history[cols_for_group_cf].sum(
+                    axis=1
+                )
 
         return group_values.fillna(0), group_cash_flows.fillna(0)
 
@@ -198,12 +209,12 @@ class AttributionCalculator:
                 # Calculate the weighted average market return for all symbols in the group
                 market_effect = pd.Series(0.0, index=history_df.index)
                 for symbol in symbols_in_group:
-                    return_col = f"{symbol}_return"
+                    return_col = f"{symbol}_market_return"
                     # Find all value columns for this symbol across all accounts
                     symbol_value_cols = [
                         c
                         for c in history_df.columns
-                        if f"_{symbol}_value" in c
+                        if f"{symbol}_total_value" in c
                     ]
                     if return_col in history_df.columns and symbol_value_cols:
                         symbol_start_value = (

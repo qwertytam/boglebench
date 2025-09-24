@@ -116,7 +116,7 @@ class PortfolioHistoryBuilder:
                 prev_value = symbol_total_value.get(symbol, 0.0)
 
                 shares = current_holdings[account][symbol]
-                price = self._get_price_for_date(symbol, date)
+                price = self._get_price_for_date(symbol, date, adjusted=False)
                 value = shares * price
                 value = value if not pd.isna(value) else 0.0
 
@@ -124,28 +124,31 @@ class PortfolioHistoryBuilder:
                 symbol_total_value[symbol] = prev_value + value
 
                 account_value += float(value)
-                day_data[f"{account}_{symbol}_shares"] = shares
+                day_data[f"{account}_{symbol}_quantity"] = shares
                 day_data[f"{account}_{symbol}_value"] = value
 
-            day_data[f"{account}_total"] = account_value
+            day_data[f"{account}_total_value"] = account_value
             total_portfolio_value += account_value
         day_data["total_value"] = total_portfolio_value
 
         # 3. Add symbol-level totals and prices
         for symbol in self.symbols:
-            day_data[f"{symbol}_total_shares"] = symbol_total_shares.get(
+            day_data[f"{symbol}_total_quantity"] = symbol_total_shares.get(
                 symbol, 0.0
             )
             day_data[f"{symbol}_total_value"] = symbol_total_value.get(
                 symbol, 0.0
             )
             day_data[f"{symbol}_price"] = self._get_price_for_date(
-                symbol, date
+                symbol, date, adjusted=False
+            )
+            day_data[f"{symbol}_adj_price"] = self._get_price_for_date(
+                symbol, date, adjusted=True
             )
 
         # 4. Calculate weights: by account, by account-symbol, overall symbol
         for account in self.accounts:
-            value_acct = day_data[f"{account}_total"]
+            value_acct = day_data[f"{account}_total_value"]
             value_acct = float(value_acct) if not pd.isna(value_acct) else 0.0
             weight_acct = (
                 value_acct / total_portfolio_value
@@ -183,9 +186,11 @@ class PortfolioHistoryBuilder:
         return day_data, current_holdings
 
     def _get_price_for_date(
-        self, symbol: str, price_date: pd.Timestamp
+        self, symbol: str, price_date: pd.Timestamp, adjusted: bool = False
     ) -> float:
         """Gets price for a symbol on a specific date with forward-fill."""
+        price_col = "adj_close" if adjusted else "close"
+
         if symbol not in self.market_data:
             return 0.0
 
@@ -200,21 +205,21 @@ class PortfolioHistoryBuilder:
             symbol_data["date"].dt.date == target_date.date()
         ]
         if not exact_match.empty:
-            return exact_match["close"].iloc[0]
+            return exact_match[price_col].iloc[0]
 
         # Forward-fill logic
         available_data = symbol_data[
             symbol_data["date"].dt.date <= target_date.date()
         ]
         if not available_data.empty:
-            return available_data["close"].iloc[-1]
+            return available_data[price_col].iloc[-1]
 
         # Backward-fill logic
         future_data = symbol_data[
             symbol_data["date"].dt.date > target_date.date()
         ]
         if not future_data.empty:
-            return future_data["close"].iloc[0]
+            return future_data[price_col].iloc[0]
 
         return 0.0
 
@@ -223,20 +228,26 @@ class PortfolioHistoryBuilder:
         day_trans = self.transactions[
             self.transactions["date"].dt.date == date.date()
         ]
-        inv_cf = {acc: 0.0 for acc in self.accounts}
-        inc_cf = {acc: 0.0 for acc in self.accounts}
+
+        zero_cf_dict = {acc: 0.0 for acc in self.accounts}
+        zero_cf_dict.update({sym: 0.0 for sym in self.symbols})
+        inv_cf = zero_cf_dict.copy()
+        inc_cf = zero_cf_dict.copy()
         inv_cf["total"] = 0.0
         inc_cf["total"] = 0.0
 
         for _, trans in day_trans.iterrows():
             acc = trans["account"]
+            sym = trans["symbol"]
             ttype = trans["transaction_type"]
             value = trans["total_value"]
             if TransactionTypes.is_buy_or_sell(ttype):
                 inv_cf[acc] += value
+                inv_cf[sym] += value
                 inv_cf["total"] += value
             elif TransactionTypes.is_any_dividend(ttype):
                 inc_cf[acc] += value
+                inc_cf[sym] += value
                 inc_cf["total"] += value
         return inv_cf, inc_cf
 
@@ -264,23 +275,42 @@ class PortfolioHistoryBuilder:
 
         # Add Ticker-level returns
         for symbol in self.symbols:
-            price_col = f"{symbol}_price"
-            qty_col = f"{symbol}_total_shares"
+            adj_price_col = f"{symbol}_adj_price"
+            qty_col = f"{symbol}_total_quantity"
+            value_col = f"{symbol}_total_value"
+            cf_col = f"{symbol}_cash_flow"
+
+            symbol_active_days = df[qty_col] != 0
+
+            df[cf_col] = [
+                inv.get(symbol, 0.0) + inc.get(symbol, 0.0)
+                for inv, inc in zip(inv_cfs, inc_cfs)
+            ]
+
             short_position_multiplier = pd.Series(
                 np.where(df[qty_col] <= 0, -1, 1), index=df.index
             )
-            # Calculate the daily percentage change of the price.
+            # Calculate the daily percentage change of the adjusted price.
             # This is the true market return for the symbol.
-            df[f"{symbol}_return"] = (
-                df[price_col].pct_change().fillna(0)
+            df[f"{symbol}_market_return"] = (
+                df[adj_price_col].pct_change().fillna(0)
                 * short_position_multiplier
+                * symbol_active_days
+            )
+
+            df[f"{symbol}_twr_return"] = (
+                calculate_twr_daily_returns(df[value_col], df[cf_col])
+                * short_position_multiplier
+                * symbol_active_days
             )
 
         # Add returns
         df["portfolio_daily_return_mod_dietz"] = (
             calculate_modified_dietz_returns(df, config=self.config)
         )
-        df["portfolio_daily_return_twr"] = calculate_twr_daily_returns(df)
+        df["portfolio_daily_return_twr"] = calculate_twr_daily_returns(
+            df["total_value"], df["net_cash_flow"]
+        )
 
         for acc in self.accounts:
             df[f"{acc}_mod_dietz_return"] = (

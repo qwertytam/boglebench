@@ -131,33 +131,118 @@ class PerformanceResults:
 
         # Format attribution tables if they exist
         if self.holding_attribution is not None:
+            self.holding_attribution = self.holding_attribution.sort_values(
+                by="Contribution to Portfolio Return", ascending=False
+            )
             lines.append("\n🏷️  HOLDING-LEVEL ATTRIBUTION")
+            total_weight = self.holding_attribution["Avg. Weight"].sum()
+            total_twr = (
+                (
+                    self.holding_attribution[
+                        "Contribution to Portfolio Return"
+                    ].sum()
+                    / total_weight
+                )
+                if total_weight > 0
+                else 0
+            )
+            total_contribution = self.holding_attribution[
+                "Contribution to Portfolio Return"
+            ].sum()
+            to_print = pd.concat(
+                [
+                    self.holding_attribution,
+                    pd.DataFrame(
+                        {
+                            "Avg. Weight": total_weight,
+                            "Return (TWR)": total_twr,
+                            "Contribution to Portfolio Return": total_contribution,
+                        },
+                        index=[0],
+                    ),
+                ]
+            )
             lines.append(
-                self.holding_attribution.to_string(
+                to_print.rename(index={0: "--TOTALS--"}).to_string(
                     float_format="{:,.2%}".format,
                     formatters=self._get_formatters(),
                     index=True,
+                    header=False,
                 )
             )
 
         if self.account_attribution is not None:
             lines.append("\n🏦 ACCOUNT-LEVEL ATTRIBUTION")
+            total_weight = self.account_attribution["Avg. Weight"].sum()
+            total_twr = (
+                (
+                    self.account_attribution[
+                        "Contribution to Portfolio Return"
+                    ].sum()
+                    / total_weight
+                )
+                if total_weight > 0
+                else 0
+            )
+            total_contribution = self.account_attribution[
+                "Contribution to Portfolio Return"
+            ].sum()
+            to_print = pd.concat(
+                [
+                    self.account_attribution,
+                    pd.DataFrame(
+                        {
+                            "Avg. Weight": total_weight,
+                            "Return (TWR)": total_twr,
+                            "Contribution to Portfolio Return": total_contribution,
+                        },
+                        index=[0],
+                    ),
+                ]
+            )
             lines.append(
-                self.account_attribution.to_string(
+                to_print.rename(index={0: "--TOTALS--"}).to_string(
                     float_format="{:,.2%}".format,
                     formatters=self._get_formatters(),
                     index=True,
+                    header=False,
                 )
             )
 
         if self.factor_attributions:
             for factor, df in self.factor_attributions.items():
                 lines.append(f"\n🔍 FACTOR-LEVEL ATTRIBUTION: {factor}")
+                total_weight = df["Avg. Weight"].sum()
+                total_twr = (
+                    (
+                        df["Contribution to Portfolio Return"].sum()
+                        / total_weight
+                    )
+                    if total_weight > 0
+                    else 0
+                )
+                total_contribution = df[
+                    "Contribution to Portfolio Return"
+                ].sum()
+                to_print = pd.concat(
+                    [
+                        df,
+                        pd.DataFrame(
+                            {
+                                "Avg. Weight": total_weight,
+                                "Return (TWR)": total_twr,
+                                "Contribution to Portfolio Return": total_contribution,
+                            },
+                            index=[0],
+                        ),
+                    ]
+                )
                 lines.append(
-                    df.to_string(
+                    to_print.rename(index={0: "--TOTALS--"}).to_string(
                         float_format="{:,.2%}".format,
                         formatters=self._get_formatters(),
                         index=True,
+                        header=False,
                     )
                 )
 
@@ -260,18 +345,9 @@ class PerformanceResults:
             else []
         )
 
-        if not accounts and hasattr(self, "portfolio_history"):
-            # Extract account names from column names
-            account_cols = [
-                col
-                for col in self.portfolio_history.columns
-                if col.endswith("_total")
-            ]
-            accounts = [col.replace("_total", "") for col in account_cols]
-
         account_data = []
         for account in accounts:
-            total_col = f"{account}_total"
+            total_col = f"{account}_total_value"
             if total_col in self.portfolio_history.columns:
                 current_value = latest_data[total_col]
 
@@ -327,17 +403,7 @@ class PerformanceResults:
 
         latest_data = self.portfolio_history.iloc[-1]
 
-        if account_name:
-            accounts = [account_name]
-        else:
-            # Get all accounts
-            account_cols = [
-                col
-                for col in self.portfolio_history.columns
-                if col.endswith("_total")
-            ]
-            accounts = [col.replace("_total", "") for col in account_cols]
-
+        accounts = [account_name] if account_name else []
         holdings_data = []
 
         for account in accounts:
@@ -345,11 +411,13 @@ class PerformanceResults:
             symbol_cols = [
                 col
                 for col in self.portfolio_history.columns
-                if col.startswith(f"{account}_") and col.endswith("_shares")
+                if col.startswith(f"{account}_") and col.endswith("_quantity")
             ]
 
             for col in symbol_cols:
-                symbol = col.replace(f"{account}_", "").replace("_shares", "")
+                symbol = col.replace(f"{account}_", "").replace(
+                    "_quantity", ""
+                )
                 shares = latest_data[col]
 
                 if shares != 0:  # Only include non-zero holdings
@@ -359,7 +427,9 @@ class PerformanceResults:
                     value = latest_data.get(value_col, 0)
                     price = latest_data.get(price_col, 0)
 
-                    account_total = latest_data.get(f"{account}_total", 0)
+                    account_total = latest_data.get(
+                        f"{account}_total_value", 0
+                    )
                     weight = value / account_total if account_total > 0 else 0
 
                     holdings_data.append(
