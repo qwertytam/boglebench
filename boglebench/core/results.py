@@ -49,15 +49,16 @@ class PerformanceResults:
     def summary(self) -> str:
         """Generate a summary report of the performance analysis."""
         lines = []
-        lines.append("=" * 60)
+        lines.append("\n")
+        lines.append("=" * 80)
         lines.append("🎯 BOGLEBENCH PERFORMANCE ANALYSIS")
         lines.append("   'Stay the course' - John C. Bogle")
-        lines.append("=" * 60)
+        lines.append("=" * 80)
 
         # Portfolio metrics.   f"{3­:0=­+5}­"
         if self.portfolio_metrics:
             p = self.portfolio_metrics
-            lines.append("\n📊 PORTFOLIO PERFORMANCE")
+            lines.append("\n📊 PORTFOLIO PERFORMANCE\n")
             lines.append(
                 "  Return Methods       Mod. Dietz     TWR        IRR"
             )
@@ -98,7 +99,7 @@ class PerformanceResults:
             b = self.benchmark_metrics
 
             benchmark_name = self.config.get("benchmark.name", "Benchmark")
-            lines.append(f"\n📈 {benchmark_name} PERFORMANCE")
+            lines.append(f"\n📈 BENCHMARK '{benchmark_name}' PERFORMANCE\n")
             lines.append(f"  Total Return:        {b['total_return']:>+8.2%}")
             lines.append(
                 f"  Annualized Return:   {b['annualized_return']:>+8.2%}"
@@ -110,7 +111,7 @@ class PerformanceResults:
         # Relative performance
         if self.relative_metrics:
             r = self.relative_metrics
-            lines.append("\n🎯 RELATIVE PERFORMANCE (Using TWR)")
+            lines.append("\n🎯 RELATIVE PERFORMANCE (Using TWR)\n")
             lines.append(
                 f"  Tracking Error:      {r['tracking_error']:>+8.2%}"
             )
@@ -121,20 +122,15 @@ class PerformanceResults:
             lines.append(f"  Jensen's Alpha:      {r['jensens_alpha']:>+8.2%}")
             lines.append(f"  Correlation:         {r['correlation']:>+8.3f}")
 
-        lines.append("\n" + "=" * 60)
-        lines.append(
-            "💡 Remember: Past performance doesn't guarantee future results."
-        )
-        lines.append(
-            "   Focus on low costs, diversification, and long-term discipline."
-        )
+        lines.append("\n" + "-" * 80)
+        lines.append("🔍 DETAILED ATTRIBUTION ANALYSIS\n")
 
         # Format attribution tables if they exist
         if self.holding_attribution is not None:
             self.holding_attribution = self.holding_attribution.sort_values(
                 by="Contribution to Portfolio Return", ascending=False
             )
-            lines.append("\n🏷️  HOLDING-LEVEL ATTRIBUTION")
+            lines.append("\n🏷️  HOLDING-LEVEL ATTRIBUTION\n")
             total_weight = self.holding_attribution["Avg. Weight"].sum()
             total_twr = (
                 (
@@ -163,16 +159,15 @@ class PerformanceResults:
                 ]
             )
             lines.append(
-                to_print.rename(index={0: "--TOTALS--"}).to_string(
+                to_print.rename(index={0: "  Totals  "}).to_string(
                     float_format="{:,.2%}".format,
                     formatters=self._get_formatters(),
                     index=True,
-                    header=False,
                 )
             )
 
         if self.account_attribution is not None:
-            lines.append("\n🏦 ACCOUNT-LEVEL ATTRIBUTION")
+            lines.append("\n🏦 ACCOUNT-LEVEL ATTRIBUTION\n")
             total_weight = self.account_attribution["Avg. Weight"].sum()
             total_twr = (
                 (
@@ -201,17 +196,16 @@ class PerformanceResults:
                 ]
             )
             lines.append(
-                to_print.rename(index={0: "--TOTALS--"}).to_string(
+                to_print.rename(index={0: "  Totals  "}).to_string(
                     float_format="{:,.2%}".format,
                     formatters=self._get_formatters(),
                     index=True,
-                    header=False,
                 )
             )
 
         if self.factor_attributions:
             for factor, df in self.factor_attributions.items():
-                lines.append(f"\n🔍 FACTOR-LEVEL ATTRIBUTION: {factor}")
+                lines.append(f"\n🔍 FACTOR-LEVEL ATTRIBUTION: '{factor}'\n")
                 total_weight = df["Avg. Weight"].sum()
                 total_twr = (
                     (
@@ -238,11 +232,10 @@ class PerformanceResults:
                     ]
                 )
                 lines.append(
-                    to_print.rename(index={0: "--TOTALS--"}).to_string(
+                    to_print.rename(index={0: "  Totals  "}).to_string(
                         float_format="{:,.2%}".format,
                         formatters=self._get_formatters(),
                         index=True,
-                        header=False,
                     )
                 )
 
@@ -250,15 +243,35 @@ class PerformanceResults:
         if self.brinson_summary is not None:
             for group_by, brinson_data in self.brinson_summary.items():
                 lines.append(
-                    f"\n🎯 BRINSON ATTRIBUTION vs. Benchmark (by {group_by})\n"
+                    "\n"
+                    + "-" * 80
+                    + f"\n🎯 BRINSON ATTRIBUTION vs. Benchmark (by '{group_by}')\n"
                 )
 
                 # Format the main Brinson summary table
                 brinson_df = brinson_data[
                     ["Allocation Effect", "Selection Effect", "Total Effect"]
                 ]
+                total_row = pd.DataFrame(
+                    {
+                        "Allocation Effect": brinson_df[
+                            "Allocation Effect"
+                        ].sum(),
+                        "Selection Effect": brinson_df[
+                            "Selection Effect"
+                        ].sum(),
+                        "Total Effect": brinson_df["Total Effect"].sum(),
+                    },
+                    index=["  Totals  "],
+                )
+                to_print = pd.concat(
+                    [
+                        brinson_df,
+                        total_row,
+                    ]
+                )
                 lines.append(
-                    brinson_df.to_string(float_format=lambda x: f"{x:,.2%}")
+                    to_print.to_string(float_format=lambda x: f"{x:,.2%}")
                 )
                 lines.append("\n")
 
@@ -284,12 +297,34 @@ class PerformanceResults:
                             lines.append(
                                 f"\n🔎 SELECTION DETAIL FOR '{category}'\n"
                             )
+                            total_row = pd.DataFrame(
+                                {
+                                    "Avg. Weight": drilldown_df[
+                                        "Avg. Weight"
+                                    ].sum(),
+                                    "Return (TWR)": (
+                                        (
+                                            drilldown_df["Return (TWR)"]
+                                            * drilldown_df["Avg. Weight"]
+                                        ).sum()
+                                    ),
+                                    "Contribution to Selection": drilldown_df[
+                                        "Contribution to Selection"
+                                    ].sum(),
+                                },
+                                index=["  Totals  "],
+                            )
+                            to_print = pd.concat(
+                                [
+                                    drilldown_df,
+                                    total_row,
+                                ]
+                            )
                             lines.append(
-                                drilldown_df.to_string(
+                                to_print.to_string(
                                     float_format=lambda x: f"{x:,.2%}"
                                 )
                             )
-                            lines.append("\n")
 
                         if (
                             self.brinson_summary is not None
@@ -301,6 +336,13 @@ class PerformanceResults:
                             lines.append(
                                 f"\nTotal Selection Effect for {category}: {total_selection:.2%}"
                             )
+        lines.append("\n" + "=" * 80)
+        lines.append(
+            "💡 Remember: Past performance doesn't guarantee future results."
+        )
+        lines.append(
+            "   Focus on low costs, diversification, and long-term discipline.\n\n"
+        )
 
         return "\n".join(lines)
 
