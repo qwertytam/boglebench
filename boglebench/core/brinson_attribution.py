@@ -186,7 +186,7 @@ class BrinsonAttributionCalculator:
             cat_total_value = pd.Series(0.0, index=history_df.index)
 
             for symbol in symbols_in_cat:
-                return_col = f"{symbol}_return"
+                return_col = f"{symbol}_twr_return"
                 value_col = f"{symbol}_total_value"
                 if (
                     return_col in history_df.columns
@@ -239,7 +239,7 @@ class BrinsonAttributionCalculator:
                 bench_cat_return = 0
 
             for symbol in symbols:
-                symbol_return_col = f"{symbol}_return"
+                symbol_return_col = f"{symbol}_twr_return"
                 if symbol_return_col in self.portfolio_history.columns:
                     # Calculate TWR for this specific symbol
                     symbol_values = self.portfolio_history[

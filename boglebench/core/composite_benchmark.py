@@ -110,7 +110,7 @@ class CompositeBenchmarkBuilder:
         )
 
         for symbol in self.symbols:
-            benchmark_df[f"{symbol}_return"] = (
+            benchmark_df[f"{symbol}_twr_return"] = (
                 benchmark_df[f"{symbol}_total_value"].pct_change().fillna(0.0)
             )
 
