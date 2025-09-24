@@ -25,8 +25,10 @@ class PerformanceResults:
         holding_attribution: Optional[pd.DataFrame] = None,
         account_attribution: Optional[pd.DataFrame] = None,
         factor_attributions: Optional[Dict] = None,
-        brinson_summary: Optional[pd.DataFrame] = None,
-        selection_drilldown: Optional[dict[str, pd.DataFrame]] = None,
+        brinson_summary: Optional[Dict[str, pd.DataFrame]] = None,
+        selection_drilldown: Optional[
+            Dict[str, Dict[str, pd.DataFrame]]
+        ] = None,
         config: Optional[ConfigManager] = None,
     ):
         self.transactions = transactions
@@ -160,47 +162,60 @@ class PerformanceResults:
                 )
 
         # --- 3. NEW: Add the Brinson Attribution section to the summary ---
-        if self.brinson_summary is not None and not self.brinson_summary.empty:
-            group_by = self.config.get(
-                "reporting.attribution_group_by", "asset_class"
-            )
-            lines.append(
-                f"\n🎯 BRINSON ATTRIBUTION vs. Benchmark (by {group_by})\n"
-            )
+        if self.brinson_summary is not None:
+            for group_by, brinson_data in self.brinson_summary.items():
+                lines.append(
+                    f"\n🎯 BRINSON ATTRIBUTION vs. Benchmark (by {group_by})\n"
+                )
 
-            # Format the main Brinson summary table
-            brinson_df = self.brinson_summary[
-                ["Allocation Effect", "Selection Effect", "Total Effect"]
-            ]
-            lines.append(
-                brinson_df.to_string(float_format=lambda x: f"{x:,.2%}")
-            )
-            lines.append("\n")
+                # Format the main Brinson summary table
+                brinson_df = brinson_data[
+                    ["Allocation Effect", "Selection Effect", "Total Effect"]
+                ]
+                lines.append(
+                    brinson_df.to_string(float_format=lambda x: f"{x:,.2%}")
+                )
+                lines.append("\n")
 
-            # Add the detailed selection drill-down tables
-            if self.selection_drilldown:
-                for category, drilldown_df in self.selection_drilldown.items():
-                    if not drilldown_df.empty:
-                        lines.append(
-                            f"\n🔎 SELECTION DETAIL FOR '{category}'\n"
-                        )
-                        lines.append(
-                            drilldown_df.to_string(
-                                float_format=lambda x: f"{x:,.2%}"
+                # Add the detailed selection drill-down tables
+                if self.selection_drilldown is None:
+                    raise ValueError(
+                        "selection_drilldown is required for summary report."
+                    )
+                elif (
+                    not isinstance(self.selection_drilldown, dict)
+                    or group_by not in self.selection_drilldown
+                    or self.selection_drilldown[group_by] is None
+                ):
+                    raise ValueError(
+                        f"selection_drilldown for group '{group_by}' "
+                        "is None or group_by is not a valid key."
+                    )
+                else:
+                    for category, drilldown_df in self.selection_drilldown[
+                        group_by
+                    ].items():
+                        if not drilldown_df.empty:
+                            lines.append(
+                                f"\n🔎 SELECTION DETAIL FOR '{category}'\n"
                             )
-                        )
-                        lines.append("\n")
+                            lines.append(
+                                drilldown_df.to_string(
+                                    float_format=lambda x: f"{x:,.2%}"
+                                )
+                            )
+                            lines.append("\n")
 
-                    if (
-                        self.brinson_summary is not None
-                        and category in self.brinson_summary.index
-                    ):
-                        total_selection = self.brinson_summary.loc[
-                            category, "Selection Effect"
-                        ]
-                        lines.append(
-                            f"\nTotal Selection Effect for {category}: {total_selection:.2%}"
-                        )
+                        if (
+                            self.brinson_summary is not None
+                            and category in brinson_data.index
+                        ):
+                            total_selection = brinson_data.loc[
+                                category, "Selection Effect"
+                            ]
+                            lines.append(
+                                f"\nTotal Selection Effect for {category}: {total_selection:.2%}"
+                            )
 
         return "\n".join(lines)
 

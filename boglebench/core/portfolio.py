@@ -18,6 +18,7 @@ from typing import Dict, Optional, Union
 
 import pandas as pd
 
+from ..core.attribution import AttributionCalculator
 from ..core.brinson_attribution import BrinsonAttributionCalculator
 from ..core.composite_benchmark import CompositeBenchmarkBuilder
 from ..core.constants import DateAndTimeConstants, Defaults
@@ -319,6 +320,27 @@ class BogleBenchAnalyzer:
                 annual_risk_free_rate,
             )
 
+        # Calculate performance attribution
+        self.logger.info("📊 Calculating performance attribution...")
+        attrib_calculator = AttributionCalculator(
+            portfolio_history=self.portfolio_history,
+            transactions=self.transactions,
+            attrib_group_cols=self.attrib_group_cols,
+        )
+
+        # Calculate attribution by holding and account
+        holding_attribution = attrib_calculator.calculate(group_by="symbol")
+        account_attribution = attrib_calculator.calculate(group_by="account")
+
+        # Calculate for all discovered factor columns
+        factor_attributions = {}
+        factor_columns = sorted(list(set(self.attrib_group_cols)))
+        for factor in factor_columns:
+            self.logger.info("Calculating attribution for factor: %s", factor)
+            factor_attributions[factor] = attrib_calculator.calculate(
+                group_by=factor
+            )
+
         # Calculate Brinson-Fachler attribution
         brinson_summary = None
         selection_drilldown = None
@@ -343,39 +365,51 @@ class BogleBenchAnalyzer:
                     transactions=self.transactions,
                 )
                 group_by = self.config.get(
-                    "reporting.attribution_group_by", "group1"
+                    "analysis.attribution_analysis.transaction_groups",
+                    ["group1"],
                 )
                 if isinstance(group_by, Dict):
-                    group_by = group_by.get("value", "group1")
-                if group_by is None or not isinstance(group_by, str):
-                    group_by = "group1"
+                    group_by = group_by.get("value", ["group1"])
+                if group_by is None or not isinstance(group_by, list):
+                    group_by = ["group1"]
                     self.logger.warning(
-                        "Invalid group_by for Brinson attribution. Using default 'group1'."
+                        "Invalid group_by for Brinson attribution. Using default ['group1']."
                     )
                 if self.start_date is None or self.end_date is None:
                     raise ValueError(
                         "Start date and end date must both be set"
                     )
 
-                if group_by not in self.transactions.columns:
-                    self.logger.error(
-                        "Grouping column '%s' not found in transactions. "
-                        "Skipping Brinson attribution.",
-                        group_by,
-                    )
-                else:
-                    brinson_summary, selection_drilldown = (
-                        brinson_calculator.calculate(group_by)
-                    )
-                    self.logger.info(
-                        "✅ Brinson attribution analysis complete!"
-                    )
+                for group in group_by:
+                    if group not in self.transactions.columns:
+                        self.logger.error(
+                            "Grouping column '%s' not found in transactions. "
+                            "Skipping Brinson attribution.",
+                            group,
+                        )
+                    else:
+                        brinson_summary = {}
+                        selection_drilldown = {}
+                        for group in group_by:
+                            self.logger.info(
+                                " - Grouping by transaction column: %s", group
+                            )
+                            (
+                                brinson_summary[group],
+                                selection_drilldown[group],
+                            ) = brinson_calculator.calculate(group)
+                            self.logger.info(
+                                "✅ Brinson attribution analysis complete!"
+                            )
 
         self.performance_results = PerformanceResults(
             transactions=self.transactions,
             portfolio_metrics=portfolio_metrics,
             benchmark_metrics=benchmark_metrics,
             relative_metrics=relative_metrics,
+            holding_attribution=holding_attribution,
+            account_attribution=account_attribution,
+            factor_attributions=factor_attributions,
             portfolio_history=self.portfolio_history,
             benchmark_history=self.benchmark_history,
             brinson_summary=brinson_summary,
