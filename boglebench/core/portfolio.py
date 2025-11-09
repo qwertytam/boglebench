@@ -18,6 +18,8 @@ from typing import Dict, Optional, Union
 
 import pandas as pd
 
+from ..core.attribution import AttributionCalculator
+from ..core.brinson_attribution import BrinsonAttributionCalculator
 from ..core.composite_benchmark import CompositeBenchmarkBuilder
 from ..core.constants import DateAndTimeConstants, Defaults
 from ..core.dates import AnalysisPeriod
@@ -66,8 +68,11 @@ class BogleBenchAnalyzer:
         self.transactions = pd.DataFrame()
         self.market_data: Dict[str, pd.DataFrame] = {}
         self.portfolio_history = pd.DataFrame()
-        self.benchmark_data = pd.DataFrame()
+        self.benchmark_history = pd.DataFrame()
         self.performance_results = PerformanceResults()
+        self.attrib_group_cols: list[str] = []
+        self.start_date: Optional[pd.Timestamp] = None
+        self.end_date: Optional[pd.Timestamp] = None
 
         self.config = ConfigManager(config_path)
 
@@ -135,7 +140,9 @@ class BogleBenchAnalyzer:
             file_path = str(self.config.get_transactions_file_path())
         self.logger.info("📄 Loading transactions from: %s", file_path)
 
-        self.transactions = load_validate_transactions(Path(file_path))
+        self.transactions, self.attrib_group_cols = load_validate_transactions(
+            Path(file_path)
+        )
         self.logger.info("✅ Loaded %d transactions", len(self.transactions))
 
         return self.transactions
@@ -156,6 +163,13 @@ class BogleBenchAnalyzer:
         if not period.start_date or not period.end_date:
             raise ValueError("Could not determine valid start and end dates")
 
+        self.start_date = period.start_date
+        self.end_date = period.end_date
+        self.logger.info(
+            "📅 Analysis period: %s to %s",
+            self.start_date,
+            self.end_date,
+        )
         self._fetch_market_data(period.start_date, period.end_date)
 
         processor = DividendProcessor(
@@ -190,19 +204,19 @@ class BogleBenchAnalyzer:
             None
 
         """
-        portfolio_tickers = self.transactions["ticker"].unique().tolist()
+        portfolio_symbols = self.transactions["symbol"].unique().tolist()
 
         benchmark_components = self.config.get_benchmark_components()
-        benchmark_tickers = [comp["symbol"] for comp in benchmark_components]
+        benchmark_symbols = [comp["symbol"] for comp in benchmark_components]
 
-        all_tickers = list(set(portfolio_tickers + benchmark_tickers))
+        all_symbols = list(set(portfolio_symbols + benchmark_symbols))
         self.logger.debug(
-            "Fetching market data for %d unique tickers: %s",
-            len(all_tickers),
-            all_tickers,
+            "Fetching market data for %d unique symbols: %s",
+            len(all_symbols),
+            all_symbols,
         )
         self.market_data = self.market_data_provider.get_market_data(
-            tickers=all_tickers,
+            symbols=all_symbols,
             start_date=start_date,
             end_date=end_date,
         )
@@ -214,9 +228,9 @@ class BogleBenchAnalyzer:
             start_date=start_date,
             end_date=end_date,
         )
-        self.benchmark_data = builder.build()
+        self.benchmark_history = builder.build()
 
-        if self.benchmark_data.empty:
+        if self.benchmark_history.empty:
             self.logger.warning(
                 "Composite benchmark data is empty or not found in market data."
                 " No benchmark comparison will be available."
@@ -231,6 +245,7 @@ class BogleBenchAnalyzer:
             PerformanceResults object containing all metrics and analysis
         """
         if self.portfolio_history.empty:
+            self.logger.debug("Portfolio history empty, building now...")
             self.build_portfolio_history()
 
         if self.portfolio_history.empty:
@@ -240,9 +255,6 @@ class BogleBenchAnalyzer:
             )
 
         self.logger.info("📊 Calculating performance metrics...")
-
-        # Align benchmark before calculating metrics
-        self._align_benchmark_returns()
 
         annual_trading_days = self.config.get(
             "settings.annual_trading_days",
@@ -286,13 +298,12 @@ class BogleBenchAnalyzer:
                 )
             },
         }
-
         benchmark_metrics = {}
-        if "benchmark_returns" in self.portfolio_history.columns:
+        if "benchmark_return" in self.benchmark_history.columns:
             benchmark_metrics = calculate_metrics(
                 # Skip first day invested as benchmark return is calculated
                 # as period-over-period change
-                self.portfolio_history["benchmark_returns"][1:],
+                self.benchmark_history["benchmark_return"][1:],
                 "Benchmark",
                 annual_trading_days,
                 annual_risk_free_rate,
@@ -304,52 +315,107 @@ class BogleBenchAnalyzer:
                 # Skip first day invested as benchmark return is calculated
                 # as period-over-period change
                 self.portfolio_history["portfolio_daily_return_twr"][1:],
-                self.portfolio_history["benchmark_returns"][1:],
+                self.benchmark_history["benchmark_return"][1:],
                 annual_trading_days,
                 annual_risk_free_rate,
             )
+
+        # Calculate performance attribution
+        self.logger.info("📊 Calculating performance attribution...")
+        attrib_calculator = AttributionCalculator(
+            portfolio_history=self.portfolio_history,
+            transactions=self.transactions,
+            attrib_group_cols=self.attrib_group_cols,
+        )
+
+        # Calculate attribution by holding and account
+        holding_attribution = attrib_calculator.calculate(group_by="symbol")
+        account_attribution = attrib_calculator.calculate(group_by="account")
+
+        # Calculate for all discovered factor columns
+        factor_attributions = {}
+        factor_columns = sorted(list(set(self.attrib_group_cols)))
+        for factor in factor_columns:
+            self.logger.info("Calculating attribution for factor: %s", factor)
+            factor_attributions[factor] = attrib_calculator.calculate(
+                group_by=factor
+            )
+
+        # Calculate Brinson-Fachler attribution
+        brinson_summary = None
+        selection_drilldown = None
+        if (
+            self.config.get("analysis.attribution_analysis.enabled", False)
+            and self.benchmark_history is not None
+            and not self.benchmark_history.empty
+        ):
+            self.logger.info("📊 Running attribution analysis...")
+
+            if (
+                self.config.get(
+                    "analysis.attribution_analysis.method", "Brinson"
+                )
+                == "Brinson"
+            ):
+                self.logger.info("Calculating Brinson attribution...")
+                brinson_calculator = BrinsonAttributionCalculator(
+                    config=self.config,
+                    portfolio_history=self.portfolio_history,
+                    benchmark_history=self.benchmark_history,
+                    transactions=self.transactions,
+                )
+                group_by = self.config.get(
+                    "analysis.attribution_analysis.transaction_groups",
+                    ["group1"],
+                )
+                if isinstance(group_by, Dict):
+                    group_by = group_by.get("value", ["group1"])
+                if group_by is None or not isinstance(group_by, list):
+                    group_by = ["group1"]
+                    self.logger.warning(
+                        "Invalid group_by for Brinson attribution. Using default ['group1']."
+                    )
+                if self.start_date is None or self.end_date is None:
+                    raise ValueError(
+                        "Start date and end date must both be set"
+                    )
+
+                for group in group_by:
+                    if group not in self.transactions.columns:
+                        self.logger.error(
+                            "Grouping column '%s' not found in transactions. "
+                            "Skipping Brinson attribution.",
+                            group,
+                        )
+                    else:
+                        brinson_summary = {}
+                        selection_drilldown = {}
+                        for group in group_by:
+                            self.logger.info(
+                                " - Grouping by transaction column: %s", group
+                            )
+                            (
+                                brinson_summary[group],
+                                selection_drilldown[group],
+                            ) = brinson_calculator.calculate(group)
+                            self.logger.info(
+                                "✅ Brinson attribution analysis complete!"
+                            )
 
         self.performance_results = PerformanceResults(
             transactions=self.transactions,
             portfolio_metrics=portfolio_metrics,
             benchmark_metrics=benchmark_metrics,
             relative_metrics=relative_metrics,
+            holding_attribution=holding_attribution,
+            account_attribution=account_attribution,
+            factor_attributions=factor_attributions,
             portfolio_history=self.portfolio_history,
+            benchmark_history=self.benchmark_history,
+            brinson_summary=brinson_summary,
+            selection_drilldown=selection_drilldown,
             config=self.config,
         )
 
         self.logger.info("✅ Performance analysis complete!")
         return self.performance_results
-
-    def _align_benchmark_returns(self) -> None:
-        """Align benchmark returns with portfolio dates."""
-        if self.benchmark_data.empty:
-            self.logger.warning(
-                "No benchmark data available to align returns."
-            )
-            return
-
-        # Convert benchmark data to returns
-        benchmark_df = self.benchmark_data.copy()
-        benchmark_df["date"] = pd.to_datetime(
-            benchmark_df["date"], utc=True
-        ).dt.normalize()
-        benchmark_df = benchmark_df.sort_values("date")
-
-        # Calculate period on period returns
-        # Use adjusted close prices for benchmark returns
-        benchmark_df["benchmark_returns"] = benchmark_df[
-            "adj_close"
-        ].pct_change()
-
-        # Use merge_asof for robust alignment
-        self.portfolio_history = pd.merge_asof(
-            self.portfolio_history.sort_values("date"),
-            benchmark_df[["date", "benchmark_returns"]].sort_values("date"),
-            on="date",
-            direction="backward",
-        )
-
-        self.portfolio_history["benchmark_returns"] = self.portfolio_history[
-            "benchmark_returns"
-        ].fillna(0)

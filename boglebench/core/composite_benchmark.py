@@ -32,7 +32,7 @@ class CompositeBenchmarkBuilder:
         self.rebalancing_freq = (
             self.config.get_benchmark_rebalancing_frequency()
         )
-        self.tickers = [comp["symbol"] for comp in self.components]
+        self.symbols = [comp["symbol"] for comp in self.components]
 
     def build(self) -> pd.DataFrame:
         """
@@ -40,10 +40,10 @@ class CompositeBenchmarkBuilder:
 
         Returns a DataFrame with 'date', 'adj_close', 'dividend', and
         'split_coefficient' columns,
-        mimicking the structure of a single ticker's market data.
+        mimicking the structure of a single symbol's market data.
         """
         # Ensure all component data is available
-        if not all(ticker in self.market_data for ticker in self.tickers):
+        if not all(symbol in self.market_data for symbol in self.symbols):
             logger.warning(
                 "Missing market data for one or more benchmark components."
             )
@@ -62,8 +62,21 @@ class CompositeBenchmarkBuilder:
 
         daily_values = []
         for date, row in adj_close_df.iterrows():
-            market_value = (row * shares).sum()
+            market_values = row * shares
+            market_value = market_values.sum()
+            weights = (
+                market_values / market_value
+                if market_value > 0
+                else [0] * len(self.symbols)
+            )
             daily_values.append({"date": date, "value": market_value})
+
+            for symbol, weight in zip(self.symbols, weights):
+                daily_values[-1][f"{symbol}_weight"] = weight
+                daily_values[-1][f"{symbol}_total_value"] = market_values[
+                    symbol
+                ]
+            daily_values[-1]["total_value"] = market_value
 
             # Check for rebalancing
             if not isinstance(date, pd.Timestamp):
@@ -84,24 +97,33 @@ class CompositeBenchmarkBuilder:
 
         # Convert daily values to a DataFrame that mimics market data
         benchmark_df = pd.DataFrame(daily_values)
-        benchmark_df["adj_close"] = benchmark_df["value"]
+        benchmark_df = benchmark_df.rename(columns={"value": "adj_close"})
         benchmark_df["dividend"] = (
             0.0  # Simplification: dividends are handled by adj_close
         )
         benchmark_df["split_coefficient"] = 0.0  # No splits in composite
 
-        return benchmark_df[
-            ["date", "adj_close", "dividend", "split_coefficient"]
-        ]
+        benchmark_df = benchmark_df.sort_values("date").reset_index(drop=True)
+
+        benchmark_df["benchmark_return"] = (
+            benchmark_df["adj_close"].pct_change().fillna(0.0)
+        )
+
+        for symbol in self.symbols:
+            benchmark_df[f"{symbol}_twr_return"] = (
+                benchmark_df[f"{symbol}_total_value"].pct_change().fillna(0.0)
+            )
+
+        return benchmark_df
 
     def _prepare_price_data(self) -> pd.DataFrame:
         """Creates a merged DataFrame of adjusted close prices for all components."""
         all_dfs = []
-        for ticker in self.tickers:
-            df = self.market_data[ticker][["date", "adj_close"]].set_index(
+        for symbol in self.symbols:
+            df = self.market_data[symbol][["date", "adj_close"]].set_index(
                 "date"
             )
-            df = df.rename(columns={"adj_close": ticker})
+            df = df.rename(columns={"adj_close": symbol})
             all_dfs.append(df)
 
         # Merge all dataframes and forward-fill missing values
@@ -116,11 +138,11 @@ class CompositeBenchmarkBuilder:
     ) -> pd.Series:
         """Calculates the initial number of shares for each component."""
         first_day_prices = adj_close_df.iloc[0]
-        shares = pd.Series(0.0, index=self.tickers)
+        shares = pd.Series(0.0, index=self.symbols)
         for comp in self.components:
-            ticker, weight = comp["symbol"], comp["weight"]
+            symbol, weight = comp["symbol"], comp["weight"]
             allocated_amount = investment * weight
-            shares[ticker] = allocated_amount / first_day_prices[ticker]
+            shares[symbol] = allocated_amount / first_day_prices[symbol]
         return shares
 
     def _is_rebalancing_day(self, date: pd.Timestamp) -> bool:
@@ -146,9 +168,9 @@ class CompositeBenchmarkBuilder:
 
     def _rebalance(self, prices: pd.Series, total_value: float) -> pd.Series:
         """Calculates new share counts based on target weights."""
-        new_shares = pd.Series(0.0, index=self.tickers)
+        new_shares = pd.Series(0.0, index=self.symbols)
         for comp in self.components:
-            ticker, weight = comp["symbol"], comp["weight"]
+            symbol, weight = comp["symbol"], comp["weight"]
             allocated_amount = total_value * weight
-            new_shares[ticker] = allocated_amount / prices[ticker]
+            new_shares[symbol] = allocated_amount / prices[symbol]
         return new_shares

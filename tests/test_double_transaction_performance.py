@@ -71,9 +71,9 @@ class TestMultiTransactionPerformance:
         )
 
         market_data_path = temp_config.get_market_data_path()
-        for ticker, df in market_data.items():
+        for symbol, df in market_data.items():
             df["date"] = pd.to_datetime(df["date"], utc=True, errors="coerce")
-            df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
+            df.to_parquet(market_data_path / f"{symbol}.parquet", index=False)
 
         output_path = temp_config.get_output_path()
 
@@ -143,7 +143,7 @@ class TestMultiTransactionPerformance:
         ]
         assert not june_5_data.empty, "No data found for June 5"
         assert (
-            june_5_data.iloc[0]["Test_Account_AAPL_shares"]
+            june_5_data.iloc[0]["Test_Account_AAPL_quantity"]
             == expected_quantity_aapl
         )
         assert (
@@ -153,7 +153,7 @@ class TestMultiTransactionPerformance:
             )
             < 1
         )
-        assert june_5_data.iloc[0]["Test_Account_MSFT_shares"] == 0
+        assert june_5_data.iloc[0]["Test_Account_MSFT_quantity"] == 0
 
         # June 8: 100 AAPL + 50 MSFT
         june_8_data = portfolio_history[
@@ -168,11 +168,11 @@ class TestMultiTransactionPerformance:
 
         assert not june_8_data.empty, "No data found for June 8"
         assert (
-            june_8_data.iloc[0]["Test_Account_AAPL_shares"]
+            june_8_data.iloc[0]["Test_Account_AAPL_quantity"]
             == expected_quantity_aapl
         )
         assert (
-            june_8_data.iloc[0]["Test_Account_MSFT_shares"]
+            june_8_data.iloc[0]["Test_Account_MSFT_quantity"]
             == expected_quantity_msft
         )
 
@@ -194,11 +194,11 @@ class TestMultiTransactionPerformance:
 
         assert not june_12_data.empty, "No data found for June 12"
         assert (
-            june_12_data.iloc[0]["Test_Account_AAPL_shares"]
+            june_12_data.iloc[0]["Test_Account_AAPL_quantity"]
             == expected_quantity_aapl
         )
         assert (
-            june_12_data.iloc[0]["Test_Account_MSFT_shares"]
+            june_12_data.iloc[0]["Test_Account_MSFT_quantity"]
             == expected_quantity_msft
         )
         # Only 25 MSFT shares
@@ -285,7 +285,7 @@ class TestMultiTransactionPerformance:
             == pd.Timestamp("2023-06-07").date()
         ]
         if not june_7_data.empty:
-            assert june_7_data.iloc[0]["Test_Account_MSFT_shares"] == 0
+            assert june_7_data.iloc[0]["Test_Account_MSFT_quantity"] == 0
 
         # After MSFT purchase, before sale (June 9): 50 MSFT shares
         june_9_data = portfolio_history[
@@ -293,7 +293,7 @@ class TestMultiTransactionPerformance:
             == pd.Timestamp("2023-06-09").date()
         ]
         if not june_9_data.empty:
-            assert june_9_data.iloc[0]["Test_Account_MSFT_shares"] == 50
+            assert june_9_data.iloc[0]["Test_Account_MSFT_quantity"] == 50
 
         # After partial sale (June 13): 25 MSFT shares remaining
         june_13_data = portfolio_history[
@@ -301,7 +301,7 @@ class TestMultiTransactionPerformance:
             == pd.Timestamp("2023-06-13").date()
         ]
         if not june_13_data.empty:
-            assert june_13_data.iloc[0]["Test_Account_MSFT_shares"] == 25
+            assert june_13_data.iloc[0]["Test_Account_MSFT_quantity"] == 25
 
     def test_transaction_data_validation(
         self, test_data_dir, scenario_analyzer
@@ -362,6 +362,7 @@ class TestMultiTransactionPerformance:
         analyzer.build_portfolio_history()
         results = analyzer.calculate_performance()
         summary = results.summary()
+        print(summary)
 
         expected_periods = 10
 
@@ -415,6 +416,11 @@ class TestMultiTransactionPerformance:
         assert "total_value" in portfolio_history.columns
         assert "portfolio_daily_return_mod_dietz" in portfolio_history.columns
         assert "portfolio_daily_return_twr" in portfolio_history.columns
+
+        # Verify benchmark history was built correctly
+        benchmark_history = results.benchmark_history
+        assert len(benchmark_history) == 10  # 10 trading days
+        assert "adj_close" in benchmark_history.columns
 
         # Verify returns
         accuracy = 0.001 / 100  # 0.001% accuracy
@@ -608,10 +614,10 @@ class TestMultiTransactionPerformance:
             ]
         )
 
-        assert portfolio_history["benchmark_returns"].notna().all()
+        assert benchmark_history["benchmark_return"].notna().all()
         assert (
             abs(
-                portfolio_history["benchmark_returns"]
+                benchmark_history["benchmark_return"]
                 - expected_bm_daily_returns
             ).max()
             < accuracy

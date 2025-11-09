@@ -196,17 +196,17 @@ class TestPerformanceCalculation:
         shutil.copyfile(transactions_source, transactions_file_path)
 
         market_data_dict = {}
-        for ticker, filename in market_data_files.items():
+        for symbol, filename in market_data_files.items():
             market_data_path = test_data_dir / filename
-            market_data_dict[ticker] = pd.read_csv(
+            market_data_dict[symbol] = pd.read_csv(
                 market_data_path, parse_dates=["date"]
             )
         market_data_path = temp_config.get_market_data_path()
-        for ticker, df in market_data_dict.items():
+        for symbol, df in market_data_dict.items():
             df["date"] = pd.to_datetime(
                 df["date"], errors="coerce", format="%Y-%m-%d", utc=True
             )
-            df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
+            df.to_parquet(market_data_path / f"{symbol}.parquet", index=False)
 
         output_path = temp_config.get_output_path()
 
@@ -319,6 +319,8 @@ class TestPerformanceCalculation:
         accuracy = 0.001 / 100  # 0.001% accuracy
 
         if scenario_name == "simple_case":
+            summary = results.summary()
+            print(summary)
             # Check initial and final portfolio values
             purchase_price = 180.00
             start_price = 179.58  # price at close on first trading day
@@ -343,27 +345,30 @@ class TestPerformanceCalculation:
 
             expected_columns = [
                 "date",
-                "Test_Account_AAPL_shares",
+                "Test_Account_AAPL_quantity",
                 "Test_Account_AAPL_value",
-                "Test_Account_total",
+                "Test_Account_total_value",
                 "total_value",
-                "AAPL_total_shares",
+                "AAPL_total_quantity",
                 "AAPL_total_value",
                 "AAPL_price",
+                "AAPL_adj_price",
+                "Test_Account_weight",
+                "Test_Account_AAPL_weight",
+                "AAPL_weight",
                 "investment_cash_flow",
                 "income_cash_flow",
                 "net_cash_flow",
                 "Test_Account_cash_flow",
+                "AAPL_cash_flow",
+                "AAPL_market_return",
+                "AAPL_twr_return",
                 "portfolio_daily_return_mod_dietz",
                 "portfolio_daily_return_twr",
                 "Test_Account_mod_dietz_return",
                 "Test_Account_twr_return",
-                "benchmark_returns",
                 "market_value_change",
                 "market_value_return",
-                "Test_Account_AAPL_weight",
-                "Test_Account_weight",
-                "AAPL_weight",
             ]
 
             for col in expected_columns:

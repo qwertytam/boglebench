@@ -71,7 +71,7 @@ def make_transactions_div_and_reinvest(match=True):
             "date": pd.to_datetime(
                 ["2023-01-01", "2023-01-02", "2023-01-02"], utc=True
             ),
-            "ticker": ["VTI", "VTI", "VTI"],
+            "symbol": ["VTI", "VTI", "VTI"],
             "transaction_type": ["BUY", "DIVIDEND", "DIVIDEND_REINVEST"],
             "quantity": [1, 0, 0.01],
             "value_per_share": [100, amount_div, amount_reinvest],

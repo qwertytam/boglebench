@@ -124,7 +124,7 @@ def _create_sample_transactions(file_path: Path, force: bool):
         click.echo(f"WARNING: Sample template not found at {sample_template}")
         click.echo("Creating minimal sample file")
 
-        minimal_sample = """date,ticker,transaction_type,quantity,value_per_share,account
+        minimal_sample = """date,symbol,transaction_type,quantity,value_per_share,account
 2023-01-15,AAPL,BUY,100,150.50,Default
 2023-02-15,SPY,BUY,50,380.00,Default
 """
@@ -149,7 +149,7 @@ def _create_sample_transactions(file_path: Path, force: bool):
 @click.option(
     "--create-charts", is_flag=True, help="Generate performance charts"
 )
-@click.option("--benchmark", help="Override benchmark ticker (e.g., SPY, VTI)")
+@click.option("--benchmark", help="Override benchmark symbol (e.g., SPY, VTI)")
 def run_analysis(
     config: str, output_format: str, create_charts: bool, benchmark: str
 ):
@@ -175,7 +175,7 @@ def run_analysis(
 
         # Override benchmark if specified
         if benchmark:
-            analyzer.config.config["settings"]["benchmark_ticker"] = benchmark
+            analyzer.config.config["settings"]["benchmark_symbol"] = benchmark
             logger.info(f"📊 Using custom benchmark: {benchmark}")
 
         logger.debug("Loading transaction data...")
@@ -248,7 +248,7 @@ def show_holdings(config: str, account: str):
 
         for _, holding in holdings.iterrows():
             click.echo(
-                f"{holding['ticker']:6} | "
+                f"{holding['symbol']:6} | "
                 f"{holding['account']:15} | "
                 f"{holding['shares']:>8.2f} shares | "
                 f"${holding['price']:>8.2f} | "
@@ -287,7 +287,7 @@ def validate_transactions(path: str):
         click.echo("✅ Transaction file is valid!")
         click.echo(f"   📊 {len(transactions)} transactions")
         click.echo(f"   🏦 {transactions['account'].nunique()} accounts")
-        click.echo(f"   📈 {transactions['ticker'].nunique()} assets")
+        click.echo(f"   📈 {transactions['symbol'].nunique()} assets")
         click.echo(
             f"   📅 {transactions['date'].min().date()} to {transactions['date'].max().date()}"
         )

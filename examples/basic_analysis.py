@@ -42,7 +42,7 @@ def main():
         transactions = analyzer.load_transactions()
 
         print(f"   Loaded {len(transactions)} transactions")
-        print(f"   Assets: {', '.join(transactions['ticker'].unique())}")
+        print(f"   Assets: {', '.join(transactions['symbol'].unique())}")
         print(f"   Accounts: {', '.join(transactions['account'].unique())}")
         print(
             f"   Date range: {transactions['date'].min().date()} to {transactions['date'].max().date()}"
@@ -90,7 +90,7 @@ def main():
                 print(f"\n   {account}:")
                 for _, holding in account_holdings.iterrows():
                     print(
-                        f"     {holding['ticker']}: {holding['shares']:.2f} shares "
+                        f"     {holding['symbol']}: {holding['shares']:.2f} shares "
                         f"(${holding['value']:,.2f}, {holding['weight']:.1%})"
                     )
 
@@ -125,7 +125,7 @@ def main():
         print(f"❌ Error during analysis: {e}")
         print("\n🐛 If you need help, check:")
         print(
-            "   - Transaction CSV format (date, ticker, transaction_type, shares, price_per_share)"
+            "   - Transaction CSV format (date, symbol, transaction_type, shares, price_per_share)"
         )
         print("   - Internet connection for market data")
         print("   - Configuration file settings")
@@ -156,7 +156,7 @@ def create_sample_data():
         sample_transactions = pd.DataFrame(
             {
                 "date": ["2023-01-15", "2023-02-15", "2023-03-15"],
-                "ticker": ["AAPL", "SPY", "MSFT"],
+                "symbol": ["AAPL", "SPY", "MSFT"],
                 "transaction_type": ["BUY", "BUY", "BUY"],
                 "quantity": [100, 50, 25],
                 "value_per_share": [150.50, 380.00, 240.25],

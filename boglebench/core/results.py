@@ -1,7 +1,7 @@
 """Results container and reporting for portfolio performance analysis."""
 
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Callable, Dict, Mapping, Optional
 
 import pandas as pd
 
@@ -21,6 +21,14 @@ class PerformanceResults:
         benchmark_metrics: Optional[Dict] = None,
         relative_metrics: Optional[Dict] = None,
         portfolio_history: Optional[pd.DataFrame] = None,
+        benchmark_history: Optional[pd.DataFrame] = None,
+        holding_attribution: Optional[pd.DataFrame] = None,
+        account_attribution: Optional[pd.DataFrame] = None,
+        factor_attributions: Optional[Dict] = None,
+        brinson_summary: Optional[Dict[str, pd.DataFrame]] = None,
+        selection_drilldown: Optional[
+            Dict[str, Dict[str, pd.DataFrame]]
+        ] = None,
         config: Optional[ConfigManager] = None,
     ):
         self.transactions = transactions
@@ -28,6 +36,12 @@ class PerformanceResults:
         self.benchmark_metrics = benchmark_metrics
         self.relative_metrics = relative_metrics
         self.portfolio_history = portfolio_history
+        self.benchmark_history = benchmark_history
+        self.holding_attribution = holding_attribution
+        self.account_attribution = account_attribution
+        self.factor_attributions = factor_attributions
+        self.brinson_summary = brinson_summary
+        self.selection_drilldown = selection_drilldown
         self.config = config
 
         self.logger = get_logger("core.results")
@@ -35,15 +49,16 @@ class PerformanceResults:
     def summary(self) -> str:
         """Generate a summary report of the performance analysis."""
         lines = []
-        lines.append("=" * 60)
+        lines.append("\n")
+        lines.append("=" * 80)
         lines.append("🎯 BOGLEBENCH PERFORMANCE ANALYSIS")
         lines.append("   'Stay the course' - John C. Bogle")
-        lines.append("=" * 60)
+        lines.append("=" * 80)
 
         # Portfolio metrics.   f"{3­:0=­+5}­"
         if self.portfolio_metrics:
             p = self.portfolio_metrics
-            lines.append("\n📊 PORTFOLIO PERFORMANCE")
+            lines.append("\n📊 PORTFOLIO PERFORMANCE\n")
             lines.append(
                 "  Return Methods       Mod. Dietz     TWR        IRR"
             )
@@ -84,7 +99,7 @@ class PerformanceResults:
             b = self.benchmark_metrics
 
             benchmark_name = self.config.get("benchmark.name", "Benchmark")
-            lines.append(f"\n📈 {benchmark_name} PERFORMANCE")
+            lines.append(f"\n📈 BENCHMARK '{benchmark_name}' PERFORMANCE\n")
             lines.append(f"  Total Return:        {b['total_return']:>+8.2%}")
             lines.append(
                 f"  Annualized Return:   {b['annualized_return']:>+8.2%}"
@@ -96,7 +111,7 @@ class PerformanceResults:
         # Relative performance
         if self.relative_metrics:
             r = self.relative_metrics
-            lines.append("\n🎯 RELATIVE PERFORMANCE (Using TWR)")
+            lines.append("\n🎯 RELATIVE PERFORMANCE (Using TWR)\n")
             lines.append(
                 f"  Tracking Error:      {r['tracking_error']:>+8.2%}"
             )
@@ -107,12 +122,226 @@ class PerformanceResults:
             lines.append(f"  Jensen's Alpha:      {r['jensens_alpha']:>+8.2%}")
             lines.append(f"  Correlation:         {r['correlation']:>+8.3f}")
 
-        lines.append("\n" + "=" * 60)
+        lines.append("\n" + "-" * 80)
+        lines.append("🔍 DETAILED ATTRIBUTION ANALYSIS\n")
+
+        # Format attribution tables if they exist
+        if self.holding_attribution is not None:
+            self.holding_attribution = self.holding_attribution.sort_values(
+                by="Contribution to Portfolio Return", ascending=False
+            )
+            lines.append("\n🏷️  HOLDING-LEVEL ATTRIBUTION\n")
+            total_weight = self.holding_attribution["Avg. Weight"].sum()
+            total_twr = (
+                (
+                    self.holding_attribution[
+                        "Contribution to Portfolio Return"
+                    ].sum()
+                    / total_weight
+                )
+                if total_weight > 0
+                else 0
+            )
+            total_contribution = self.holding_attribution[
+                "Contribution to Portfolio Return"
+            ].sum()
+            to_print = pd.concat(
+                [
+                    self.holding_attribution,
+                    pd.DataFrame(
+                        {
+                            "Avg. Weight": total_weight,
+                            "Return (TWR)": total_twr,
+                            "Contribution to Portfolio Return": total_contribution,
+                        },
+                        index=[0],
+                    ),
+                ]
+            )
+            lines.append(
+                to_print.rename(index={0: "  Totals  "}).to_string(
+                    float_format="{:,.2%}".format,
+                    formatters=self._get_formatters(),
+                    index=True,
+                )
+            )
+
+        if self.account_attribution is not None:
+            lines.append("\n🏦 ACCOUNT-LEVEL ATTRIBUTION\n")
+            total_weight = self.account_attribution["Avg. Weight"].sum()
+            total_twr = (
+                (
+                    self.account_attribution[
+                        "Contribution to Portfolio Return"
+                    ].sum()
+                    / total_weight
+                )
+                if total_weight > 0
+                else 0
+            )
+            total_contribution = self.account_attribution[
+                "Contribution to Portfolio Return"
+            ].sum()
+            to_print = pd.concat(
+                [
+                    self.account_attribution,
+                    pd.DataFrame(
+                        {
+                            "Avg. Weight": total_weight,
+                            "Return (TWR)": total_twr,
+                            "Contribution to Portfolio Return": total_contribution,
+                        },
+                        index=[0],
+                    ),
+                ]
+            )
+            lines.append(
+                to_print.rename(index={0: "  Totals  "}).to_string(
+                    float_format="{:,.2%}".format,
+                    formatters=self._get_formatters(),
+                    index=True,
+                )
+            )
+
+        if self.factor_attributions:
+            for factor, df in self.factor_attributions.items():
+                lines.append(f"\n🔍 FACTOR-LEVEL ATTRIBUTION: '{factor}'\n")
+                total_weight = df["Avg. Weight"].sum()
+                total_twr = (
+                    (
+                        df["Contribution to Portfolio Return"].sum()
+                        / total_weight
+                    )
+                    if total_weight > 0
+                    else 0
+                )
+                total_contribution = df[
+                    "Contribution to Portfolio Return"
+                ].sum()
+                to_print = pd.concat(
+                    [
+                        df,
+                        pd.DataFrame(
+                            {
+                                "Avg. Weight": total_weight,
+                                "Return (TWR)": total_twr,
+                                "Contribution to Portfolio Return": total_contribution,
+                            },
+                            index=[0],
+                        ),
+                    ]
+                )
+                lines.append(
+                    to_print.rename(index={0: "  Totals  "}).to_string(
+                        float_format="{:,.2%}".format,
+                        formatters=self._get_formatters(),
+                        index=True,
+                    )
+                )
+
+        # --- 3. NEW: Add the Brinson Attribution section to the summary ---
+        if self.brinson_summary is not None:
+            for group_by, brinson_data in self.brinson_summary.items():
+                lines.append(
+                    "\n"
+                    + "-" * 80
+                    + f"\n🎯 BRINSON ATTRIBUTION vs. Benchmark (by '{group_by}')\n"
+                )
+
+                # Format the main Brinson summary table
+                brinson_df = brinson_data[
+                    ["Allocation Effect", "Selection Effect", "Total Effect"]
+                ]
+                total_row = pd.DataFrame(
+                    {
+                        "Allocation Effect": brinson_df[
+                            "Allocation Effect"
+                        ].sum(),
+                        "Selection Effect": brinson_df[
+                            "Selection Effect"
+                        ].sum(),
+                        "Total Effect": brinson_df["Total Effect"].sum(),
+                    },
+                    index=["  Totals  "],
+                )
+                to_print = pd.concat(
+                    [
+                        brinson_df,
+                        total_row,
+                    ]
+                )
+                lines.append(
+                    to_print.to_string(float_format=lambda x: f"{x:,.2%}")
+                )
+                lines.append("\n")
+
+                # Add the detailed selection drill-down tables
+                if self.selection_drilldown is None:
+                    raise ValueError(
+                        "selection_drilldown is required for summary report."
+                    )
+                elif (
+                    not isinstance(self.selection_drilldown, dict)
+                    or group_by not in self.selection_drilldown
+                    or self.selection_drilldown[group_by] is None
+                ):
+                    raise ValueError(
+                        f"selection_drilldown for group '{group_by}' "
+                        "is None or group_by is not a valid key."
+                    )
+                else:
+                    for category, drilldown_df in self.selection_drilldown[
+                        group_by
+                    ].items():
+                        if not drilldown_df.empty:
+                            lines.append(
+                                f"\n🔎 SELECTION DETAIL FOR '{category}'\n"
+                            )
+                            total_row = pd.DataFrame(
+                                {
+                                    "Avg. Weight": drilldown_df[
+                                        "Avg. Weight"
+                                    ].sum(),
+                                    "Return (TWR)": (
+                                        (
+                                            drilldown_df["Return (TWR)"]
+                                            * drilldown_df["Avg. Weight"]
+                                        ).sum()
+                                    ),
+                                    "Contribution to Selection": drilldown_df[
+                                        "Contribution to Selection"
+                                    ].sum(),
+                                },
+                                index=["  Totals  "],
+                            )
+                            to_print = pd.concat(
+                                [
+                                    drilldown_df,
+                                    total_row,
+                                ]
+                            )
+                            lines.append(
+                                to_print.to_string(
+                                    float_format=lambda x: f"{x:,.2%}"
+                                )
+                            )
+
+                        if (
+                            self.brinson_summary is not None
+                            and category in brinson_data.index
+                        ):
+                            total_selection = brinson_data.loc[
+                                category, "Selection Effect"
+                            ]
+                            lines.append(
+                                f"\nTotal Selection Effect for {category}: {total_selection:.2%}"
+                            )
+        lines.append("\n" + "=" * 80)
         lines.append(
             "💡 Remember: Past performance doesn't guarantee future results."
         )
         lines.append(
-            "   Focus on low costs, diversification, and long-term discipline."
+            "   Focus on low costs, diversification, and long-term discipline.\n\n"
         )
 
         return "\n".join(lines)
@@ -158,18 +387,9 @@ class PerformanceResults:
             else []
         )
 
-        if not accounts and hasattr(self, "portfolio_history"):
-            # Extract account names from column names
-            account_cols = [
-                col
-                for col in self.portfolio_history.columns
-                if col.endswith("_total")
-            ]
-            accounts = [col.replace("_total", "") for col in account_cols]
-
         account_data = []
         for account in accounts:
-            total_col = f"{account}_total"
+            total_col = f"{account}_total_value"
             if total_col in self.portfolio_history.columns:
                 current_value = latest_data[total_col]
 
@@ -225,45 +445,39 @@ class PerformanceResults:
 
         latest_data = self.portfolio_history.iloc[-1]
 
-        if account_name:
-            accounts = [account_name]
-        else:
-            # Get all accounts
-            account_cols = [
-                col
-                for col in self.portfolio_history.columns
-                if col.endswith("_total")
-            ]
-            accounts = [col.replace("_total", "") for col in account_cols]
-
+        accounts = [account_name] if account_name else []
         holdings_data = []
 
         for account in accounts:
-            # Find all ticker columns for this account
-            ticker_cols = [
+            # Find all symbol columns for this account
+            symbol_cols = [
                 col
                 for col in self.portfolio_history.columns
-                if col.startswith(f"{account}_") and col.endswith("_shares")
+                if col.startswith(f"{account}_") and col.endswith("_quantity")
             ]
 
-            for col in ticker_cols:
-                ticker = col.replace(f"{account}_", "").replace("_shares", "")
+            for col in symbol_cols:
+                symbol = col.replace(f"{account}_", "").replace(
+                    "_quantity", ""
+                )
                 shares = latest_data[col]
 
                 if shares != 0:  # Only include non-zero holdings
-                    value_col = f"{account}_{ticker}_value"
-                    price_col = f"{account}_{ticker}_price"
+                    value_col = f"{account}_{symbol}_value"
+                    price_col = f"{account}_{symbol}_price"
 
                     value = latest_data.get(value_col, 0)
                     price = latest_data.get(price_col, 0)
 
-                    account_total = latest_data.get(f"{account}_total", 0)
+                    account_total = latest_data.get(
+                        f"{account}_total_value", 0
+                    )
                     weight = value / account_total if account_total > 0 else 0
 
                     holdings_data.append(
                         {
                             "account": account,
-                            "ticker": ticker,
+                            "symbol": symbol,
                             "quantity": shares,
                             "price": price,
                             "value": value,
@@ -339,3 +553,13 @@ class PerformanceResults:
             pd.DataFrame(relative_data).to_csv(relative_file, index=False)
 
         return str(output_path)
+
+    def _get_formatters(self) -> Mapping[str | int, Callable]:
+        """Returns a mapping of formatters for pandas to_string."""
+        return {
+            "Avg. Weight": "{:,.1%}".format,
+            "Return (TWR)": "{:,.2%}".format,
+            "Contribution to Portfolio Return": "{:,.2%}".format,
+            "Excess Return vs. Benchmark": "{:,.2%}".format,
+            "Contribution to Excess Return": "{:,.2%}".format,
+        }

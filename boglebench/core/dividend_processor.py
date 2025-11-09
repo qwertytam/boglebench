@@ -82,13 +82,13 @@ class DividendProcessor:
                 self.logger.info("ℹ️ %s", msg)
 
     def _get_shares_held_on_date(
-        self, ticker: str, date: pd.Timestamp, account: Optional[str] = None
+        self, symbol: str, date: pd.Timestamp, account: Optional[str] = None
     ) -> float:
         """
-        Retrieves the number of shares held for a specific ticker on a given date.
+        Retrieves the number of shares held for a specific symbol on a given date.
 
         Args:
-            ticker: The stock ticker symbol.
+            symbol: The stock symbol symbol.
             date: The date for which to retrieve the share quantity.
             account: Optional account identifier to filter by account.
 
@@ -96,7 +96,7 @@ class DividendProcessor:
             The number of shares held on the specified date.
         """
         shares_held = get_shares_held_on_date(
-            ticker,
+            symbol,
             date,
             self.transactions_df,
             account=account,
@@ -110,16 +110,16 @@ class DividendProcessor:
         self.logger.info(
             "Automatically adjusting user dividends based on market data..."
         )
-        for ticker, df in differences.items():
+        for symbol, df in differences.items():
             for _, row in df.iterrows():
                 date = row["date"]
                 new_div_per_share = row["value_per_share_market"]
                 account = row.get("account", None)
 
-                shares = self._get_shares_held_on_date(ticker, date, account)
+                shares = self._get_shares_held_on_date(symbol, date, account)
 
                 mask = (
-                    (self.transactions_df["ticker"] == ticker)
+                    (self.transactions_df["symbol"] == symbol)
                     & (self.transactions_df["date"].dt.date == date.date())
                     & (
                         identify_any_dividend_transactions(
@@ -143,12 +143,12 @@ class DividendProcessor:
 
                     self.logger.info(
                         "Updating %s dividend on %s: total from $%.2f to $%.2f",
-                        ticker,
+                        symbol,
                         date.date(),
                         old_total_value,
                         new_total_value,
                     )
-                    # This logic assumes one dividend event per day per ticker.
+                    # This logic assumes one dividend event per day per symbol.
                     # More complex scenarios might need more granular updates.
                     self.transactions_df.loc[mask, "value_per_share"] = (
                         new_div_per_share

@@ -49,26 +49,26 @@ class MarketDataProvider:
             logger.error(msg)
             raise ValueError(msg)
 
-    def _get_cached_data(self, ticker: str) -> Optional[pd.DataFrame]:
+    def _get_cached_data(self, symbol: str) -> Optional[pd.DataFrame]:
         """Attempt to retrieve market data from the cache."""
-        cache_file = self.cache_dir / f"{ticker}.parquet"
+        cache_file = self.cache_dir / f"{symbol}.parquet"
         if not cache_file.exists():
-            logger.debug("No cache file for %s", ticker)
+            logger.debug("No cache file for %s", symbol)
             return None
 
         try:
             cached_df = pd.read_parquet(cache_file)
 
-            logger.debug("✅ Loaded market data from cache for %s.", ticker)
+            logger.debug("✅ Loaded market data from cache for %s.", symbol)
             return cached_df
 
         except (pd.errors.EmptyDataError, ValueError) as e:
             logger.warning("⚠️ Could not read cache file %s: %s", cache_file, e)
             return None
 
-    def _cache_data(self, data: pd.DataFrame, ticker: str):
+    def _cache_data(self, data: pd.DataFrame, symbol: str):
         """Cache the given market data DataFrame."""
-        cache_file = self.cache_dir / f"{ticker}.parquet"
+        cache_file = self.cache_dir / f"{symbol}.parquet"
         try:
             data.to_parquet(cache_file, index=False)
             logger.info("💾 Saved market data to cache: %s", cache_file)
@@ -79,41 +79,41 @@ class MarketDataProvider:
 
     def get_market_data(
         self,
-        tickers: List[str],
+        symbols: List[str],
         start_date: pd.Timestamp,
         end_date: pd.Timestamp,
     ) -> Dict[str, pd.DataFrame]:
         """
-        Fetch market data for a list of tickers, using cache if available.
+        Fetch market data for a list of symbols, using cache if available.
 
         Args:
-            tickers: A list of stock tickers.
+            symbols: A list of stock symbols.
             start_date: The start date for the data in 'YYYY-MM-DD' format.
             end_date: The end date for the data in 'YYYY-MM-DD' format.
 
         Returns:
-            A dictionary mapping each ticker to its market data DataFrame.
+            A dictionary mapping each symbol to its market data DataFrame.
         """
         logger.info(
-            "⬇️  Fetching market data for %d unique tickers: %s",
-            len(tickers),
-            ", ".join(tickers),
+            "⬇️  Fetching market data for %d unique symbols: %s",
+            len(symbols),
+            ", ".join(symbols),
         )
 
         all_data = {}
-        failed_tickers = []
+        failed_symbols = []
 
         s_date = start_date.date()
         e_date = end_date.date()
 
-        for ticker in tickers:
+        for symbol in symbols:
             if self.cache_enabled and not self.force_cache_refresh:
-                logger.info("🔍 Checking cache for %s...", ticker)
-                cached_data = self._get_cached_data(ticker)
+                logger.info("🔍 Checking cache for %s...", symbol)
+                cached_data = self._get_cached_data(symbol)
 
                 if cached_data is not None:
                     logger.info(
-                        "✅ Loaded market data from cache for %s.", ticker
+                        "✅ Loaded market data from cache for %s.", symbol
                     )
                     cache_start_date = pd.to_datetime(
                         cached_data["date"].min()
@@ -124,12 +124,12 @@ class MarketDataProvider:
                     if cache_start_date <= s_date and cache_end_date >= e_date:
                         logger.debug(
                             "✅ Using cached data for %s from %s to %s.",
-                            ticker,
+                            symbol,
                             cache_start_date,
                             cache_end_date,
                         )
 
-                        all_data[ticker] = cached_data[
+                        all_data[symbol] = cached_data[
                             [
                                 "date",
                                 "close",
@@ -145,18 +145,18 @@ class MarketDataProvider:
                         logger.info(
                             "⚠️ Cached data for %s is out of range (%s to %s). "
                             "Fetching fresh data.",
-                            ticker,
+                            symbol,
                             cache_start_date,
                             cache_end_date,
                         )
 
             try:
                 logger.info(
-                    "⏳ Cache miss - downloading market data for %s...", ticker
+                    "⏳ Cache miss - downloading market data for %s...", symbol
                 )
                 # pylint: disable-next=unbalanced-tuple-unpacking
                 data, _ = self.ts.get_daily_adjusted(  # type: ignore
-                    symbol=ticker, outputsize="full"
+                    symbol=symbol, outputsize="full"
                 )
                 # Alpha Vantage column names:
                 # '1. open', '2. high', '3. low', '4. close',
@@ -231,22 +231,22 @@ class MarketDataProvider:
 
                 logger.info(
                     "✅ Downloaded market data for %s: %d rows from %s to %s.",
-                    ticker,
+                    symbol,
                     len(data),
                     data["date"].dt.date.min(),
                     data["date"].dt.date.max(),
                 )
 
-                self._cache_data(data, ticker)
+                self._cache_data(data, symbol)
 
-                all_data[ticker] = data
+                all_data[symbol] = data
 
             except (OSError, ValueError) as e:
-                logger.error("  ❌ Failed to download %s: %s", ticker, e)
-                failed_tickers.append(ticker)
+                logger.error("  ❌ Failed to download %s: %s", symbol, e)
+                failed_symbols.append(symbol)
 
-        if failed_tickers:
-            logger.error("⚠️  Failed to download data for: %s", failed_tickers)
+        if failed_symbols:
+            logger.error("⚠️  Failed to download data for: %s", failed_symbols)
 
         if not all_data:
             return {}

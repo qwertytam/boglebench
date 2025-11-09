@@ -68,17 +68,17 @@ def identify_quantity_change_transactions(series: pd.Series) -> pd.Series:
 
 
 def get_shares_held_on_date(
-    ticker: str,
+    symbol: str,
     date: pd.Timestamp,
     transactions_df: pd.DataFrame,
     account: Optional[str] = None,
     start_date: Optional[pd.Timestamp] = None,
 ) -> float:
     """
-    Retrieves the number of shares held for a specific ticker on a given date.
+    Retrieves the number of shares held for a specific symbol on a given date.
 
     Args:
-        ticker: The stock ticker symbol.
+        symbol: The stock symbol symbol.
         date: The date for which to retrieve the share quantity.
         account: Optional account identifier to filter by account.
 
@@ -87,7 +87,7 @@ def get_shares_held_on_date(
     """
 
     mask = (
-        (transactions_df["ticker"] == ticker)
+        (transactions_df["symbol"] == symbol)
         & (transactions_df["date"].dt.date < date.date())
         & (
             identify_quantity_change_transactions(

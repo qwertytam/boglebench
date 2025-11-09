@@ -34,7 +34,7 @@ def scenario_no_dividends():
         [
             {
                 "date": "2023-01-03",
-                "ticker": "VOO",
+                "symbol": "VOO",
                 "transaction_type": "BUY",
                 "quantity": 10,
                 "value_per_share": 100.00,
@@ -67,7 +67,7 @@ def scenario_cash_dividends():
         [
             {
                 "date": "2023-01-03",
-                "ticker": "VTI",
+                "symbol": "VTI",
                 "transaction_type": "BUY",
                 "quantity": 100,
                 "value_per_share": 50.0,
@@ -76,7 +76,7 @@ def scenario_cash_dividends():
             },
             {
                 "date": "2023-01-05",
-                "ticker": "VTI",
+                "symbol": "VTI",
                 "transaction_type": "DIVIDEND",
                 "quantity": 0,  # Cash dividend, no shares involved
                 "value_per_share": 0,  # Not used for cash dividend
@@ -109,7 +109,7 @@ def scenario_full_reinvestment():
         [
             {
                 "date": "2023-01-03",
-                "ticker": "VXUS",
+                "symbol": "VXUS",
                 "transaction_type": "BUY",
                 "quantity": 100,
                 "value_per_share": 40.0,
@@ -118,7 +118,7 @@ def scenario_full_reinvestment():
             },
             {
                 "date": "2023-01-05",
-                "ticker": "VXUS",
+                "symbol": "VXUS",
                 "transaction_type": "DIVIDEND",
                 "quantity": 0,  # Cash dividend, no shares involved
                 "value_per_share": 0,  # Not used for cash dividend
@@ -127,7 +127,7 @@ def scenario_full_reinvestment():
             },
             {
                 "date": "2023-01-05",
-                "ticker": "VXUS",
+                "symbol": "VXUS",
                 "transaction_type": "DIVIDEND_REINVEST",
                 "quantity": 2.0,
                 "value_per_share": 41.0,
@@ -160,7 +160,7 @@ def scenario_partial_reinvestment():
         [
             {
                 "date": "2023-01-03",
-                "ticker": "BND",
+                "symbol": "BND",
                 "transaction_type": "BUY",
                 "quantity": 100,
                 "value_per_share": 75,
@@ -169,7 +169,7 @@ def scenario_partial_reinvestment():
             },
             {
                 "date": "2023-01-05",
-                "ticker": "BND",
+                "symbol": "BND",
                 "transaction_type": "DIVIDEND",
                 "quantity": 0,  # Cash dividend, no shares involved
                 "value_per_share": 0,  # Not used for cash dividend
@@ -178,7 +178,7 @@ def scenario_partial_reinvestment():
             },
             {
                 "date": "2023-01-05",
-                "ticker": "BND",
+                "symbol": "BND",
                 "transaction_type": "DIVIDEND_REINVEST",
                 "quantity": 1.0,  # Reinvest enough to buy 1 share
                 "value_per_share": 0.755,
@@ -255,9 +255,9 @@ class TestPerformanceWithDividends:
         transactions_df.to_csv(transactions_file_path, index=False)
 
         market_data_path = temp_config.get_market_data_path()
-        for ticker, df in market_data_dict.items():
+        for symbol, df in market_data_dict.items():
             df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True)
-            df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
+            df.to_parquet(market_data_path / f"{symbol}.parquet", index=False)
 
         output_path = temp_config.get_output_path()
 
@@ -357,7 +357,7 @@ class TestPerformanceWithDividends:
         ].iloc[0]
 
         if scenario_name == "no_dividends":
-            assert final_day["Taxable_VOO_shares"] == 10
+            assert final_day["Taxable_VOO_quantity"] == 10
             assert final_day["VOO_price"] == 102
             assert final_day["total_value"] == 10 * 102.0
 
@@ -446,7 +446,7 @@ class TestPerformanceWithDividends:
             )
 
         elif scenario_name == "cash_dividends":
-            assert final_day["Ira_VTI_shares"] == 100  # Shares don't change
+            assert final_day["Ira_VTI_quantity"] == 100  # Shares don't change
             assert (
                 dividend_day["net_cash_flow"] == -75.0
             )  # Cash flow from dividend
@@ -525,7 +525,7 @@ class TestPerformanceWithDividends:
 
         elif scenario_name == "full_reinvestment":
             assert (
-                final_day["Taxable_VXUS_shares"] == 102
+                final_day["Taxable_VXUS_quantity"] == 102
             )  # 100 initial + 2 reinvested
             assert (
                 final_day["total_value"] == 102 * 41.0
@@ -603,7 +603,7 @@ class TestPerformanceWithDividends:
 
         elif scenario_name == "partial_reinvestment":
             assert (
-                final_day["Roth_BND_shares"] == 101
+                final_day["Roth_BND_quantity"] == 101
             )  # 100 initial + 1 reinvested
             assert (
                 final_day["total_value"] == 101 * 75.5

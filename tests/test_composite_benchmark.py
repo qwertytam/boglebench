@@ -15,7 +15,7 @@ from boglebench.utils.config import ConfigManager
 
 @pytest.fixture
 def mock_market_data():
-    """Provides mock market data for two tickers, VTI and VXUS."""
+    """Provides mock market data for two symbols, VTI and VXUS."""
     dates = pd.to_datetime(
         pd.date_range("2023-01-01", "2023-03-30", freq="D"), utc=True
     )
@@ -68,7 +68,7 @@ def transactions_fixture():
         [
             {
                 "date": "2023-01-02",
-                "ticker": "VTI",
+                "symbol": "VTI",
                 "transaction_type": "BUY",
                 "quantity": 10,
                 "value_per_share": 100.00,
@@ -134,8 +134,8 @@ def test_composite_benchmark_calculation(
 
         market_data_path = config.get_market_data_path()
         market_data_path.mkdir(exist_ok=True)
-        for ticker, df in mock_market_data.items():
-            df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
+        for symbol, df in mock_market_data.items():
+            df.to_parquet(market_data_path / f"{symbol}.parquet", index=False)
 
         # --- Execution ---
         analyzer = BogleBenchAnalyzer(config_path=temp_config_file)
@@ -145,17 +145,17 @@ def test_composite_benchmark_calculation(
 
         # --- Assertions ---
         assert (
-            not analyzer.benchmark_data.empty
-        ), "Benchmark data should be generated"
+            not analyzer.benchmark_history.empty
+        ), "Benchmark history should be generated"
 
         # Check that the benchmark value reflects the component movements
         # Start of Feb, VTI is high, VXUS is low.
         # Start of Mar, VTI is low, VXUS is high.
-        jan_31_val = analyzer.benchmark_data.loc[
-            analyzer.benchmark_data["date"] == "2023-01-31"
+        jan_31_val = analyzer.benchmark_history.loc[
+            analyzer.benchmark_history["date"] == "2023-01-31"
         ]["adj_close"].iloc[0]
-        feb_28_val = analyzer.benchmark_data.loc[
-            analyzer.benchmark_data["date"] == "2023-02-28"
+        feb_28_val = analyzer.benchmark_history.loc[
+            analyzer.benchmark_history["date"] == "2023-02-28"
         ]["adj_close"].iloc[0]
 
         # In Jan, VTI (60%) went up, VXUS (40%) went down. Net should be up slightly.

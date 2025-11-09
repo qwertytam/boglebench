@@ -20,7 +20,7 @@ from boglebench.utils.config import ConfigManager
 def sample_market_data() -> Dict[str, pd.DataFrame]:
     """
     Creates a sample market data DataFrame with dividend information for two
-    tickers:
+    symbols:
     - VTI: Pays a $0.50 dividend on 2023-03-25
     - BND: Pays a $0.20 dividend on 2023-03-20
     """
@@ -62,7 +62,7 @@ def transactions_perfect_match() -> pd.DataFrame:
     data = [
         {
             "date": "2023-01-01",
-            "ticker": "VTI",
+            "symbol": "VTI",
             "transaction_type": "BUY",
             "quantity": 20,
             "value_per_share": 100.00,
@@ -71,7 +71,7 @@ def transactions_perfect_match() -> pd.DataFrame:
         },
         {
             "date": "2023-01-01",
-            "ticker": "BND",
+            "symbol": "BND",
             "transaction_type": "BUY",
             "quantity": 50,
             "value_per_share": 100.00,
@@ -80,7 +80,7 @@ def transactions_perfect_match() -> pd.DataFrame:
         },
         {
             "date": "2023-03-20",
-            "ticker": "BND",
+            "symbol": "BND",
             "transaction_type": "DIVIDEND",
             "quantity": 0,  # Cash dividend, no shares involved
             "value_per_share": 0,  # Not used for cash dividend
@@ -91,7 +91,7 @@ def transactions_perfect_match() -> pd.DataFrame:
         },
         {
             "date": "2023-03-25",
-            "ticker": "VTI",
+            "symbol": "VTI",
             "transaction_type": "DIVIDEND",
             "quantity": 0,  # Cash dividend, no shares involved
             "value_per_share": 0,  # Not used for cash dividend
@@ -116,7 +116,7 @@ def scenario_transactions_with_discrepancies() -> Tuple[str, pd.DataFrame]:
     data = [
         {
             "date": "2023-03-20",
-            "ticker": "BND",
+            "symbol": "BND",
             "transaction_type": "BUY",
             "quantity": 50.0,
             "value_per_share": 75.00,
@@ -126,7 +126,7 @@ def scenario_transactions_with_discrepancies() -> Tuple[str, pd.DataFrame]:
         # Missing BND dividend from 2023-03-20
         {
             "date": "2023-03-20",
-            "ticker": "VTI",
+            "symbol": "VTI",
             "transaction_type": "BUY",
             "quantity": 20.0,
             "value_per_share": 100.00,
@@ -135,7 +135,7 @@ def scenario_transactions_with_discrepancies() -> Tuple[str, pd.DataFrame]:
         },
         {
             "date": "2023-03-25",  # Mismatch
-            "ticker": "VTI",
+            "symbol": "VTI",
             "transaction_type": "DIVIDEND",
             "quantity": 0,  # Cash dividend, no shares involved
             "value_per_share": 0,  # Not used for cash dividend
@@ -146,7 +146,7 @@ def scenario_transactions_with_discrepancies() -> Tuple[str, pd.DataFrame]:
         },
         {
             "date": "2023-03-26",  # Extra dividend
-            "ticker": "VTI",
+            "symbol": "VTI",
             "transaction_type": "DIVIDEND",
             "quantity": 0,  # Cash dividend, no shares involved
             "value_per_share": 0,  # Not used for cash dividend
@@ -174,7 +174,7 @@ def transactions_no_dividends() -> pd.DataFrame:
     data = [
         {
             "date": "2023-03-20",
-            "ticker": "VTI",
+            "symbol": "VTI",
             "transaction_type": "BUY",
             "quantity": 20.0,
             "value_per_share": 100.00,
@@ -183,7 +183,7 @@ def transactions_no_dividends() -> pd.DataFrame:
         },
         {
             "date": "2023-03-20",
-            "ticker": "BND",
+            "symbol": "BND",
             "transaction_type": "BUY",
             "quantity": 50.0,
             "value_per_share": 75.00,
@@ -280,11 +280,11 @@ def test_validator_user_has_no_dividends(
     )
 
 
-def test_validator_no_market_data_for_ticker(
+def test_validator_no_market_data_for_symbol(
     transactions_perfect_match,
 ):  # pylint: disable=redefined-outer-name
     """
-    Tests that validation is gracefully skipped for a ticker if no market
+    Tests that validation is gracefully skipped for a symbol if no market
     data is available.
     """
     # Market data is missing for 'BND'
@@ -359,8 +359,8 @@ class TestDividendProcessorIntegration:
         transactions_df.to_csv(transactions_file_path, index=False)
 
         market_data_path = temp_config.get_market_data_path()
-        for ticker, df in sample_market_data.items():
-            df.to_parquet(market_data_path / f"{ticker}.parquet", index=False)
+        for symbol, df in sample_market_data.items():
+            df.to_parquet(market_data_path / f"{symbol}.parquet", index=False)
 
         output_path = temp_config.get_output_path()
 
@@ -407,12 +407,12 @@ class TestDividendProcessorIntegration:
         transactions_df = analyzer.transactions
         mar_25_vti_dividends = transactions_df[
             (transactions_df["date"] == pd.Timestamp("2023-03-25", tz="UTC"))
-            & (transactions_df["ticker"] == "VTI")
+            & (transactions_df["symbol"] == "VTI")
             & (transactions_df["transaction_type"] == "DIVIDEND")
         ]
         mar_26_vti_dividends = transactions_df[
             (transactions_df["date"] == pd.Timestamp("2023-03-26", tz="UTC"))
-            & (transactions_df["ticker"] == "VTI")
+            & (transactions_df["symbol"] == "VTI")
             & (transactions_df["transaction_type"] == "DIVIDEND")
         ]
         if scenario_name == "discrepancies":

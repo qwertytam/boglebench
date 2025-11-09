@@ -1,2 +1,2 @@
-date,ticker,transaction_type,quantity,value_per_share,account,total_value
+date,symbol,transaction_type,quantity,value_per_share,account,total_value
 2023-06-05,AAPL,BUY,100,180.00,Test_Account,18000.00

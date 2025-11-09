@@ -6,11 +6,11 @@ Named after John C. Bogle, founder of Vanguard and champion of low-cost index in
 
 ## Features
 
-- 📊 Portfolio performance analysis with risk-return metrics  
+- 📊 Portfolio performance analysis with risk-return metrics
 - 📈 Individual asset performance tracking
 - 🎯 Benchmark comparison (S&P 500, custom benchmarks)
 - 📋 Comprehensive performance metrics (Sharpe ratio, Information ratio, etc.)
-- 🔄 Automatic market data fetching  
+- 🔄 Automatic market data fetching
 - 📓 Jupyter notebook integration
 - 🛡️ Secure data separation from code
 - 💰 Focus on Bogle's principles: simplicity, low costs, long-term perspective
@@ -34,7 +34,7 @@ This creates the following structure:
 ```text
 ~/my_boglebench_data/
 ├── config/config.yaml          # Configuration file
-├── transactions/               # Your transaction data  
+├── transactions/               # Your transaction data
 ├── market_data/               # Cached market data
 └── output/                    # Analysis results
 ```
@@ -46,7 +46,7 @@ Add your transaction CSV file to `~/my_boglebench_data/transactions/`. Required 
 ### Required columns
 
 - `date`: Transaction date in ISO8601 format (YYYY-MM-DD)
-- `ticker`: Stock/ETF symbol
+- `symbol`: Stock/ETF symbol
 - `transaction_type`: BUY or SELL
 - `shares`: Number of shares
 - `price_per_share`: Price per share
@@ -73,7 +73,7 @@ When entering dividend transactions (`DIVIDEND` or `DIVIDEND_REINVEST`), you may
 ### How BogleBench Uses Dividend Data
 
 - BogleBench will compare your provided dividends to the official data from AlphaVantage.
-- It will sum all `amount` values for the same pay date/ticker and compare to AlphaVantage.
+- It will sum all `amount` values for the same pay date/symbol and compare to AlphaVantage.
 - If `dividend_per_share` is provided, it will also compare this value.
 - If `dividend_type` is provided, it will check for mismatches.
 - If you provide `dividend_ex_date` or `dividend_record_date`, they will be included in audit reports and output for your review.
@@ -119,7 +119,7 @@ data:
   transactions_file: "transactions/my_transactions.csv"
 
 settings:
-  benchmark_ticker: "SPY"
+  benchmark_symbol: "SPY"
   risk_free_rate: 0.02
   default_currency: "USD"
 
@@ -138,7 +138,7 @@ analysis:
 BogleBench embodies John Bogle's investment philosophy:
 
 - **Simplicity**: Clear, straightforward analysis without unnecessary complexity
-- **Low Costs**: Focus on cost-efficient investing and fee impact analysis  
+- **Low Costs**: Focus on cost-efficient investing and fee impact analysis
 - **Long-term Perspective**: Emphasis on long-term performance over short-term fluctuations
 - **Broad Diversification**: Analysis tools for well-diversified portfolios
 - **Stay the Course**: Consistent, disciplined approach to portfolio evaluation
@@ -185,20 +185,20 @@ $$
 R = \frac{V_{E} - V_{B} - \sum{CF}}{V_{B} + \sum{\left(W_i \times CF_i\right)}}
 $$
 
-Where:  
+Where:
 
-- $V_{B}$ = beginning portfolio value  
-- $V_{E}$ = ending portfolio value  
-- $CF_i$ = each cash flow during the period (including dividends)  
-- $W_i$ = weight for each cash flow, based on timing within the period  
-- $R$ = portfolio return  
+- $V_{B}$ = beginning portfolio value
+- $V_{E}$ = ending portfolio value
+- $CF_i$ = each cash flow during the period (including dividends)
+- $W_i$ = weight for each cash flow, based on timing within the period
+- $R$ = portfolio return
 
 ---
 
 ### Numerical Example – Modified Dietz
 
-- Beginning Value ($V_{B}$): **10,000**  
-- Ending Value ($V_{E}$): **10,200**  
+- Beginning Value ($V_{B}$): **10,000**
+- Ending Value ($V_{E}$): **10,200**
 - Dividend ($CF_1$): **+100** (received halfway through period, so $W_1 = 0.5$)
 
 $$
@@ -214,7 +214,7 @@ R = \frac{10{,}200 - 10{,}000}{10{,}000}
 = 0.02 \quad (2.0\%)
 $$
 
-This illustrates that including internal cash flows as external flows *reduces* the reported return, because the dividend is treated as a distribution that leaves the portfolio rather than simply increasing ending value.
+This illustrates that including internal cash flows as external flows _reduces_ the reported return, because the dividend is treated as a distribution that leaves the portfolio rather than simply increasing ending value.
 
 ---
 
@@ -224,16 +224,16 @@ TWR breaks the performance measurement into **subperiods** whenever there is a c
 
 #### Setup
 
-- Beginning Value: **10,000**  
-- Dividend: **+100** at midpoint  
+- Beginning Value: **10,000**
+- Dividend: **+100** at midpoint
 - Ending Value: **10,200**
 
 #### Step 1: Split into Subperiods
 
-| Period | Start Value | Cash Flow | End Value | Subperiod Return |
-|-------|-------------|-----------|-----------|-----------------|
-| 1 (before dividend) | 10,000 | +0 | 10,050 | $ r_1 = \frac{10{,}050 - 10{,}000}{10{,}000} = 0.0050 $ (0.50%) |
-| 2 (after dividend) | 10,150 *(10,050 + 100)* | +0 | 10,200 | $ r_2 = \frac{10{,}200 - 10{,}150}{10{,}150} = 0.0049 $ (0.49%) |
+| Period              | Start Value             | Cash Flow | End Value | Subperiod Return                                                |
+| ------------------- | ----------------------- | --------- | --------- | --------------------------------------------------------------- |
+| 1 (before dividend) | 10,000                  | +0        | 10,050    | $ r_1 = \frac{10{,}050 - 10{,}000}{10{,}000} = 0.0050 $ (0.50%) |
+| 2 (after dividend)  | 10,150 _(10,050 + 100)_ | +0        | 10,200    | $ r_2 = \frac{10{,}200 - 10{,}150}{10{,}150} = 0.0049 $ (0.49%) |
 
 #### Step 2: Geometrically Link Returns
 
@@ -255,7 +255,11 @@ IRR (or money-weighted return) is the discount rate that sets the **net present 
 
 ### Summary
 
-- **Modified Dietz**: Approximates IRR; easier to calculate; sensitive to flow timing.  
-- **TWR**: Breaks into subperiods; removes impact of external flows; preferred for manager evaluation.  
-- **IRR**: True money-weighted return; reflects investor experience; best for portfolios with irregular flows or where timing decisions matter.  
+- **Modified Dietz**: Approximates IRR; easier to calculate; sensitive to flow timing.
+- **TWR**: Breaks into subperiods; removes impact of external flows; preferred for manager evaluation.
+- **IRR**: True money-weighted return; reflects investor experience; best for portfolios with irregular flows or where timing decisions matter.
 - **This package**: Treats internal flows as external, ensuring that dividends and interest are explicitly included in return calculations.
+
+## Known Bugs
+
+- Returns and other metrics will be incorrect for a net short portfolio and account position

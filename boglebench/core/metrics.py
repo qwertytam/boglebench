@@ -102,7 +102,7 @@ def calculate_account_modified_dietz_returns(
 
     """
     returns = []
-    account_total_col = f"{account}_total"
+    account_total_col = f"{account}_total_value"
     account_cash_flow_col = f"{account}_cash_flow"
 
     cash_flow_weight = get_modified_dietz_cash_flow_weight(config)
@@ -130,35 +130,28 @@ def calculate_account_modified_dietz_returns(
     return pd.Series(returns)
 
 
-def calculate_twr_daily_returns(portfolio_df: pd.DataFrame) -> pd.Series:
+def calculate_twr_daily_returns(
+    end_of_day_value: pd.Series, net_cash_flow: pd.Series
+) -> pd.Series:
     """
     Calculate daily portfolio returns using the Time-Weighted Return (TWR)
     method. This method removes the effects of cash flows to measure the
     performance of the underlying assets.
     """
-    returns = []
-    for i in range(len(portfolio_df)):
-        if i == 0:
-            # No return can be calculated on the first day.
-            returns.append(Defaults.ZERO_RETURN)
-            continue
 
-        beginning_value = portfolio_df.iloc[i - 1]["total_value"]
-        ending_value = portfolio_df.iloc[i]["total_value"]
-        net_cash_flow = portfolio_df.iloc[i]["net_cash_flow"]
+    # If the starting value is zero or negative, the return for the
+    # period is considered zero as there's no initial investment
+    # base to measure performance against.
+    beginning_values = end_of_day_value.shift(1).fillna(0)
 
-        if beginning_value == 0:
-            # If the starting value is zero or negative, the return for the
-            # period is considered zero as there's no initial investment
-            # base to measure performance against.
-            returns.append(Defaults.ZERO_RETURN)
-        else:
-            # The TWR formula for a single period (in this case, one day).
-            # We are using the assumption that cash flows occur just before
-            # the ending value is measured.
-            # TWR = (Ending Value - Net Cash Flow) / Beginning Value - 1
-            daily_return = (ending_value - net_cash_flow) / beginning_value - 1
-            returns.append(daily_return)
+    # The TWR formula for a single period (in this case, one day).
+    # We are using the assumption that cash flows occur just before
+    # the ending value is measured.
+    # TWR = (Ending Value - Net Cash Flow) / Beginning Value - 1
+    adjusted_ending_values = end_of_day_value - net_cash_flow
+    returns = (adjusted_ending_values - beginning_values) / beginning_values
+    returns = returns.fillna(Defaults.ZERO_RETURN)
+    returns = returns.replace([np.inf, -np.inf], Defaults.ZERO_RETURN)
 
     return pd.Series(returns)
 
@@ -168,7 +161,7 @@ def calculate_account_twr_daily_returns(
 ) -> pd.Series:
     """Calculate account-level returns using Time-Weighted Return method."""
     returns = []
-    account_total_col = f"{account}_total"
+    account_total_col = f"{account}_total_value"
     account_cash_flow_col = f"{account}_cash_flow"
 
     for i in range(len(portfolio_df)):

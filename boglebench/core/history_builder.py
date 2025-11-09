@@ -4,6 +4,7 @@ Builds the daily portfolio history from transactions and market data.
 
 from typing import Dict, Union
 
+import numpy as np
 import pandas as pd
 import pandas_market_calendars as mcal  # type: ignore
 
@@ -37,7 +38,7 @@ class PortfolioHistoryBuilder:
         self.start_date = start_date
         self.end_date = end_date
         self.logger = get_logger()
-        self.tickers = self.transactions["ticker"].unique().tolist()
+        self.symbols = self.transactions["symbol"].unique().tolist()
         self.accounts = self.transactions["account"].unique().tolist()
 
     def build(self) -> pd.DataFrame:
@@ -52,7 +53,7 @@ class PortfolioHistoryBuilder:
             return pd.DataFrame()
 
         holdings = {
-            acc: {tck: 0.0 for tck in self.tickers} for acc in self.accounts
+            acc: {tck: 0.0 for tck in self.symbols} for acc in self.accounts
         }
         portfolio_data = []
 
@@ -99,52 +100,55 @@ class PortfolioHistoryBuilder:
             if TransactionTypes.is_quantity_changing(
                 trans["transaction_type"]
             ):
-                current_holdings[trans["account"]][trans["ticker"]] += trans[
+                current_holdings[trans["account"]][trans["symbol"]] += trans[
                     "quantity"
                 ]
 
         # 2. Calculate values based on updated holdings
         day_data: Dict[str, Union[float, pd.Timestamp]] = {"date": date}
         total_portfolio_value = 0.0
-        ticker_total_shares: Dict[str, float] = {}
-        ticker_total_value: Dict[str, float] = {}
+        symbol_total_shares: Dict[str, float] = {}
+        symbol_total_value: Dict[str, float] = {}
         for account in self.accounts:
             account_value = 0.0
-            for ticker in self.tickers:
-                prev_shares = ticker_total_shares.get(ticker, 0.0)
-                prev_value = ticker_total_value.get(ticker, 0.0)
+            for symbol in self.symbols:
+                prev_shares = symbol_total_shares.get(symbol, 0.0)
+                prev_value = symbol_total_value.get(symbol, 0.0)
 
-                shares = current_holdings[account][ticker]
-                price = self._get_price_for_date(ticker, date)
+                shares = current_holdings[account][symbol]
+                price = self._get_price_for_date(symbol, date, adjusted=False)
                 value = shares * price
                 value = value if not pd.isna(value) else 0.0
 
-                ticker_total_shares[ticker] = prev_shares + shares
-                ticker_total_value[ticker] = prev_value + value
+                symbol_total_shares[symbol] = prev_shares + shares
+                symbol_total_value[symbol] = prev_value + value
 
                 account_value += float(value)
-                day_data[f"{account}_{ticker}_shares"] = shares
-                day_data[f"{account}_{ticker}_value"] = value
+                day_data[f"{account}_{symbol}_quantity"] = shares
+                day_data[f"{account}_{symbol}_value"] = value
 
-            day_data[f"{account}_total"] = account_value
+            day_data[f"{account}_total_value"] = account_value
             total_portfolio_value += account_value
         day_data["total_value"] = total_portfolio_value
 
-        # 3. Add ticker-level totals and prices
-        for ticker in self.tickers:
-            day_data[f"{ticker}_total_shares"] = ticker_total_shares.get(
-                ticker, 0.0
+        # 3. Add symbol-level totals and prices
+        for symbol in self.symbols:
+            day_data[f"{symbol}_total_quantity"] = symbol_total_shares.get(
+                symbol, 0.0
             )
-            day_data[f"{ticker}_total_value"] = ticker_total_value.get(
-                ticker, 0.0
+            day_data[f"{symbol}_total_value"] = symbol_total_value.get(
+                symbol, 0.0
             )
-            day_data[f"{ticker}_price"] = self._get_price_for_date(
-                ticker, date
+            day_data[f"{symbol}_price"] = self._get_price_for_date(
+                symbol, date, adjusted=False
+            )
+            day_data[f"{symbol}_adj_price"] = self._get_price_for_date(
+                symbol, date, adjusted=True
             )
 
-        # 4. Calculate weights: by account, by account-ticker, overall ticker
+        # 4. Calculate weights: by account, by account-symbol, overall symbol
         for account in self.accounts:
-            value_acct = day_data[f"{account}_total"]
+            value_acct = day_data[f"{account}_total_value"]
             value_acct = float(value_acct) if not pd.isna(value_acct) else 0.0
             weight_acct = (
                 value_acct / total_portfolio_value
@@ -153,67 +157,69 @@ class PortfolioHistoryBuilder:
             )
             day_data[f"{account}_weight"] = weight_acct
 
-            for ticker in self.tickers:
-                value_acct_ticker = day_data[f"{account}_{ticker}_value"]
-                value_acct_ticker = (
-                    float(value_acct_ticker)
-                    if not pd.isna(value_acct_ticker)
+            for symbol in self.symbols:
+                value_acct_symbol = day_data[f"{account}_{symbol}_value"]
+                value_acct_symbol = (
+                    float(value_acct_symbol)
+                    if not pd.isna(value_acct_symbol)
                     else 0.0
                 )
-                weight_acct_ticker = (
-                    value_acct_ticker / total_portfolio_value
+                weight_acct_symbol = (
+                    value_acct_symbol / total_portfolio_value
                     if total_portfolio_value != 0
                     else 0.0
                 )
-                day_data[f"{account}_{ticker}_weight"] = weight_acct_ticker
+                day_data[f"{account}_{symbol}_weight"] = weight_acct_symbol
 
-        for ticker in self.tickers:
-            value_ticker = day_data[f"{ticker}_total_value"]
-            value_ticker = (
-                float(value_ticker) if not pd.isna(value_ticker) else 0.0
+        for symbol in self.symbols:
+            value_symbol = day_data[f"{symbol}_total_value"]
+            value_symbol = (
+                float(value_symbol) if not pd.isna(value_symbol) else 0.0
             )
-            weight_ticker = (
-                value_ticker / total_portfolio_value
+            weight_symbol = (
+                value_symbol / total_portfolio_value
                 if total_portfolio_value != 0
                 else 0.0
             )
-            day_data[f"{ticker}_weight"] = weight_ticker
+            day_data[f"{symbol}_weight"] = weight_symbol
 
         return day_data, current_holdings
 
     def _get_price_for_date(
-        self, ticker: str, price_date: pd.Timestamp
+        self, symbol: str, price_date: pd.Timestamp, adjusted: bool = False
     ) -> float:
-        """Gets price for a ticker on a specific date with forward-fill."""
-        if ticker not in self.market_data:
+        """Gets price for a symbol on a specific date with forward-fill."""
+        price_col = "adj_close" if adjusted else "close"
+
+        if symbol not in self.market_data:
             return 0.0
 
-        ticker_data = self.market_data[ticker]
+        symbol_data = self.market_data[symbol]
         target_date = to_tzts_scaler(
             price_date, tz=DateAndTimeConstants.TZ_UTC.value
         )
         if target_date is None:
             return 0.0
 
-        exact_match = ticker_data[
-            ticker_data["date"].dt.date == target_date.date()
+        exact_match = symbol_data[
+            symbol_data["date"].dt.date == target_date.date()
         ]
         if not exact_match.empty:
-            return exact_match["close"].iloc[0]
+            return exact_match[price_col].iloc[0]
 
         # Forward-fill logic
-        available_data = ticker_data[
-            ticker_data["date"].dt.date <= target_date.date()
+        available_data = symbol_data[
+            symbol_data["date"].dt.date <= target_date.date()
         ]
         if not available_data.empty:
-            return available_data["close"].iloc[-1]
+            return available_data[price_col].iloc[-1]
 
         # Backward-fill logic
-        future_data = ticker_data[
-            ticker_data["date"].dt.date > target_date.date()
+        future_data = symbol_data[
+            symbol_data["date"].dt.date > target_date.date()
         ]
         if not future_data.empty:
-            return future_data["close"].iloc[0]
+            return future_data[price_col].iloc[0]
 
         return 0.0
 
@@ -222,20 +228,26 @@ class PortfolioHistoryBuilder:
         day_trans = self.transactions[
             self.transactions["date"].dt.date == date.date()
         ]
-        inv_cf = {acc: 0.0 for acc in self.accounts}
-        inc_cf = {acc: 0.0 for acc in self.accounts}
+
+        zero_cf_dict = {acc: 0.0 for acc in self.accounts}
+        zero_cf_dict.update({sym: 0.0 for sym in self.symbols})
+        inv_cf = zero_cf_dict.copy()
+        inc_cf = zero_cf_dict.copy()
         inv_cf["total"] = 0.0
         inc_cf["total"] = 0.0
 
         for _, trans in day_trans.iterrows():
             acc = trans["account"]
+            sym = trans["symbol"]
             ttype = trans["transaction_type"]
             value = trans["total_value"]
             if TransactionTypes.is_buy_or_sell(ttype):
                 inv_cf[acc] += value
+                inv_cf[sym] += value
                 inv_cf["total"] += value
             elif TransactionTypes.is_any_dividend(ttype):
                 inc_cf[acc] += value
+                inc_cf[sym] += value
                 inc_cf["total"] += value
         return inv_cf, inc_cf
 
@@ -261,11 +273,44 @@ class PortfolioHistoryBuilder:
                 for inv, inc in zip(inv_cfs, inc_cfs)
             ]
 
+        # Add Ticker-level returns
+        for symbol in self.symbols:
+            adj_price_col = f"{symbol}_adj_price"
+            qty_col = f"{symbol}_total_quantity"
+            value_col = f"{symbol}_total_value"
+            cf_col = f"{symbol}_cash_flow"
+
+            symbol_active_days = df[qty_col] != 0
+
+            df[cf_col] = [
+                inv.get(symbol, 0.0) + inc.get(symbol, 0.0)
+                for inv, inc in zip(inv_cfs, inc_cfs)
+            ]
+
+            short_position_multiplier = pd.Series(
+                np.where(df[qty_col] <= 0, -1, 1), index=df.index
+            )
+            # Calculate the daily percentage change of the adjusted price.
+            # This is the true market return for the symbol.
+            df[f"{symbol}_market_return"] = (
+                df[adj_price_col].pct_change().fillna(0)
+                * short_position_multiplier
+                * symbol_active_days
+            )
+
+            df[f"{symbol}_twr_return"] = (
+                calculate_twr_daily_returns(df[value_col], df[cf_col])
+                * short_position_multiplier
+                * symbol_active_days
+            )
+
         # Add returns
         df["portfolio_daily_return_mod_dietz"] = (
             calculate_modified_dietz_returns(df, config=self.config)
         )
-        df["portfolio_daily_return_twr"] = calculate_twr_daily_returns(df)
+        df["portfolio_daily_return_twr"] = calculate_twr_daily_returns(
+            df["total_value"], df["net_cash_flow"]
+        )
 
         for acc in self.accounts:
             df[f"{acc}_mod_dietz_return"] = (

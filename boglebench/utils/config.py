@@ -164,12 +164,12 @@ class ConfigManager:
     def get_benchmark_components(self) -> list[dict]:
         """
         Returns the list of benchmark components from the config.
-        Defaults to a 100% allocation to the default benchmark ticker.
+        Defaults to a 100% allocation to the default benchmark symbol.
         """
         benchmark_config = self.config.get("benchmark", {})
         default_components = [
             {
-                "ticker": Defaults.DEFAULT_BENCHMARK_TICKER,
+                "symbol": Defaults.DEFAULT_BENCHMARK_TICKER,
                 "weight": 1.0,
             }
         ]
