@@ -681,7 +681,7 @@ class TestPerformanceCalculation:
             assert "BOGLEBENCH PERFORMANCE ANALYSIS" in summary
             assert "John C. Bogle" in summary
             assert "PORTFOLIO PERFORMANCE" in summary
-            assert "SPY PERFORMANCE" in summary  # Benchmark section
+            assert "'SPY' PERFORMANCE" in summary  # Benchmark section
             assert "RELATIVE PERFORMANCE" in summary
             assert "Total Return:" in summary
             assert "Sharpe Ratio:" in summary

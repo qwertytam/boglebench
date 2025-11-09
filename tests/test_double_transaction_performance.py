@@ -582,7 +582,7 @@ class TestMultiTransactionPerformance:
         # Verify comprehensive summary content
         assert "BOGLEBENCH PERFORMANCE ANALYSIS" in summary
         assert "PORTFOLIO PERFORMANCE" in summary
-        assert "SPY PERFORMANCE" in summary
+        assert "'SPY' PERFORMANCE" in summary
         assert "RELATIVE PERFORMANCE" in summary
         assert "Total Return:" in summary
         assert "Volatility:" in summary
