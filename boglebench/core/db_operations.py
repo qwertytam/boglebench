@@ -1,6 +1,9 @@
 """
-Base database operations for PortfolioDatabase.
-Handles connection management, transactions, and basic utilities.
+Database connection and transaction management.
+
+This module provides base database operations including connection management,
+transaction handling, and cursor access. Forms the foundation for all database
+interactions in the portfolio analysis system.
 """
 
 import sqlite3

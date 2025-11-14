@@ -1,5 +1,10 @@
 """
 Workspace context management for BogleBench.
+
+This module manages the workspace context (data directory) across the application.
+Provides methods for discovering, setting, and retrieving the workspace path
+where configuration, transaction data, market data, and analysis results are
+stored.
 """
 
 import os

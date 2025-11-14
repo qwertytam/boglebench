@@ -1,6 +1,9 @@
 """
-Insert methods for PortfolioDatabase.
-Handles data insertion for portfolio, accounts, holdings, and symbols.
+Database insert operations for portfolio data.
+
+This module provides methods for inserting portfolio summary data, account data,
+holdings, and symbol information into the normalized database. Supports both
+single-row and bulk insert operations for efficient data loading.
 """
 
 from typing import Dict, List, Optional, cast

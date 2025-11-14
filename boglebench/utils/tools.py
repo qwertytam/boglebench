@@ -1,6 +1,10 @@
 """
-Collection of utility functions and classes for Boglebench
+Utility functions and tools for BogleBench.
 
+This module provides general utility functions including timezone-aware date
+conversion, CAGR calculation, dividend aggregation, and other helper functions
+used throughout the application. Includes robust type handling and error
+management.
 """
 
 from __future__ import annotations

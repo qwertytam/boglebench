@@ -1,5 +1,10 @@
 """
-Configuration management for BogleBench portfolio analyzer.
+Configuration management for BogleBench.
+
+This module manages configuration loading, merging, and access for the portfolio
+analyzer. Handles configuration file resolution from multiple locations
+(workspace, environment variables, default paths) and provides methods for
+accessing configuration values with defaults.
 """
 
 import os

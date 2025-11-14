@@ -1,6 +1,10 @@
 """
-Allocation and performance analysis methods for PortfolioDatabase.
-Handles allocation breakdowns and performance metrics by attributes.
+Portfolio allocation analysis methods.
+
+This module provides methods for analyzing portfolio allocations by different
+attributes (account, asset class, geography, sector, etc.). Calculates
+allocation percentages, performance by grouping, and attribution analysis
+at various levels of granularity.
 """
 
 from typing import Optional, cast

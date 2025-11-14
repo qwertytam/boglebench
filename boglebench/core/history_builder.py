@@ -1,6 +1,10 @@
 """
-Builds the daily portfolio history from transactions and market data.
-Now writes to normalized SQLite database.
+Portfolio history construction and database persistence.
+
+This module builds the daily portfolio history from transactions and market data,
+calculating holdings, values, cash flows, and returns for each day. Writes the
+normalized portfolio history to a SQLite database for efficient querying and
+analysis.
 """
 
 from typing import Dict, Optional, Union
@@ -35,6 +39,17 @@ class PortfolioHistoryBuilder:
         end_date: pd.Timestamp,
         db_path: Optional[str] = None,
     ):
+        """
+        Initialize the PortfolioHistoryBuilder.
+
+        Args:
+            config: ConfigManager with portfolio settings
+            transactions: DataFrame containing transaction data
+            market_data: Dictionary mapping symbols to their market data
+            start_date: Start date for portfolio history
+            end_date: End date for portfolio history
+            db_path: Optional custom database path (defaults to config path)
+        """
         self.config = config
         self.transactions = transactions
         self.market_data = market_data

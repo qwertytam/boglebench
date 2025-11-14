@@ -1,5 +1,9 @@
 """
-Timing utilities for BogleBench performance measurement.
+Timing utilities for performance measurement.
+
+This module provides decorators and context managers for measuring and logging
+execution time of operations. Useful for profiling and optimization of portfolio
+analysis workflows.
 """
 
 import functools

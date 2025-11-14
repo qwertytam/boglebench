@@ -1,6 +1,10 @@
 """
-Database manager for normalized portfolio history with temporal symbol attributes.
-Single source of truth - no backward compatibility with wide DataFrames.
+Normalized portfolio database manager.
+
+This module provides the main database interface for storing and querying
+portfolio history using a normalized SQLite schema. Combines query, insert,
+allocation, and symbol attribute operations through mixin classes. Serves as
+the single source of truth for portfolio data.
 """
 
 from pathlib import Path

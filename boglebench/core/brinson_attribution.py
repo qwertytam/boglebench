@@ -1,6 +1,10 @@
 """
-Brinson-Fachler attribution analysis.
-Now supports both database and DataFrame sources.
+Brinson-Fachler attribution analysis implementation.
+
+This module implements the Brinson-Fachler attribution methodology to decompose
+portfolio returns into allocation and selection effects. Helps identify whether
+outperformance came from sector allocation decisions or individual security
+selection. Supports both database and DataFrame data sources.
 """
 
 from typing import Dict, List, Optional, Tuple
@@ -29,6 +33,16 @@ class BrinsonAttributionCalculator:
         benchmark_components: Optional[List[Dict]] = None,
         portfolio_db: Optional[PortfolioDatabase] = None,  # NEW
     ):
+        """
+        Initialize the BrinsonAttributionCalculator.
+
+        Args:
+            portfolio_history: Legacy DataFrame with portfolio history (optional)
+            benchmark_history: DataFrame with benchmark performance data
+            transactions: DataFrame containing transaction data (optional)
+            benchmark_components: List of benchmark components (optional)
+            portfolio_db: PortfolioDatabase for normalized data access (preferred)
+        """
         self.portfolio_history = portfolio_history
         self.benchmark_history = benchmark_history
         self.transactions = transactions

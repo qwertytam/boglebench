@@ -1,4 +1,11 @@
-"""Module for loading and validating transaction data."""
+"""
+Transaction data loading and validation.
+
+This module loads transaction data from CSV files and performs comprehensive
+validation including date format checks (ISO8601), transaction type validation,
+required column verification, and data type conversions. Ensures data quality
+before portfolio analysis.
+"""
 
 import re
 from datetime import tzinfo
