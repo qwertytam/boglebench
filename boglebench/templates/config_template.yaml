@@ -140,3 +140,23 @@ validation:
   warn_on_weekends: true
   warn_on_holidays: true
   warn_on_missing_data: true
+
+# Database configuration
+database:
+  # Path to portfolio history database file
+  db_path: "portfolio_history.db" # Relative to base_path, or absolute path
+  # db_path: null  # If null, uses default: {base_path}/portfolio_history.db
+
+  # Optional: Database performance settings
+  optimize_on_close: false # Run VACUUM and ANALYZE when closing
+  cache_size_mb: 64 # SQLite cache size in MB
+
+  journal_mode: "WAL" # SQLite journal mode
+  synchronous: "NORMAL" # SQLite synchronous mode
+  vacuum_on_close: false # Run VACUUM when closing database
+
+  # Data management
+  backup:
+    enabled: false # Auto-backup database before major operations
+    path: "backups/" # Backup directory
+    retention_days: 30 # How long to keep backups
