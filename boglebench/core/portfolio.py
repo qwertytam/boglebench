@@ -31,7 +31,9 @@ from ..core.metrics import (
     calculate_metrics,
     calculate_relative_metrics,
 )
+from ..core.portfolio_db import PortfolioDatabase
 from ..core.results import PerformanceResults
+from ..core.symbol_attributes_loader import load_symbol_attributes_to_database
 from ..core.transaction_loader import load_validate_transactions
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
@@ -65,6 +67,7 @@ class BogleBenchAnalyzer:
         setup_logging()
         self.logger = get_logger("core.portfolio")
 
+        self.portfolio_db: Optional[PortfolioDatabase] = None
         self.transactions = pd.DataFrame()
         self.market_data: Dict[str, pd.DataFrame] = {}
         self.portfolio_history = pd.DataFrame()
@@ -120,6 +123,10 @@ class BogleBenchAnalyzer:
             cache_enabled=cache_enabled,
         )
 
+    def get_database(self) -> Optional[PortfolioDatabase]:
+        """Get the normalized portfolio database."""
+        return self.portfolio_db
+
     def load_transactions(
         self, file_path: Optional[Union[str, Path]] = None
     ) -> pd.DataFrame:
@@ -147,12 +154,41 @@ class BogleBenchAnalyzer:
 
         return self.transactions
 
-    def build_portfolio_history(self) -> pd.DataFrame:
+    def load_symbol_attributes(self) -> None:
+        """
+        Load symbol attributes into database.
+
+        This should be called after build_portfolio_history() to ensure database exists.
+        Attributes are extracted from transactions and loaded with the portfolio start date
+        as the effective date.
+        """
+        if self.portfolio_db is None:
+            raise ValueError(
+                "Must build portfolio history first using build_portfolio_history()"
+            )
+
+        if not self.attrib_group_cols:
+            self.logger.info("No attribute columns found in transactions")
+            return
+
+        # Use portfolio start date as effective date for attributes
+        effective_date = (
+            self.start_date if self.start_date else pd.Timestamp.now(tz="UTC")
+        )
+
+        load_symbol_attributes_to_database(
+            db=self.portfolio_db,
+            transactions_df=self.transactions,
+            attribute_columns=self.attrib_group_cols,
+            effective_date=effective_date,
+        )
+
+    def build_portfolio_history(self) -> PortfolioDatabase:
         """
         Build portfolio holdings and values over time.
 
         Returns:
-            DataFrame with daily portfolio holdings, values, and weights
+            PortfolioDatabase: Database with normalized portfolio history
         """
         if self.transactions.empty:
             raise ValueError(
@@ -188,9 +224,9 @@ class BogleBenchAnalyzer:
             start_date=period.start_date,
             end_date=period.end_date,
         )
-        self.portfolio_history = build.build()
+        self.portfolio_db = build.build()
 
-        return self.portfolio_history
+        return self.portfolio_db
 
     def _fetch_market_data(
         self, start_date: pd.Timestamp, end_date: pd.Timestamp
@@ -359,7 +395,6 @@ class BogleBenchAnalyzer:
             ):
                 self.logger.info("Calculating Brinson attribution...")
                 brinson_calculator = BrinsonAttributionCalculator(
-                    config=self.config,
                     portfolio_history=self.portfolio_history,
                     benchmark_history=self.benchmark_history,
                     transactions=self.transactions,
@@ -415,6 +450,7 @@ class BogleBenchAnalyzer:
             brinson_summary=brinson_summary,
             selection_drilldown=selection_drilldown,
             config=self.config,
+            portfolio_db=self.portfolio_db,
         )
 
         self.logger.info("✅ Performance analysis complete!")

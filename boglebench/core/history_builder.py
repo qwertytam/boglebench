@@ -1,8 +1,9 @@
 """
 Builds the daily portfolio history from transactions and market data.
+Now writes to normalized SQLite database.
 """
 
-from typing import Dict, Union
+from typing import Dict, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -16,13 +17,14 @@ from ..core.metrics import (
     calculate_modified_dietz_returns,
     calculate_twr_daily_returns,
 )
+from ..core.portfolio_db import PortfolioDatabase
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger
 from ..utils.tools import to_tzts_scaler
 
 
 class PortfolioHistoryBuilder:
-    """Builds the daily portfolio history DataFrame."""
+    """Builds the daily portfolio history and stores in normalized database."""
 
     def __init__(
         self,
@@ -31,6 +33,7 @@ class PortfolioHistoryBuilder:
         market_data: dict,
         start_date: pd.Timestamp,
         end_date: pd.Timestamp,
+        db_path: Optional[str] = None,
     ):
         self.config = config
         self.transactions = transactions
@@ -41,8 +44,18 @@ class PortfolioHistoryBuilder:
         self.symbols = self.transactions["symbol"].unique().tolist()
         self.accounts = self.transactions["account"].unique().tolist()
 
-    def build(self) -> pd.DataFrame:
-        """The main method to build and return the portfolio history."""
+        # Initialize database
+        self.db = PortfolioDatabase(db_path=db_path, config=config)
+        # Clear existing data for this date range
+        self.db.clear_date_range(start_date, end_date)
+
+    def build(self) -> PortfolioDatabase:
+        """
+        Build and return the portfolio database.
+
+        Returns:
+            PortfolioDatabase: Database with normalized portfolio history
+        """
         self.logger.info("🏗️ Building portfolio history...")
 
         date_range = self._get_processing_date_range()
@@ -50,24 +63,127 @@ class PortfolioHistoryBuilder:
             self.logger.warning(
                 "No dates to process for building portfolio history."
             )
-            return pd.DataFrame()
+            return self.db
 
         holdings = {
             acc: {tck: 0.0 for tck in self.symbols} for acc in self.accounts
         }
-        portfolio_data = []
 
-        for date in date_range:
-            day_data, holdings = self._process_one_day(date, holdings)
-            portfolio_data.append(day_data)
-
-        portfolio_df = pd.DataFrame(portfolio_data)
-        portfolio_df = self._add_returns_and_metrics(portfolio_df)
+        # Build to database
+        self._build_to_database(date_range, holdings)
 
         self.logger.info(
-            "✅ Portfolio history built: %d days", len(portfolio_df)
+            "✅ Portfolio history built: %d days", len(date_range)
         )
-        return portfolio_df
+        return self.db
+
+    def _build_to_database(self, date_range: pd.DatetimeIndex, holdings: dict):
+        """Build portfolio history and write to database."""
+
+        # First pass: collect all daily data
+        daily_data_list = []
+        for date in date_range:
+            day_data, holdings = self._process_one_day(date, holdings)
+            daily_data_list.append(day_data)
+
+        # Create temporary DataFrame for returns calculation
+        temp_df = pd.DataFrame(daily_data_list)
+        temp_df = self._add_returns_and_metrics(temp_df)
+
+        # Second pass: insert into database with returns
+        self.logger.info("💾 Writing %d days to database...", len(temp_df))
+
+        with self.db.transaction():
+            for _, row in temp_df.iterrows():
+                date = row["date"]
+
+                # Prepare portfolio summary
+                portfolio_summary = {
+                    "date": date,
+                    "total_value": row["total_value"],
+                    "net_cash_flow": row.get("net_cash_flow", 0),
+                    "investment_cash_flow": row.get("investment_cash_flow", 0),
+                    "income_cash_flow": row.get("income_cash_flow", 0),
+                    "portfolio_mod_dietz_return": row.get(
+                        "portfolio_daily_return_mod_dietz"
+                    ),
+                    "portfolio_twr_return": row.get(
+                        "portfolio_daily_return_twr"
+                    ),
+                    "market_value_change": row.get("market_value_change"),
+                }
+
+                # Prepare account data
+                account_data = []
+                for account in self.accounts:
+                    account_data.append(
+                        {
+                            "date": date,
+                            "account": account,
+                            "total_value": row.get(
+                                f"{account}_total_value", 0
+                            ),
+                            "cash_flow": row.get(f"{account}_cash_flow", 0),
+                            "weight": row.get(f"{account}_weight", 0),
+                            "mod_dietz_return": row.get(
+                                f"{account}_mod_dietz_return"
+                            ),
+                            "twr_return": row.get(f"{account}_twr_return"),
+                        }
+                    )
+
+                # Prepare holdings (only non-zero)
+                holdings_list = []
+                for account in self.accounts:
+                    for symbol in self.symbols:
+                        quantity = row.get(f"{account}_{symbol}_quantity", 0)
+                        value = row.get(f"{account}_{symbol}_value", 0)
+                        # Only store non-zero holdings
+                        if quantity != 0 or value != 0:
+                            holdings_list.append(
+                                {
+                                    "date": date,
+                                    "account": account,
+                                    "symbol": symbol,
+                                    "quantity": quantity,
+                                    "value": value,
+                                    "weight": row.get(
+                                        f"{account}_{symbol}_weight", 0
+                                    ),
+                                }
+                            )
+
+                # Prepare symbol data
+                symbol_data = []
+                for symbol in self.symbols:
+                    symbol_data.append(
+                        {
+                            "date": date,
+                            "symbol": symbol,
+                            "price": row.get(f"{symbol}_price"),
+                            "adj_price": row.get(f"{symbol}_adj_price"),
+                            "total_quantity": row.get(
+                                f"{symbol}_total_quantity", 0
+                            ),
+                            "total_value": row.get(f"{symbol}_total_value", 0),
+                            "weight": row.get(f"{symbol}_weight", 0),
+                            "cash_flow": row.get(f"{symbol}_cash_flow", 0),
+                            "market_return": row.get(
+                                f"{symbol}_market_return"
+                            ),
+                            "twr_return": row.get(f"{symbol}_twr_return"),
+                        }
+                    )
+
+                # Insert batch
+                self.db.insert_day_batch(
+                    portfolio_summary=portfolio_summary,
+                    account_data=account_data,
+                    holdings=holdings_list,
+                    symbol_data=symbol_data,
+                )
+
+        self.logger.info("✅ Wrote %d days to database", len(temp_df))
 
     def _get_processing_date_range(self) -> pd.DatetimeIndex:
         """Determines the exact dates to process."""
@@ -325,3 +441,7 @@ class PortfolioHistoryBuilder:
         df = calculate_market_change_and_returns(df)
 
         return df
+
+    def get_database(self) -> PortfolioDatabase:
+        """Get the database instance."""
+        return self.db
