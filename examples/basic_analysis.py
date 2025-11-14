@@ -1,17 +1,12 @@
-#!/usr/bin/env python3
 """
-Basic BogleBench Analysis Example
+Example of basic portfolio analysis using BogleBench.
 
-This script demonstrates how to use BogleBench for portfolio performance analysis.
-It shows the complete workflow from loading transactions to generating performance reports.
-
-Usage:
-    python examples/basic_analysis.py
-
-Make sure you have:
-1. Initialized a BogleBench workspace: boglebench-init --path ~/my_data
-2. Added your transaction data to ~/my_data/transactions/
-3. Updated the config file path below
+This example demonstrates:
+1. Loading transaction data
+2. Building portfolio history (now in database)
+3. Loading symbol attributes
+4. Calculating performance metrics
+5. Querying normalized data
 """
 
 import sys
@@ -20,22 +15,22 @@ from pathlib import Path
 # Add the parent directory to the path so we can import boglebench
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# pylint: disable=wrong-import-position
 from boglebench import BogleBenchAnalyzer
 
 
 def main():
     """Run a basic portfolio analysis example."""
 
-    print("🚀 BogleBench Portfolio Analysis Example")
-    print("=" * 50)
+    print("🚀 BogleBench Portfolio Analysis Example (with SQL Database)")
+    print("=" * 60)
 
     # Initialize the analyzer
-    # Update this path to your actual data directory
     config_path = "~/boglebench_data/config/config.yaml"
 
     try:
         analyzer = BogleBenchAnalyzer(config_path=config_path)
-        print(f"✅ Initialized BogleBench analyzer")
+        print("✅ Initialized BogleBench analyzer")
 
         # Step 1: Load transaction data
         print("\n📊 Step 1: Loading transaction data...")
@@ -45,158 +40,100 @@ def main():
         print(f"   Assets: {', '.join(transactions['symbol'].unique())}")
         print(f"   Accounts: {', '.join(transactions['account'].unique())}")
         print(
-            f"   Date range: {transactions['date'].min().date()} to {transactions['date'].max().date()}"
+            f"   Date range: {transactions['date'].min().date()} "
+            f"to {transactions['date'].max().date()}"
         )
 
-        # Step 2: Build portfolio history
-        print("\n🏗️  Step 3: Building portfolio history...")
-        portfolio_history = analyzer.build_portfolio_history()
+        # Step 2: Build portfolio history (writes to database)
+        print("\n🏗️  Step 2: Building portfolio history to database...")
+        portfolio_db = analyzer.build_portfolio_history()
 
-        print(f"   Built history over {len(portfolio_history)} trading days")
+        print("   ✅ Portfolio history stored in database")
+        portfolio_db.print_stats()
 
-        # Step 3: Calculate performance metrics
-        print("\n📊 Step 4: Calculating performance metrics...")
+        # Step 3: Load symbol attributes
+        print("\n📋 Step 3: Loading symbol attributes...")
+        analyzer.load_symbol_attributes()
+
+        # Show current attributes
+        attributes = portfolio_db.get_symbol_attributes()
+        if not attributes.empty:
+            print(f"   ✅ Loaded attributes for {len(attributes)} symbols")
+            print("\n   Attribute Summary:")
+            if "geography" in attributes.columns:
+                print(
+                    f"   Geographies: {attributes['geography'].unique().tolist()}"
+                )
+            if "sector" in attributes.columns:
+                print(f"   Sectors: {attributes['sector'].unique().tolist()}")
+
+        # Step 4: Query normalized data
+        print("\n🔍 Step 4: Querying normalized data...")
+
+        # Get latest portfolio summary
+        latest = portfolio_db.get_latest_portfolio()
+        print(f"\n   Latest Portfolio Value: ${latest['total_value']:,.2f}")
+        print(f"   Latest Date: {latest['date'].date()}")
+
+        # Get current holdings
+        holdings = portfolio_db.get_latest_holdings()
+        print(f"\n   Current Holdings: {len(holdings)} positions")
+        for _, holding in holdings.head(5).iterrows():
+            print(
+                f"      {holding['account']}/{holding['symbol']}: "
+                f"{holding['quantity']:.2f} shares, ${holding['value']:,.2f} "
+                f"({holding['weight']:.1%})"
+            )
+
+        # Get allocation by geography (if attributes loaded)
+        if not attributes.empty and "geography" in attributes.columns:
+            print("\n   Allocation by Geography:")
+            geo_alloc = portfolio_db.get_allocation_by_attribute("geography")
+            for _, row in geo_alloc.iterrows():
+                print(
+                    f"      {row['category']}: {row['total_weight']:.1%} "
+                    f"(${row['total_value']:,.2f})"
+                )
+
+        # Get account breakdown
+        accounts = portfolio_db.get_accounts()
+        print("\n   Account Breakdown:")
+        for account in accounts:
+            account_data = portfolio_db.get_account_data(account=account)
+            if not account_data.empty:
+                latest_account = account_data.iloc[-1]
+                print(
+                    f"      {account}: ${latest_account['total_value']:,.2f} "
+                    f"({latest_account['weight']:.1%})"
+                )
+
+        # Step 5: Calculate performance metrics (using legacy method)
+        print("\n📊 Step 5: Calculating performance metrics...")
         results = analyzer.calculate_performance()
 
-        # Step 4: Display results
         print("\n" + "=" * 60)
         print(results.summary())
         print("=" * 60)
 
-        # Step 5: Export results
-        print("\n💾 Step 5: Exporting results...")
+        # Step 6: Export results
+        print("\n💾 Step 6: Exporting results...")
         export_path = results.export_to_csv()
         print(f"   Results exported to: {export_path}")
 
-        # Additional analysis examples
-        print("\n🔍 Additional Analysis:")
-
-        # Account breakdown
-        account_summary = results.get_account_summary()
-        if not account_summary.empty:
-            print("\n🏦 Account Breakdown:")
-            for _, account in account_summary.iterrows():
-                print(
-                    f"   {account['account']}: ${account['current_value']:,.2f} "
-                    f"({account['weight_of_portfolio']:.1%} of portfolio)"
-                )
-
-        # Current holdings by account
-        holdings = results.get_account_holdings()
-        if not holdings.empty:
-            print("\n📊 Current Holdings by Account:")
-            for account in holdings["account"].unique():
-                account_holdings = holdings[holdings["account"] == account]
-                print(f"\n   {account}:")
-                for _, holding in account_holdings.iterrows():
-                    print(
-                        f"     {holding['symbol']}: {holding['shares']:.2f} shares "
-                        f"(${holding['value']:,.2f}, {holding['weight']:.1%})"
-                    )
-
-        # Get portfolio returns for further analysis
-        returns = results.get_portfolio_returns()
-        print(f"\n📈 Portfolio Performance:")
-        print(
-            f"   Average daily return: {returns.mean():.4f} ({returns.mean()*252:.2%} annualized)"
-        )
-        print(f"   Best day: +{returns.max():.2%}")
-        print(f"   Worst day: {returns.min():.2%}")
-
-        # Get cumulative returns
-        cum_returns = results.get_cumulative_returns()
-        print(f"   Total return: {cum_returns.iloc[-1]:.2%}")
-
         print("\n✅ Analysis complete!")
-        print("\n💡 Remember John Bogle's wisdom:")
-        print("   - Stay the course with long-term investing")
-        print("   - Keep costs low")
-        print("   - Diversify broadly")
-        print("   - Don't try to time the market")
 
-    except FileNotFoundError as e:
-        print(f"❌ Error: {e}")
-        print("\n💡 Quick setup:")
-        print("   1. Run: boglebench-init --path ~/my_data")
-        print("   2. Add your transactions to ~/my_data/transactions/")
-        print("   3. Update the config_path in this script")
-
+    # pylint: disable=broad-except
     except Exception as e:
-        print(f"❌ Error during analysis: {e}")
-        print("\n🐛 If you need help, check:")
-        print(
-            "   - Transaction CSV format (date, symbol, transaction_type, shares, price_per_share)"
-        )
-        print("   - Internet connection for market data")
-        print("   - Configuration file settings")
+        print(f"\n❌ Error: {e}")
 
+        # pylint: disable=import-outside-toplevel
+        import traceback
 
-def create_sample_data():
-    """
-    Helper function to create sample transaction data for testing.
+        traceback.print_exc()
+        return 1
 
-    This creates a sample CSV file that you can use to test BogleBench.
-    """
-    import pandas as pd
-
-    # Try to read from template first
-    try:
-        template_path = (
-            Path(__file__).parent.parent
-            / "boglebench"
-            / "templates"
-            / "sample_transactions.csv"
-        )
-        if template_path.exists():
-            sample_transactions = pd.read_csv(template_path)
-        else:
-            raise FileNotFoundError("Template not found")
-    except (FileNotFoundError, ImportError):
-        # Fallback to minimal programmatic generation
-        sample_transactions = pd.DataFrame(
-            {
-                "date": ["2023-01-15", "2023-02-15", "2023-03-15"],
-                "symbol": ["AAPL", "SPY", "MSFT"],
-                "transaction_type": ["BUY", "BUY", "BUY"],
-                "quantity": [100, 50, 25],
-                "value_per_share": [150.50, 380.00, 240.25],
-                "account": ["Test", "Test", "Test"],
-            }
-        )
-
-    # Save to current directory
-    output_file = Path("sample_transactions.csv")
-    sample_transactions.to_csv(output_file, index=False)
-
-    print(f"📄 Created sample transaction file: {output_file}")
-    print("   You can copy this to your BogleBench transactions directory")
-    print("📊 Sample includes multiple broker accounts:")
-    print("   - Schwab_401k: 401(k) retirement account")
-    print("   - Fidelity_IRA: IRA retirement account")
-    print("   - Personal_Brokerage: Taxable brokerage account")
-
-    return sample_transactions
+    return 0
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="BogleBench Analysis Example")
-    parser.add_argument(
-        "--create-sample",
-        action="store_true",
-        help="Create sample transaction data file",
-    )
-    parser.add_argument(
-        "--config", type=str, help="Path to BogleBench config file"
-    )
-
-    args = parser.parse_args()
-
-    if args.create_sample:
-        create_sample_data()
-    else:
-        if args.config:
-            # Update the config path if provided
-            main.__globals__["config_path"] = args.config
-        main()
+    sys.exit(main())

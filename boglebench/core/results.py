@@ -1,14 +1,13 @@
 """Results container and reporting for portfolio performance analysis."""
 
 from pathlib import Path
-from typing import Callable, Dict, Mapping, Optional
+from typing import Dict, Optional
 
 import pandas as pd
 
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger
-from ..utils.tools import cagr
-from .constants import DateAndTimeConstants, Defaults
+from .portfolio_db import PortfolioDatabase
 
 
 class PerformanceResults:
@@ -30,6 +29,7 @@ class PerformanceResults:
             Dict[str, Dict[str, pd.DataFrame]]
         ] = None,
         config: Optional[ConfigManager] = None,
+        portfolio_db: Optional[PortfolioDatabase] = None,  # NEW
     ):
         self.transactions = transactions
         self.portfolio_metrics = portfolio_metrics
@@ -43,6 +43,7 @@ class PerformanceResults:
         self.brinson_summary = brinson_summary
         self.selection_drilldown = selection_drilldown
         self.config = config
+        self.portfolio_db = portfolio_db  # NEW
 
         self.logger = get_logger("core.results")
 
@@ -55,7 +56,7 @@ class PerformanceResults:
         lines.append("   'Stay the course' - John C. Bogle")
         lines.append("=" * 80)
 
-        # Portfolio metrics.   f"{3­:0=­+5}­"
+        # Portfolio metrics
         if self.portfolio_metrics:
             p = self.portfolio_metrics
             lines.append("\n📊 PORTFOLIO PERFORMANCE\n")
@@ -84,22 +85,15 @@ class PerformanceResults:
                 f"{p['twr']['sharpe_ratio']:>+8.3f}"
             )
             lines.append(
-                f"\n  Max Drawdown:        "
-                f"{p['mod_dietz']['max_drawdown']:>+8.2%}"
+                f"  Max Drawdown:        "
+                f"{p['mod_dietz']['max_drawdown']:>+8.2%}    "
+                f"{p['twr']['max_drawdown']:>+8.2%}"
             )
-            lines.append(
-                f"  Win Rate:            {p['mod_dietz']['win_rate']:>+8.2%}"
-            )
-
-        if self.config is None:
-            raise ValueError("ConfigManager is required for summary report.")
 
         # Benchmark metrics
         if self.benchmark_metrics:
             b = self.benchmark_metrics
-
-            benchmark_name = self.config.get("benchmark.name", "Benchmark")
-            lines.append(f"\n📈 BENCHMARK '{benchmark_name}' PERFORMANCE\n")
+            lines.append("\n📈 BENCHMARK PERFORMANCE\n")
             lines.append(f"  Total Return:        {b['total_return']:>+8.2%}")
             lines.append(
                 f"  Annualized Return:   {b['annualized_return']:>+8.2%}"
@@ -108,10 +102,11 @@ class PerformanceResults:
             lines.append(f"  Sharpe Ratio:        {b['sharpe_ratio']:>+8.3f}")
             lines.append(f"  Max Drawdown:        {b['max_drawdown']:>+8.2%}")
 
-        # Relative performance
+        # Relative metrics
         if self.relative_metrics:
             r = self.relative_metrics
-            lines.append("\n🎯 RELATIVE PERFORMANCE (Using TWR)\n")
+            lines.append("\n📊 RELATIVE PERFORMANCE\n")
+            lines.append(f"  Excess Return:       {r['excess_return']:>+8.2%}")
             lines.append(
                 f"  Tracking Error:      {r['tracking_error']:>+8.2%}"
             )
@@ -119,235 +114,56 @@ class PerformanceResults:
                 f"  Information Ratio:   {r['information_ratio']:>+8.3f}"
             )
             lines.append(f"  Beta:                {r['beta']:>+8.3f}")
-            lines.append(f"  Jensen's Alpha:      {r['jensens_alpha']:>+8.2%}")
+            lines.append(f"  Alpha:               {r['alpha']:>+8.2%}")
             lines.append(f"  Correlation:         {r['correlation']:>+8.3f}")
 
-        lines.append("\n" + "-" * 80)
-        lines.append("🔍 DETAILED ATTRIBUTION ANALYSIS\n")
-
-        # Format attribution tables if they exist
-        if self.holding_attribution is not None:
-            self.holding_attribution = self.holding_attribution.sort_values(
-                by="Contribution to Portfolio Return", ascending=False
+        # Attribution summaries
+        if (
+            self.holding_attribution is not None
+            and not self.holding_attribution.empty
+        ):
+            lines.append("\n📋 HOLDING ATTRIBUTION (Top 5 Contributors)\n")
+            top_holdings = self.holding_attribution.nlargest(
+                5, "Contribution to Portfolio Return"
             )
-            lines.append("\n🏷️  HOLDING-LEVEL ATTRIBUTION\n")
-            total_weight = self.holding_attribution["Avg. Weight"].sum()
-            total_twr = (
-                (
-                    self.holding_attribution[
-                        "Contribution to Portfolio Return"
-                    ].sum()
-                    / total_weight
-                )
-                if total_weight > 0
-                else 0
-            )
-            total_contribution = self.holding_attribution[
-                "Contribution to Portfolio Return"
-            ].sum()
-            to_print = pd.concat(
-                [
-                    self.holding_attribution,
-                    pd.DataFrame(
-                        {
-                            "Avg. Weight": total_weight,
-                            "Return (TWR)": total_twr,
-                            "Contribution to Portfolio Return": total_contribution,
-                        },
-                        index=[0],
-                    ),
-                ]
-            )
-            lines.append(
-                to_print.rename(index={0: "  Totals  "}).to_string(
-                    float_format="{:,.2%}".format,
-                    formatters=self._get_formatters(),
-                    index=True,
-                )
-            )
-
-        if self.account_attribution is not None:
-            lines.append("\n🏦 ACCOUNT-LEVEL ATTRIBUTION\n")
-            total_weight = self.account_attribution["Avg. Weight"].sum()
-            total_twr = (
-                (
-                    self.account_attribution[
-                        "Contribution to Portfolio Return"
-                    ].sum()
-                    / total_weight
-                )
-                if total_weight > 0
-                else 0
-            )
-            total_contribution = self.account_attribution[
-                "Contribution to Portfolio Return"
-            ].sum()
-            to_print = pd.concat(
-                [
-                    self.account_attribution,
-                    pd.DataFrame(
-                        {
-                            "Avg. Weight": total_weight,
-                            "Return (TWR)": total_twr,
-                            "Contribution to Portfolio Return": total_contribution,
-                        },
-                        index=[0],
-                    ),
-                ]
-            )
-            lines.append(
-                to_print.rename(index={0: "  Totals  "}).to_string(
-                    float_format="{:,.2%}".format,
-                    formatters=self._get_formatters(),
-                    index=True,
-                )
-            )
-
-        if self.factor_attributions:
-            for factor, df in self.factor_attributions.items():
-                lines.append(f"\n🔍 FACTOR-LEVEL ATTRIBUTION: '{factor}'\n")
-                total_weight = df["Avg. Weight"].sum()
-                total_twr = (
-                    (
-                        df["Contribution to Portfolio Return"].sum()
-                        / total_weight
-                    )
-                    if total_weight > 0
-                    else 0
-                )
-                total_contribution = df[
-                    "Contribution to Portfolio Return"
-                ].sum()
-                to_print = pd.concat(
-                    [
-                        df,
-                        pd.DataFrame(
-                            {
-                                "Avg. Weight": total_weight,
-                                "Return (TWR)": total_twr,
-                                "Contribution to Portfolio Return": total_contribution,
-                            },
-                            index=[0],
-                        ),
-                    ]
-                )
+            for _, row in top_holdings.iterrows():
                 lines.append(
-                    to_print.rename(index={0: "  Totals  "}).to_string(
-                        float_format="{:,.2%}".format,
-                        formatters=self._get_formatters(),
-                        index=True,
-                    )
+                    f"  {row.name:8s}  Weight: {row['Avg. Weight']:>6.1%}  "
+                    f"Return: {row['Return (TWR)']:>+7.2%}  "
+                    f"Contribution: {row['Contribution to Portfolio Return']:>+7.2%}"
                 )
 
-        # --- 3. NEW: Add the Brinson Attribution section to the summary ---
-        if self.brinson_summary is not None:
-            for group_by, brinson_data in self.brinson_summary.items():
+        if (
+            self.account_attribution is not None
+            and not self.account_attribution.empty
+        ):
+            lines.append("\n🏦 ACCOUNT ATTRIBUTION\n")
+            for _, row in self.account_attribution.iterrows():
                 lines.append(
-                    "\n"
-                    + "-" * 80
-                    + f"\n🎯 BRINSON ATTRIBUTION vs. Benchmark (by '{group_by}')\n"
+                    f"  {row.name:15s}  Weight: {row['Avg. Weight']:>6.1%}  "
+                    f"Return: {row['Return (TWR)']:>+7.2%}  "
+                    f"Contribution: {row['Contribution to Portfolio Return']:>+7.2%}"
                 )
 
-                # Format the main Brinson summary table
-                brinson_df = brinson_data[
-                    ["Allocation Effect", "Selection Effect", "Total Effect"]
-                ]
-                total_row = pd.DataFrame(
-                    {
-                        "Allocation Effect": brinson_df[
-                            "Allocation Effect"
-                        ].sum(),
-                        "Selection Effect": brinson_df[
-                            "Selection Effect"
-                        ].sum(),
-                        "Total Effect": brinson_df["Total Effect"].sum(),
-                    },
-                    index=["  Totals  "],
-                )
-                to_print = pd.concat(
-                    [
-                        brinson_df,
-                        total_row,
-                    ]
-                )
-                lines.append(
-                    to_print.to_string(float_format=lambda x: f"{x:,.2%}")
-                )
-                lines.append("\n")
-
-                # Add the detailed selection drill-down tables
-                if self.selection_drilldown is None:
-                    raise ValueError(
-                        "selection_drilldown is required for summary report."
-                    )
-                elif (
-                    not isinstance(self.selection_drilldown, dict)
-                    or group_by not in self.selection_drilldown
-                    or self.selection_drilldown[group_by] is None
-                ):
-                    raise ValueError(
-                        f"selection_drilldown for group '{group_by}' "
-                        "is None or group_by is not a valid key."
-                    )
-                else:
-                    for category, drilldown_df in self.selection_drilldown[
-                        group_by
-                    ].items():
-                        if not drilldown_df.empty:
-                            lines.append(
-                                f"\n🔎 SELECTION DETAIL FOR '{category}'\n"
-                            )
-                            total_row = pd.DataFrame(
-                                {
-                                    "Avg. Weight": drilldown_df[
-                                        "Avg. Weight"
-                                    ].sum(),
-                                    "Return (TWR)": (
-                                        (
-                                            drilldown_df["Return (TWR)"]
-                                            * drilldown_df["Avg. Weight"]
-                                        ).sum()
-                                    ),
-                                    "Contribution to Selection": drilldown_df[
-                                        "Contribution to Selection"
-                                    ].sum(),
-                                },
-                                index=["  Totals  "],
-                            )
-                            to_print = pd.concat(
-                                [
-                                    drilldown_df,
-                                    total_row,
-                                ]
-                            )
-                            lines.append(
-                                to_print.to_string(
-                                    float_format=lambda x: f"{x:,.2%}"
-                                )
-                            )
-
-                        if (
-                            self.brinson_summary is not None
-                            and category in brinson_data.index
-                        ):
-                            total_selection = brinson_data.loc[
-                                category, "Selection Effect"
-                            ]
-                            lines.append(
-                                f"\nTotal Selection Effect for {category}: {total_selection:.2%}"
-                            )
         lines.append("\n" + "=" * 80)
-        lines.append(
-            "💡 Remember: Past performance doesn't guarantee future results."
-        )
-        lines.append(
-            "   Focus on low costs, diversification, and long-term discipline.\n\n"
-        )
-
         return "\n".join(lines)
 
     def get_portfolio_returns(self) -> pd.Series:
-        """Get portfolio return series."""
+        """
+        Get portfolio return series.
+
+        Returns:
+            Series with date index and daily returns
+        """
+        # Try database first
+        if self.portfolio_db is not None:
+            df = self.portfolio_db.get_portfolio_summary()
+            if not df.empty:
+                return df.set_index("date")[
+                    "portfolio_mod_dietz_return"
+                ].dropna()
+
+        # Fallback to DataFrame
         if self.portfolio_history is None:
             return pd.Series(dtype=float)
 
@@ -356,90 +172,95 @@ class PerformanceResults:
         ].dropna()
 
     def get_cumulative_returns(self) -> pd.Series:
-        """Get cumulative portfolio returns."""
+        """
+        Get cumulative portfolio returns.
+
+        Returns:
+            Series with date index and cumulative returns
+        """
         returns = self.get_portfolio_returns()
         returns = (1 + returns).cumprod()
         return returns - 1
 
     def get_account_summary(self) -> pd.DataFrame:
-        """Get summary of portfolio value by account."""
-        if self.portfolio_history is None:
+        """
+        Get summary of all accounts.
+
+        Returns:
+            DataFrame with account, current_value, weight_of_portfolio
+        """
+        # Try database first
+        if self.portfolio_db is not None:
+            df = self.portfolio_db.get_account_data()
+            if df.empty:
+                return pd.DataFrame()
+
+            latest_date = df["date"].max()
+            latest = df[df["date"] == latest_date]
+
+            summary = latest[["account", "total_value", "weight"]].rename(
+                columns={
+                    "total_value": "current_value",
+                    "weight": "weight_of_portfolio",
+                }
+            )
+
+            return summary.sort_values("current_value", ascending=False)
+
+        # Fallback to DataFrame
+        if self.portfolio_history is None or self.portfolio_history.empty:
             return pd.DataFrame()
 
-        if self.config is None:
-            raise ValueError("ConfigManager is required for account summary.")
-
-        annual_trading_days = self.config.get("settings.annual_trading_days")
-        if isinstance(annual_trading_days, dict):
-            annual_trading_days = annual_trading_days.get("value")
-        if annual_trading_days is None:
-            annual_trading_days = (
-                DateAndTimeConstants.DAYS_IN_TRADING_YEAR.value
-            )
-        annual_trading_days = int(annual_trading_days)
-
-        # Get the latest date data
         latest_data = self.portfolio_history.iloc[-1]
-
-        accounts: list[str] = (
-            self.transactions["account"].unique().tolist()
-            if self.transactions is not None
-            else []
+        accounts = self._extract_accounts_from_columns(
+            self.portfolio_history.columns
         )
 
         account_data = []
         for account in accounts:
-            total_col = f"{account}_total_value"
-            if total_col in self.portfolio_history.columns:
-                current_value = latest_data[total_col]
+            total_value_col = f"{account}_total_value"
+            weight_col = f"{account}_weight"
 
-                # Calculate account-specific return
-                account_returns = self.portfolio_history[
-                    f"{account}_mod_dietz_return"
-                ].dropna()
-                if len(account_returns) > 0:
-                    total_periods = len(account_returns)
-                    year_fraction = total_periods / annual_trading_days
-                    total_return = (1 + account_returns).prod()
-
-                    if not isinstance(total_return, (float, int)):
-                        self.logger.warning(
-                            "Non-numeric total_return for account %s: %s"
-                            + " setting to 0",
-                            account,
-                            total_return,
-                        )
-                        total_return = Defaults.ZERO_RETURN
-                    else:
-                        total_return -= 1
-
-                    annualized_return = cagr(
-                        1, 1 + total_return, year_fraction
-                    )
-                else:
-                    total_return = Defaults.ZERO_RETURN
-                    annualized_return = Defaults.ZERO_RETURN
-
+            if (
+                total_value_col in self.portfolio_history.columns
+                and weight_col in self.portfolio_history.columns
+            ):
                 account_data.append(
                     {
                         "account": account,
-                        "current_value": current_value,
-                        "total_return": total_return,
-                        "annualized_return": annualized_return,
-                        "weight_of_portfolio": (
-                            current_value / latest_data["total_value"]
-                            if latest_data["total_value"] > 0
-                            else 0
-                        ),
+                        "current_value": latest_data[total_value_col],
+                        "weight_of_portfolio": latest_data[weight_col],
                     }
                 )
 
-        return pd.DataFrame(account_data)
+        return pd.DataFrame(account_data).sort_values(
+            "current_value", ascending=False
+        )
 
     def get_account_holdings(
-        self, account_name: Optional[str | None] = None
+        self, account_name: Optional[str] = None
     ) -> pd.DataFrame:
-        """Get current holdings for a specific account or all accounts."""
+        """
+        Get current holdings for an account.
+
+        Args:
+            account_name: Name of account (if None, returns all accounts)
+
+        Returns:
+            DataFrame with account, symbol, shares, value, weight
+        """
+        # Try database first
+        if self.portfolio_db is not None:
+            holdings_df = self.portfolio_db.get_latest_holdings(
+                account=account_name
+            )
+            if not holdings_df.empty:
+                holdings_df = holdings_df[
+                    ["account", "symbol", "quantity", "value", "weight"]
+                ].rename(columns={"quantity": "shares"})
+            return holdings_df
+
+        # Fallback to DataFrame
         if self.portfolio_history is None:
             return pd.DataFrame()
 
@@ -464,102 +285,332 @@ class PerformanceResults:
 
                 if shares != 0:  # Only include non-zero holdings
                     value_col = f"{account}_{symbol}_value"
-                    price_col = f"{account}_{symbol}_price"
-
-                    value = latest_data.get(value_col, 0)
-                    price = latest_data.get(price_col, 0)
-
-                    account_total = latest_data.get(
-                        f"{account}_total_value", 0
-                    )
-                    weight = value / account_total if account_total > 0 else 0
+                    weight_col = f"{account}_{symbol}_weight"
 
                     holdings_data.append(
                         {
                             "account": account,
                             "symbol": symbol,
-                            "quantity": shares,
-                            "price": price,
-                            "value": value,
-                            "weight": weight,
+                            "shares": shares,
+                            "value": (
+                                latest_data[value_col]
+                                if value_col in self.portfolio_history.columns
+                                else 0
+                            ),
+                            "weight": (
+                                latest_data[weight_col]
+                                if weight_col in self.portfolio_history.columns
+                                else 0
+                            ),
                         }
                     )
 
-        if self.config is None:
-            raise ValueError(
-                "ConfigManager is required for exporting results."
+        df = pd.DataFrame(holdings_data)
+        if not df.empty:
+            df = df.sort_values("value", ascending=False)
+        return df
+
+    def get_holdings_history(
+        self,
+        account: Optional[str] = None,
+        symbol: Optional[str] = None,
+        start_date: Optional[pd.Timestamp] = None,
+        end_date: Optional[pd.Timestamp] = None,
+    ) -> pd.DataFrame:
+        """
+        Get holdings history over time.
+
+        Args:
+            account: Filter by account name
+            symbol: Filter by symbol
+            start_date: Start date (inclusive)
+            end_date: End date (inclusive)
+
+        Returns:
+            DataFrame with date, account, symbol, quantity, value, weight
+        """
+        # Try database first
+        if self.portfolio_db is not None:
+            return self.portfolio_db.get_holdings(
+                account=account,
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
             )
-        output_dir = self.config.get_output_path()
-        output_path = self._export_history_metrics_to_csv(str(output_dir))
 
-        self.logger.info("📁 Results exported to: %s", output_path)
-        return pd.DataFrame(holdings_data)
+        # Fallback to DataFrame (complex extraction)
+        if self.portfolio_history is None or self.portfolio_history.empty:
+            return pd.DataFrame()
 
-    def export_to_csv(self, output_dir: Optional[str] = None) -> str:
-        """Export results to CSV files."""
-        output_path = self._export_history_metrics_to_csv(output_dir)
-        self.logger.info("📁 Results exported to: %s", output_path)
-        return str(output_path)
+        # This is complex for wide format - recommend using database
+        self.logger.warning(
+            "Holdings history from wide DataFrame is limited. "
+            "Consider using portfolio_db.get_holdings() for full functionality."
+        )
+        return pd.DataFrame()
 
-    def _export_history_metrics_to_csv(
-        self, output_dir: Optional[str] = None
-    ) -> str:
-        """Export metrics and history to csv file"""
+    def get_allocation_by_attribute(
+        self,
+        attribute: str,
+        date: Optional[pd.Timestamp] = None,
+    ) -> pd.DataFrame:
+        """
+        Get portfolio allocation by attribute (geography, sector, etc.).
 
-        if self.config is None:
-            raise ValueError(
-                "ConfigManager is required for exporting results."
+        Args:
+            attribute: Attribute name ('geography', 'sector', 'style', etc.)
+            date: Specific date (default: latest)
+
+        Returns:
+            DataFrame with category, total_weight, total_value
+        """
+        if self.portfolio_db is None:
+            self.logger.warning(
+                "Allocation by attribute requires database. "
+                "Ensure portfolio_db is set."
+            )
+            return pd.DataFrame()
+
+        return self.portfolio_db.get_allocation_by_attribute(
+            attribute=attribute,
+            date=date,
+        )
+
+    def get_allocation_time_series(
+        self,
+        attribute: str,
+        start_date: Optional[pd.Timestamp] = None,
+        end_date: Optional[pd.Timestamp] = None,
+    ) -> pd.DataFrame:
+        """
+        Get portfolio allocation over time by attribute.
+
+        Args:
+            attribute: Attribute name ('geography', 'sector', etc.)
+            start_date: Start date
+            end_date: End date
+
+        Returns:
+            DataFrame with date, category, total_weight, total_value
+        """
+        if self.portfolio_db is None:
+            self.logger.warning(
+                "Allocation time series requires database. "
+                "Ensure portfolio_db is set."
+            )
+            return pd.DataFrame()
+
+        return self.portfolio_db.get_allocation_time_series(
+            attribute=attribute,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+    def get_performance_by_attribute(
+        self,
+        attribute: str,
+        start_date: Optional[pd.Timestamp] = None,
+        end_date: Optional[pd.Timestamp] = None,
+    ) -> pd.DataFrame:
+        """
+        Get performance metrics grouped by attribute.
+
+        Args:
+            attribute: Attribute name ('geography', 'sector', etc.)
+            start_date: Start date for analysis
+            end_date: End date for analysis
+
+        Returns:
+            DataFrame with category, avg_weight, avg_daily_return, volatility
+        """
+        if self.portfolio_db is None:
+            self.logger.warning(
+                "Performance by attribute requires database. "
+                "Ensure portfolio_db is set."
+            )
+            return pd.DataFrame()
+
+        return self.portfolio_db.get_performance_by_attribute(
+            attribute=attribute,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+    def get_symbol_data(
+        self,
+        symbol: Optional[str] = None,
+        start_date: Optional[pd.Timestamp] = None,
+        end_date: Optional[pd.Timestamp] = None,
+    ) -> pd.DataFrame:
+        """
+        Get symbol-level data over time.
+
+        Args:
+            symbol: Filter by symbol
+            start_date: Start date
+            end_date: End date
+
+        Returns:
+            DataFrame with date, symbol, price, total_quantity, total_value, weight, returns
+        """
+        if self.portfolio_db is not None:
+            return self.portfolio_db.get_symbol_data(
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
             )
 
+        # Fallback to DataFrame (limited)
+        if self.portfolio_history is None or self.portfolio_history.empty:
+            return pd.DataFrame()
+
+        self.logger.warning(
+            "Symbol data from wide DataFrame is limited. "
+            "Consider using portfolio_db.get_symbol_data() for full functionality."
+        )
+        return pd.DataFrame()
+
+    def _extract_accounts_from_columns(self, columns) -> list:
+        """Extract account names from column names."""
+        accounts = set()
+        for col in columns:
+            if "_total_value" in col:
+                account = col.replace("_total_value", "")
+                # Exclude symbol-level columns
+                if account not in ["total"]:
+                    accounts.add(account)
+        return sorted(list(accounts))
+
+    def export_to_csv(
+        self,
+        output_dir: Optional[str] = None,
+        prefix: str = "boglebench",
+    ) -> Path:
+        """
+        Export results to CSV files.
+
+        Args:
+            output_dir: Directory to export files to. If None, uses config.
+            prefix: Prefix for output files
+
+        Returns:
+            Path: Directory containing exported files
+        """
         if output_dir is None:
-            output_dir = str(self.config.get_output_path())
+            if self.config:
+                output_dir = str(self.config.get_output_path())
+            else:
+                output_dir = "."
 
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
+        timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+
         # Export portfolio history
-        history_file = output_path / "portfolio_history.csv"
+        if self.portfolio_db is not None:
+            # Export from database (normalized format)
+            self._export_from_database(output_path, prefix, timestamp)
+        elif self.portfolio_history is not None:
+            # Export legacy DataFrame
+            file_path = (
+                output_path / f"{prefix}_portfolio_history_{timestamp}.csv"
+            )
+            self.portfolio_history.to_csv(file_path, index=False)
+            self.logger.info("Exported portfolio history to: %s", file_path)
 
-        if self.portfolio_history is not None:
-            self.portfolio_history.to_csv(history_file, index=False)
-        else:
-            self.logger.error("No portfolio history to export.")
-
-        # Export performance metrics
-        metrics_data = []
+        # Export metrics
         if self.portfolio_metrics:
-            metrics_data.append(
-                {
-                    **self.portfolio_metrics,
-                    "type": "Portfolio",
-                }
+            metrics_data = []
+            for method, metrics in self.portfolio_metrics.items():
+                for metric, value in metrics.items():
+                    metrics_data.append(
+                        {
+                            "method": method,
+                            "metric": metric,
+                            "value": value,
+                        }
+                    )
+            metrics_df = pd.DataFrame(metrics_data)
+            file_path = output_path / f"{prefix}_metrics_{timestamp}.csv"
+            metrics_df.to_csv(file_path, index=False)
+            self.logger.info("Exported metrics to: %s", file_path)
+
+        # Export attributions
+        if (
+            self.holding_attribution is not None
+            and not self.holding_attribution.empty
+        ):
+            file_path = (
+                output_path / f"{prefix}_holding_attribution_{timestamp}.csv"
             )
-        if self.benchmark_metrics:
-            metrics_data.append(
-                {**self.benchmark_metrics, "type": "Benchmark"}
+            self.holding_attribution.to_csv(file_path)
+            self.logger.info("Exported holding attribution to: %s", file_path)
+
+        if (
+            self.account_attribution is not None
+            and not self.account_attribution.empty
+        ):
+            file_path = (
+                output_path / f"{prefix}_account_attribution_{timestamp}.csv"
             )
+            self.account_attribution.to_csv(file_path)
+            self.logger.info("Exported account attribution to: %s", file_path)
 
-        if metrics_data:
-            metrics_file = output_path / "performance_metrics.csv"
-            pd.DataFrame(metrics_data).to_csv(metrics_file, index=False)
+        self.logger.info("📁 Results exported to: %s", output_path)
+        return output_path
 
-        # Export relative metrics
-        relative_data = []
-        if self.relative_metrics:
-            relative_data.append({**self.relative_metrics, "type": "Relative"})
+    def _export_from_database(
+        self, output_path: Path, prefix: str, timestamp: str
+    ) -> None:
+        """Export data from normalized database."""
+        if self.portfolio_db is None:
+            return
 
-        if relative_data:
-            relative_file = output_path / "relative_metrics.csv"
-            pd.DataFrame(relative_data).to_csv(relative_file, index=False)
+        # Export portfolio summary
+        portfolio_summary = self.portfolio_db.get_portfolio_summary()
+        if not portfolio_summary.empty:
+            file_path = (
+                output_path / f"{prefix}_portfolio_summary_{timestamp}.csv"
+            )
+            portfolio_summary.to_csv(file_path, index=False)
+            self.logger.info("Exported portfolio summary to: %s", file_path)
 
-        return str(output_path)
+        # Export account data
+        account_data = self.portfolio_db.get_account_data()
+        if not account_data.empty:
+            file_path = output_path / f"{prefix}_account_data_{timestamp}.csv"
+            account_data.to_csv(file_path, index=False)
+            self.logger.info("Exported account data to: %s", file_path)
 
-    def _get_formatters(self) -> Mapping[str | int, Callable]:
-        """Returns a mapping of formatters for pandas to_string."""
-        return {
-            "Avg. Weight": "{:,.1%}".format,
-            "Return (TWR)": "{:,.2%}".format,
-            "Contribution to Portfolio Return": "{:,.2%}".format,
-            "Excess Return vs. Benchmark": "{:,.2%}".format,
-            "Contribution to Excess Return": "{:,.2%}".format,
-        }
+        # Export holdings
+        holdings = self.portfolio_db.get_holdings()
+        if not holdings.empty:
+            file_path = output_path / f"{prefix}_holdings_{timestamp}.csv"
+            holdings.to_csv(file_path, index=False)
+            self.logger.info("Exported holdings to: %s", file_path)
+
+        # Export symbol data
+        symbol_data = self.portfolio_db.get_symbol_data()
+        if not symbol_data.empty:
+            file_path = output_path / f"{prefix}_symbol_data_{timestamp}.csv"
+            symbol_data.to_csv(file_path, index=False)
+            self.logger.info("Exported symbol data to: %s", file_path)
+
+        # Export symbol attributes (if any)
+        symbol_attributes = self.portfolio_db.get_symbol_attributes()
+        if not symbol_attributes.empty:
+            file_path = (
+                output_path / f"{prefix}_symbol_attributes_{timestamp}.csv"
+            )
+            symbol_attributes.to_csv(file_path, index=False)
+            self.logger.info("Exported symbol attributes to: %s", file_path)
+
+    def print_database_stats(self) -> None:
+        """Print database statistics (if using database)."""
+        if self.portfolio_db is not None:
+            self.portfolio_db.print_stats()
+        else:
+            self.logger.warning(
+                "No database available. Using legacy DataFrame."
+            )
