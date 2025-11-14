@@ -29,6 +29,15 @@ class CompositeBenchmarkBuilder:
         start_date: pd.Timestamp,
         end_date: pd.Timestamp,
     ):
+        """
+        Initialize the CompositeBenchmarkBuilder.
+
+        Args:
+            config: ConfigManager with benchmark configuration
+            market_data: Dictionary mapping symbols to their market data DataFrames
+            start_date: Start date for benchmark history
+            end_date: End date for benchmark history
+        """
         self.config = config
         self.market_data = market_data
         self.start_date = start_date

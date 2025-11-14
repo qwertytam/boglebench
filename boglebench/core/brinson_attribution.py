@@ -33,6 +33,16 @@ class BrinsonAttributionCalculator:
         benchmark_components: Optional[List[Dict]] = None,
         portfolio_db: Optional[PortfolioDatabase] = None,  # NEW
     ):
+        """
+        Initialize the BrinsonAttributionCalculator.
+
+        Args:
+            portfolio_history: Legacy DataFrame with portfolio history (optional)
+            benchmark_history: DataFrame with benchmark performance data
+            transactions: DataFrame containing transaction data (optional)
+            benchmark_components: List of benchmark components (optional)
+            portfolio_db: PortfolioDatabase for normalized data access (preferred)
+        """
         self.portfolio_history = portfolio_history
         self.benchmark_history = benchmark_history
         self.transactions = transactions

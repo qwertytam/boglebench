@@ -23,6 +23,13 @@ class AnalysisPeriod:
     """Handles the logic for determining the analysis start and end dates."""
 
     def __init__(self, config, transactions_df=None):
+        """
+        Initialize the AnalysisPeriod.
+
+        Args:
+            config: ConfigManager with analysis date configuration
+            transactions_df: Optional DataFrame containing transaction data
+        """
         self.config = config
         self.transactions_df = transactions_df
         self.start_date = self._determine_start_date()

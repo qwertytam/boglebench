@@ -31,6 +31,15 @@ class AttributionCalculator:
         attrib_group_cols: Optional[List[str]] = None,
         portfolio_db: Optional[PortfolioDatabase] = None,  # NEW
     ):
+        """
+        Initialize the AttributionCalculator.
+
+        Args:
+            portfolio_history: Legacy DataFrame with portfolio history (optional)
+            transactions: DataFrame containing transaction data (optional)
+            attrib_group_cols: List of column names for grouping attributes (optional)
+            portfolio_db: PortfolioDatabase for normalized data access (preferred)
+        """
         self.portfolio_history = portfolio_history
         self.transactions = transactions
         self.attrib_group_cols = attrib_group_cols or []

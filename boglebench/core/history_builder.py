@@ -39,6 +39,17 @@ class PortfolioHistoryBuilder:
         end_date: pd.Timestamp,
         db_path: Optional[str] = None,
     ):
+        """
+        Initialize the PortfolioHistoryBuilder.
+
+        Args:
+            config: ConfigManager with portfolio settings
+            transactions: DataFrame containing transaction data
+            market_data: Dictionary mapping symbols to their market data
+            start_date: Start date for portfolio history
+            end_date: End date for portfolio history
+            db_path: Optional custom database path (defaults to config path)
+        """
         self.config = config
         self.transactions = transactions
         self.market_data = market_data
