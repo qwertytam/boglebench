@@ -7,8 +7,10 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
+from .portfolio_db_mixins_protocol import DatabaseProtocol
 
-class PortfolioInsertMixin:
+
+class PortfolioInsertMixin(DatabaseProtocol):
     """Mixin class providing insert methods for portfolio data."""
 
     def insert_portfolio_summary(
