@@ -337,12 +337,12 @@ class BogleBenchLogger:
 
 
 # Convenience functions for easy import
-_logger_instance = None
+_logger_instance = None  # pylint: disable=invalid-name
 
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:
     """Get a logger instance for the calling module."""
-    global _logger_instance
+    global _logger_instance  # pylint: disable=global-statement
     if _logger_instance is None:
         _logger_instance = BogleBenchLogger()
 
@@ -369,7 +369,7 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
 
 def setup_logging(config_path: Optional[str] = None):
     """Initialize logging system."""
-    global _logger_instance
+    global _logger_instance  # pylint: disable=global-statement
     if _logger_instance is None:
         _logger_instance = BogleBenchLogger()
     _logger_instance.setup_logging(config_path)
