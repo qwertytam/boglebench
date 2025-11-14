@@ -39,7 +39,7 @@ class PortfolioDatabase:
         """
         if db_path is None:
             if config is not None:
-                data_dir = config.get_data_directory()
+                data_dir = config.get_data_path()
                 db_path = Path(data_dir) / "portfolio_history.db"
             else:
                 db_path = ":memory:"
