@@ -7,8 +7,10 @@ from typing import Optional
 
 import pandas as pd
 
+from .portfolio_db_mixins_protocol import DatabaseProtocol
 
-class PortfolioAllocationMixin:
+
+class PortfolioAllocationMixin(DatabaseProtocol):
     """Mixin class providing allocation and performance analysis methods."""
 
     def get_allocation_by_attribute(

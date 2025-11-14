@@ -7,8 +7,10 @@ from typing import List, Optional, Tuple
 
 import pandas as pd
 
+from .portfolio_db_mixins_protocol import DatabaseProtocol
 
-class PortfolioQueryMixin:
+
+class PortfolioQueryMixin(DatabaseProtocol):
     """Mixin class providing query methods for portfolio data."""
 
     def get_portfolio_summary(

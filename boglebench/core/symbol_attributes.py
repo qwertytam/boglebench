@@ -8,11 +8,12 @@ from typing import Optional
 import pandas as pd
 
 from ..utils.logging_config import get_logger
+from .portfolio_db_mixins_protocol import DatabaseProtocol
 
 logger = get_logger(__name__)
 
 
-class SymbolAttributesMixin:
+class SymbolAttributesMixin(DatabaseProtocol):
     """Mixin class providing methods for managing temporal symbol attributes."""
 
     def insert_symbol_attributes(
