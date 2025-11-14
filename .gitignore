@@ -33,6 +33,7 @@ market_data/
 transactions/
 output/
 *.parquet
+*.db
 
 # Keep test, sample and template CSVs
 !*_pytest.csv
