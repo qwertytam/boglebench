@@ -1,4 +1,10 @@
-"""Results container and reporting for portfolio performance analysis."""
+"""
+Performance results container and reporting.
+
+This module provides a container class for portfolio performance analysis results
+and methods for generating summary reports, accessing detailed metrics, and
+exporting data for further analysis or visualization.
+"""
 
 from pathlib import Path
 from typing import Dict, Optional

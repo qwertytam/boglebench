@@ -1,6 +1,9 @@
 """
-Symbol attributes management for PortfolioDatabase.
-Handles temporal tracking of symbol attributes (asset class, geography, etc.).
+Temporal symbol attributes management.
+
+This module provides methods for managing time-based symbol attributes in the
+portfolio database. Attributes like asset class, geography, sector, etc. can
+change over time, and this module tracks those changes with effective dates.
 """
 
 from typing import Optional, cast

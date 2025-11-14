@@ -1,5 +1,10 @@
 """
-Provides functionality to validate user-provided dividends against market data.
+Dividend data validation against market sources.
+
+This module provides detailed validation of user-provided dividends against
+official dividend data from Alpha Vantage. Compares dividend amounts, per-share
+values, and dates to identify discrepancies and ensure accurate portfolio
+performance calculations.
 """
 
 from typing import Dict, List, Optional, Tuple

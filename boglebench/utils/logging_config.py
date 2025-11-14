@@ -1,8 +1,9 @@
 """
 Centralized logging configuration for BogleBench.
 
-Provides structured logging with YAML configuration and multiple handlers
-for console, file, and debug output.
+This module provides structured logging with YAML configuration support, multiple
+handlers (console, file, rotating file), and consistent formatting across the
+application. Handles log rotation, cleanup, and fallback configurations.
 """
 
 import glob

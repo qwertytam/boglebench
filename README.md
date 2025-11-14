@@ -163,7 +163,7 @@ Contributions welcome! Please feel free to submit a Pull Request.
 
 ## Notes on Calculations
 
-This is intended for the anlaysis of personal portfolios, not for professional use.
+This is intended for the analysis of personal portfolios, not for professional use.
 As such there are a few areas where the calculation methodologies differ from what
 may be found in the realm of professional fund management.
 

@@ -1,6 +1,9 @@
 """
-Calculates performance attribution based on portfolio history.
-Now supports both database and DataFrame sources.
+Performance attribution analysis for portfolio holdings.
+
+This module calculates how different holdings, accounts, or attribute groups
+contributed to overall portfolio performance. Supports both database and
+DataFrame data sources for backward compatibility.
 """
 
 from typing import List, Optional

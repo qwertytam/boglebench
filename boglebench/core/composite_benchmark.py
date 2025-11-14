@@ -1,5 +1,10 @@
 """
-Builds a daily performance history for a composite benchmark.
+Composite benchmark construction and performance tracking.
+
+This module builds a daily performance history for a composite benchmark from
+multiple component securities (e.g., ETFs). Handles rebalancing at specified
+frequencies and tracks the benchmark's performance for comparison with the
+portfolio.
 """
 
 import pandas as pd

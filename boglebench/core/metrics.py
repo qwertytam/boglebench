@@ -1,5 +1,10 @@
 """
-Module for calculating portfolio performance metrics.
+Portfolio performance metrics calculation.
+
+This module calculates comprehensive performance metrics including Modified Dietz
+returns, Time-Weighted Returns (TWR), Internal Rate of Return (IRR), Sharpe ratio,
+volatility, maximum drawdown, and relative metrics versus benchmarks. Implements
+industry-standard methodologies for portfolio performance measurement.
 """
 
 from typing import Dict, Optional

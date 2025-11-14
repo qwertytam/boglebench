@@ -1,5 +1,9 @@
 """
-Manages the start and end dates for the analysis period.
+Analysis period date management.
+
+This module determines the start and end dates for portfolio analysis based on
+configuration settings, transaction dates, and market trading schedules. Ensures
+analysis periods align with market trading days.
 """
 
 from datetime import datetime, timedelta

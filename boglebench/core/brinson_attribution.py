@@ -1,6 +1,10 @@
 """
-Brinson-Fachler attribution analysis.
-Now supports both database and DataFrame sources.
+Brinson-Fachler attribution analysis implementation.
+
+This module implements the Brinson-Fachler attribution methodology to decompose
+portfolio returns into allocation and selection effects. Helps identify whether
+outperformance came from sector allocation decisions or individual security
+selection. Supports both database and DataFrame data sources.
 """
 
 from typing import Dict, List, Optional, Tuple

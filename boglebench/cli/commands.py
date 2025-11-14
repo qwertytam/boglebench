@@ -1,5 +1,9 @@
 """
-Command line interface for BogleBench portfolio analyzer.
+Command-line interface for BogleBench.
+
+This module implements CLI commands for portfolio analysis including workspace
+initialization, transaction validation, portfolio analysis, and holdings display.
+Uses Click framework for command-line parsing and user interaction.
 """
 
 import shutil

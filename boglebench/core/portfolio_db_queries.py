@@ -1,6 +1,9 @@
 """
-Query methods for PortfolioDatabase.
-Handles read operations for portfolio, account, holdings, and symbol data.
+Database query operations for portfolio data.
+
+This module provides methods for querying portfolio summary, account data,
+holdings, and symbol attributes from the normalized database. Supports
+filtering by date ranges and other criteria for flexible data retrieval.
 """
 
 from typing import List, Optional, Tuple, cast

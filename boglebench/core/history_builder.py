@@ -1,6 +1,10 @@
 """
-Builds the daily portfolio history from transactions and market data.
-Now writes to normalized SQLite database.
+Portfolio history construction and database persistence.
+
+This module builds the daily portfolio history from transactions and market data,
+calculating holdings, values, cash flows, and returns for each day. Writes the
+normalized portfolio history to a SQLite database for efficient querying and
+analysis.
 """
 
 from typing import Dict, Optional, Union

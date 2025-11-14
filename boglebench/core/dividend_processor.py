@@ -1,5 +1,9 @@
 """
-Handles dividend validation and correction.
+Dividend validation and processing.
+
+This module validates user-provided dividend transactions against market data
+from Alpha Vantage and corrects any discrepancies. Handles both cash dividends
+and dividend reinvestments, ensuring accuracy in portfolio return calculations.
 """
 
 from typing import Optional
