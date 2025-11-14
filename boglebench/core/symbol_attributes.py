@@ -3,7 +3,7 @@ Symbol attributes management for PortfolioDatabase.
 Handles temporal tracking of symbol attributes (asset class, geography, etc.).
 """
 
-from typing import Optional
+from typing import Optional, cast
 
 import pandas as pd
 
@@ -13,7 +13,7 @@ from .portfolio_db_mixins_protocol import DatabaseProtocol
 logger = get_logger(__name__)
 
 
-class SymbolAttributesMixin(DatabaseProtocol):
+class SymbolAttributesMixin:
     """Mixin class providing methods for managing temporal symbol attributes."""
 
     def insert_symbol_attributes(
@@ -54,7 +54,7 @@ class SymbolAttributesMixin(DatabaseProtocol):
             source: How this data was obtained ('user', 'api', 'inferred')
             end_date: End date (usually NULL for current/latest version)
         """
-        cursor = self.get_cursor()
+        cursor = cast(DatabaseProtocol, self).get_cursor()
         cursor.execute(
             """
             INSERT INTO symbol_attributes (
@@ -110,7 +110,7 @@ class SymbolAttributesMixin(DatabaseProtocol):
             effective_date: Date from which these attributes are effective
             [other args same as insert_symbol_attributes]
         """
-        cursor = self.get_cursor()
+        cursor = cast(DatabaseProtocol, self).get_cursor()
         cursor.execute(
             """
             INSERT INTO symbol_attributes (
@@ -187,9 +187,11 @@ class SymbolAttributesMixin(DatabaseProtocol):
             query = "SELECT * FROM current_symbol_attributes"
             params = []
 
-        conn = self.get_connection()
+        conn = cast(DatabaseProtocol, self).get_connection()
         df = pd.read_sql_query(
-            query, conn, params=self.normalize_params(params)
+            query,
+            conn,
+            params=cast(DatabaseProtocol, self).normalize_params(params),
         )
         if not df.empty:
             df["effective_date"] = pd.to_datetime(
@@ -244,9 +246,11 @@ class SymbolAttributesMixin(DatabaseProtocol):
         """
         params.extend([date.isoformat(), date.isoformat()])
 
-        conn = self.get_connection()
+        conn = cast(DatabaseProtocol, self).get_connection()
         df = pd.read_sql_query(
-            query, conn, params=self.normalize_params(params)
+            query,
+            conn,
+            params=cast(DatabaseProtocol, self).normalize_params(params),
         )
         if not df.empty:
             df["effective_date"] = pd.to_datetime(
@@ -294,9 +298,11 @@ class SymbolAttributesMixin(DatabaseProtocol):
 
         query += " ORDER BY symbol, effective_date"
 
-        conn = self.get_connection()
+        conn = cast(DatabaseProtocol, self).get_connection()
         df = pd.read_sql_query(
-            query, conn, params=self.normalize_params(params)
+            query,
+            conn,
+            params=cast(DatabaseProtocol, self).normalize_params(params),
         )
         if not df.empty:
             df["effective_date"] = pd.to_datetime(
@@ -365,7 +371,7 @@ class SymbolAttributesMixin(DatabaseProtocol):
         ):
             attributes_df["source"] = "user"
 
-        with self.transaction():
+        with cast(DatabaseProtocol, self).transaction():
             for _, row in attributes_df.iterrows():
                 self.upsert_symbol_attributes(
                     symbol=row["symbol"],

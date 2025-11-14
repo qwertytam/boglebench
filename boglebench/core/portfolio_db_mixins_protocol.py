@@ -21,6 +21,8 @@ class DatabaseProtocol(Protocol):
     creating circular dependencies or runtime overhead.
     """
 
+    # pylint: disable=unnecessary-ellipsis
+
     def get_cursor(self) -> sqlite3.Cursor:
         """
         Get a database cursor, ensuring connection is established.
@@ -66,4 +68,5 @@ class DatabaseProtocol(Protocol):
         Yields:
             None
         """
+        yield
         ...

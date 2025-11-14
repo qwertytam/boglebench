@@ -3,14 +3,14 @@ Query methods for PortfolioDatabase.
 Handles read operations for portfolio, account, holdings, and symbol data.
 """
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, cast
 
 import pandas as pd
 
 from .portfolio_db_mixins_protocol import DatabaseProtocol
 
 
-class PortfolioQueryMixin(DatabaseProtocol):
+class PortfolioQueryMixin:
     """Mixin class providing query methods for portfolio data."""
 
     def get_portfolio_summary(
@@ -35,9 +35,11 @@ class PortfolioQueryMixin(DatabaseProtocol):
 
         query += " ORDER BY date"
 
-        conn = self.get_connection()
+        conn = cast(DatabaseProtocol, self).get_connection()
         df = pd.read_sql_query(
-            query, conn, params=self.normalize_params(params)
+            query,
+            conn,
+            params=cast(DatabaseProtocol, self).normalize_params(params),
         )
         if not df.empty:
             df["date"] = pd.to_datetime(df["date"], utc=True)
@@ -69,9 +71,11 @@ class PortfolioQueryMixin(DatabaseProtocol):
 
         query += " ORDER BY date, account"
 
-        conn = self.get_connection()
+        conn = cast(DatabaseProtocol, self).get_connection()
         df = pd.read_sql_query(
-            query, conn, params=self.normalize_params(params)
+            query,
+            conn,
+            params=cast(DatabaseProtocol, self).normalize_params(params),
         )
         if not df.empty:
             df["date"] = pd.to_datetime(df["date"], utc=True)
@@ -117,9 +121,11 @@ class PortfolioQueryMixin(DatabaseProtocol):
 
         query += " ORDER BY date, account, symbol"
 
-        conn = self.get_connection()
+        conn = cast(DatabaseProtocol, self).get_connection()
         df = pd.read_sql_query(
-            query, conn, params=self.normalize_params(params)
+            query,
+            conn,
+            params=cast(DatabaseProtocol, self).normalize_params(params),
         )
         if not df.empty:
             df["date"] = pd.to_datetime(df["date"], utc=True)
@@ -151,9 +157,11 @@ class PortfolioQueryMixin(DatabaseProtocol):
 
         query += " ORDER BY date, symbol"
 
-        conn = self.get_connection()
+        conn = cast(DatabaseProtocol, self).get_connection()
         df = pd.read_sql_query(
-            query, conn, params=self.normalize_params(params)
+            query,
+            conn,
+            params=cast(DatabaseProtocol, self).normalize_params(params),
         )
         if not df.empty:
             df["date"] = pd.to_datetime(df["date"], utc=True)
@@ -181,9 +189,11 @@ class PortfolioQueryMixin(DatabaseProtocol):
 
         query += " ORDER BY account, symbol"
 
-        conn = self.get_connection()
+        conn = cast(DatabaseProtocol, self).get_connection()
         df = pd.read_sql_query(
-            query, conn, params=self.normalize_params(params)
+            query,
+            conn,
+            params=cast(DatabaseProtocol, self).normalize_params(params),
         )
         if not df.empty:
             df["date"] = pd.to_datetime(df["date"], utc=True)
@@ -191,7 +201,7 @@ class PortfolioQueryMixin(DatabaseProtocol):
 
     def get_latest_portfolio(self) -> pd.Series:
         """Get the most recent portfolio summary as a Series."""
-        conn = self.get_connection()
+        conn = cast(DatabaseProtocol, self).get_connection()
         df = pd.read_sql_query("SELECT * FROM latest_portfolio", conn)
         if df.empty:
             return pd.Series(dtype=float)
@@ -203,7 +213,7 @@ class PortfolioQueryMixin(DatabaseProtocol):
         self,
     ) -> Tuple[Optional[pd.Timestamp], Optional[pd.Timestamp]]:
         """Get the min and max dates in the portfolio_summary table."""
-        cursor = self.get_cursor()
+        cursor = cast(DatabaseProtocol, self).get_cursor()
         cursor.execute("SELECT MIN(date), MAX(date) FROM portfolio_summary")
         result = cursor.fetchone()
 
@@ -215,7 +225,7 @@ class PortfolioQueryMixin(DatabaseProtocol):
 
     def get_accounts(self) -> List[str]:
         """Get list of all accounts in the database."""
-        cursor = self.get_cursor()
+        cursor = cast(DatabaseProtocol, self).get_cursor()
         cursor.execute(
             "SELECT DISTINCT account FROM account_data ORDER BY account"
         )
@@ -223,7 +233,7 @@ class PortfolioQueryMixin(DatabaseProtocol):
 
     def get_symbols(self) -> List[str]:
         """Get list of all symbols in the database."""
-        cursor = self.get_cursor()
+        cursor = cast(DatabaseProtocol, self).get_cursor()
         cursor.execute(
             "SELECT DISTINCT symbol FROM symbol_data ORDER BY symbol"
         )
@@ -259,9 +269,11 @@ class PortfolioQueryMixin(DatabaseProtocol):
 
         query += " ORDER BY date, account, symbol"
 
-        conn = self.get_connection()
+        conn = cast(DatabaseProtocol, self).get_connection()
         df = pd.read_sql_query(
-            query, conn, params=self.normalize_params(params)
+            query,
+            conn,
+            params=cast(DatabaseProtocol, self).normalize_params(params),
         )
         if not df.empty:
             df["date"] = pd.to_datetime(df["date"], utc=True)

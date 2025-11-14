@@ -4,7 +4,7 @@ Single source of truth - no backward compatibility with wide DataFrames.
 """
 
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Optional, Union
 
 import pandas as pd
 

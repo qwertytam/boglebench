@@ -3,14 +3,14 @@ Insert methods for PortfolioDatabase.
 Handles data insertion for portfolio, accounts, holdings, and symbols.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, cast
 
 import pandas as pd
 
 from .portfolio_db_mixins_protocol import DatabaseProtocol
 
 
-class PortfolioInsertMixin(DatabaseProtocol):
+class PortfolioInsertMixin:
     """Mixin class providing insert methods for portfolio data."""
 
     def insert_portfolio_summary(
@@ -25,7 +25,7 @@ class PortfolioInsertMixin(DatabaseProtocol):
         market_value_change: Optional[float] = None,
     ):
         """Insert portfolio summary for a date."""
-        cursor = self.get_cursor()
+        cursor = cast(DatabaseProtocol, self).get_cursor()
         cursor.execute(
             """
             INSERT INTO portfolio_summary (
@@ -57,7 +57,7 @@ class PortfolioInsertMixin(DatabaseProtocol):
         twr_return: Optional[float] = None,
     ):
         """Insert account data for a date."""
-        cursor = self.get_cursor()
+        cursor = cast(DatabaseProtocol, self).get_cursor()
         cursor.execute(
             """
             INSERT INTO account_data (
@@ -86,7 +86,7 @@ class PortfolioInsertMixin(DatabaseProtocol):
         weight: float = 0,
     ):
         """Insert holding data for a date."""
-        cursor = self.get_cursor()
+        cursor = cast(DatabaseProtocol, self).get_cursor()
         cursor.execute(
             """
             INSERT INTO holdings (
@@ -110,7 +110,7 @@ class PortfolioInsertMixin(DatabaseProtocol):
         twr_return: Optional[float] = None,
     ):
         """Insert symbol data for a date."""
-        cursor = self.get_cursor()
+        cursor = cast(DatabaseProtocol, self).get_cursor()
         cursor.execute(
             """
             INSERT INTO symbol_data (
@@ -173,7 +173,7 @@ class PortfolioInsertMixin(DatabaseProtocol):
                 - holdings: List[Dict]
                 - symbol_data: List[Dict]
         """
-        with self.transaction():
+        with cast(DatabaseProtocol, self).transaction():
             for day in days_data:
                 self.insert_day_batch(
                     portfolio_summary=day["portfolio_summary"],
