@@ -207,4 +207,5 @@ class PortfolioDatabase(
 
     def __repr__(self):
         """String representation."""
-        return f"PortfolioDatabase(db_path='{self.db_path}')"
+        db_path = getattr(self, "db_path", "<not initialized>")
+        return f"PortfolioDatabase(db_path='{db_path}')"
