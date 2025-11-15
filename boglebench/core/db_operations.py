@@ -11,6 +11,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional, Union
 
+import pandas as pd
+
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger
 
@@ -47,6 +49,19 @@ class DatabaseOperations:
 
     def connect(self):
         """Establish database connection with optimizations."""
+
+        # Register adapter - use isoformat()
+        sqlite3.register_adapter(pd.Timestamp, lambda ts: ts.isoformat())
+
+        # Register converter - handle ISO format with 'T'
+        def convert_timestamp(val):
+            """Convert timestamp string to pandas Timestamp."""
+            if isinstance(val, bytes):
+                val = val.decode("utf-8")
+            return pd.to_datetime(val, utc=True)
+
+        sqlite3.register_converter("TIMESTAMP", convert_timestamp)
+
         self.conn = sqlite3.connect(
             self.db_path,
             detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
