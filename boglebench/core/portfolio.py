@@ -282,7 +282,9 @@ class BogleBenchAnalyzer:
         """
         # Check if database exists and has data
         if self.portfolio_db is None:
-            self.logger.debug("Portfolio database not initialized, building now...")
+            self.logger.debug(
+                "Portfolio database not initialized, building now..."
+            )
             self.build_portfolio_history()
 
         if self.portfolio_db is None:

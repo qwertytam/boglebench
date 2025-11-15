@@ -118,6 +118,7 @@ class CompositeBenchmarkBuilder:
         benchmark_df["split_coefficient"] = 0.0  # No splits in composite
 
         benchmark_df = benchmark_df.sort_values("date").reset_index(drop=True)
+        benchmark_df.set_index("date", inplace=True)
 
         benchmark_df["benchmark_return"] = (
             benchmark_df["adj_close"].pct_change().fillna(0.0)
