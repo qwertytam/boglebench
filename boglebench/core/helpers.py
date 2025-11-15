@@ -1,4 +1,10 @@
-"""Helper functions for portfolio analysis."""
+"""
+Utility functions for portfolio analysis.
+
+This module provides helper functions for identifying transaction types,
+calculating share balances, and other common operations used throughout
+the portfolio analysis workflow.
+"""
 
 from typing import Optional
 

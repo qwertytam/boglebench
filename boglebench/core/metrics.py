@@ -1,5 +1,10 @@
 """
-Module for calculating portfolio performance metrics.
+Portfolio performance metrics calculation.
+
+This module calculates comprehensive performance metrics including Modified Dietz
+returns, Time-Weighted Returns (TWR), Internal Rate of Return (IRR), Sharpe ratio,
+volatility, maximum drawdown, and relative metrics versus benchmarks. Implements
+industry-standard methodologies for portfolio performance measurement.
 """
 
 from typing import Dict, Optional
@@ -183,25 +188,37 @@ def calculate_account_twr_daily_returns(
 
 
 def calculate_irr(
-    portfolio_history: pd.DataFrame, config: ConfigManager
+    net_cash_flows: pd.Series,
+    total_values: pd.Series,
+    config: ConfigManager,
 ) -> float:
     """
     Calculate the Internal Rate of Return (IRR) for the entire portfolio period.
+
+    Args:
+        net_cash_flows: Series of daily net cash flows
+        total_values: Series of daily total portfolio values
+        config: Configuration manager for settings
+
+    Returns:
+        Annualized IRR as a float
     """
-    if portfolio_history is None or portfolio_history.empty:
+    if net_cash_flows is None or net_cash_flows.empty:
+        return Defaults.ZERO_RETURN
+    if total_values is None or total_values.empty:
         return Defaults.ZERO_RETURN
 
     # Need to invert cash flows for the IRR calculation.
-    cash_flows = np.array(portfolio_history["net_cash_flow"].values) * -1
+    cash_flows = np.array(net_cash_flows.values) * -1
 
     # The first cash flow is the initial investment at time 0.
     # We replace the first day's cash flow with the starting value.
-    # cash_flows[0] = -portfolio_history["total_value"].iloc[0]
+    # cash_flows[0] = -total_values.iloc[0]
 
     # The last entry in the series must be include the final market value
     # of the portfolio >> so the net last cash flow is selling the entire
     # portfolio less any other cash flow actions on that day.
-    final_value = portfolio_history["total_value"].iloc[-1]
+    final_value = total_values.iloc[-1]
 
     all_flows = cash_flows.copy()
     all_flows[-1] += final_value  # Add final value to last cash flow

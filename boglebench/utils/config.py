@@ -1,5 +1,10 @@
 """
-Configuration management for BogleBench portfolio analyzer.
+Configuration management for BogleBench.
+
+This module manages configuration loading, merging, and access for the portfolio
+analyzer. Handles configuration file resolution from multiple locations
+(workspace, environment variables, default paths) and provides methods for
+accessing configuration values with defaults.
 """
 
 import os
@@ -225,3 +230,13 @@ class ConfigManager:
             return False
 
         return True
+
+    def get_database_path(self) -> Optional[Path]:
+        """Get database path from config."""
+        db_path = self.get("database.db_path")
+        if not isinstance(db_path, str):
+            db_path = "portfolio_history.db"
+        if db_path:
+            return Path(db_path).expanduser()
+        # Default: put in data directory
+        return self.get_data_path() / "portfolio_history.db"

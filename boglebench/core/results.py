@@ -1,4 +1,10 @@
-"""Results container and reporting for portfolio performance analysis."""
+"""
+Performance results container and reporting.
+
+This module provides a container class for portfolio performance analysis results
+and methods for generating summary reports, accessing detailed metrics, and
+exporting data for further analysis or visualization.
+"""
 
 from pathlib import Path
 from typing import Dict, Optional
@@ -31,6 +37,24 @@ class PerformanceResults:
         config: Optional[ConfigManager] = None,
         portfolio_db: Optional[PortfolioDatabase] = None,  # NEW
     ):
+        """
+        Initialize the PerformanceResults container.
+
+        Args:
+            transactions: DataFrame containing transaction data
+            portfolio_metrics: Dictionary of portfolio performance metrics
+            benchmark_metrics: Dictionary of benchmark performance metrics
+            relative_metrics: Dictionary of relative performance metrics
+            portfolio_history: DataFrame with historical portfolio data
+            benchmark_history: DataFrame with historical benchmark data
+            holding_attribution: DataFrame with attribution by holding
+            account_attribution: DataFrame with attribution by account
+            factor_attributions: Dictionary of attribution by factors
+            brinson_summary: Dictionary of Brinson attribution summaries
+            selection_drilldown: Detailed selection attribution by groups
+            config: ConfigManager instance
+            portfolio_db: PortfolioDatabase instance
+        """
         self.transactions = transactions
         self.portfolio_metrics = portfolio_metrics
         self.benchmark_metrics = benchmark_metrics

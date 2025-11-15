@@ -1,5 +1,9 @@
 """
-Provides market data for BogleBench, handling API calls and caching.
+Market data fetching and caching.
+
+This module provides market data for securities from Alpha Vantage API with
+intelligent caching to minimize API calls. Handles adjusted close prices,
+dividends, and splits with automatic retry and error handling.
 """
 
 from pathlib import Path

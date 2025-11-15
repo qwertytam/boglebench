@@ -1,5 +1,9 @@
 """
-Handles dividend validation and correction.
+Dividend validation and processing.
+
+This module validates user-provided dividend transactions against market data
+from Alpha Vantage and corrects any discrepancies. Handles both cash dividends
+and dividend reinvestments, ensuring accuracy in portfolio return calculations.
 """
 
 from typing import Optional
@@ -26,6 +30,16 @@ class DividendProcessor:
         start_date=None,
         end_date=None,
     ):
+        """
+        Initialize the DividendProcessor.
+
+        Args:
+            config: ConfigManager with dividend validation settings
+            transactions_df: DataFrame containing transaction data
+            market_data: Dictionary mapping symbols to their market data
+            start_date: Optional start date for dividend validation
+            end_date: Optional end date for dividend validation
+        """
         self.config = config
         self.transactions_df = transactions_df.copy()
         self.market_data = market_data

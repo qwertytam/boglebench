@@ -280,15 +280,26 @@ class BogleBenchAnalyzer:
         Returns:
             PerformanceResults object containing all metrics and analysis
         """
-        if self.portfolio_history.empty:
-            self.logger.debug("Portfolio history empty, building now...")
+        # Check if database exists and has data
+        if self.portfolio_db is None:
+            self.logger.debug("Portfolio database not initialized, building now...")
             self.build_portfolio_history()
 
-        if self.portfolio_history.empty:
+        if self.portfolio_db is None:
             self.logger.error(
-                "❌ Portfolio history is empty after build. "
+                "❌ Portfolio database is None after build. "
                 + "Cannot calculate performance."
             )
+            return PerformanceResults()
+
+        # Query database for portfolio data
+        portfolio_summary = self.portfolio_db.get_portfolio_summary()
+        if portfolio_summary.empty:
+            self.logger.error(
+                "❌ Portfolio summary is empty. "
+                + "Cannot calculate performance."
+            )
+            return PerformanceResults()
 
         self.logger.info("📊 Calculating performance metrics...")
 
@@ -314,23 +325,33 @@ class BogleBenchAnalyzer:
         if annual_risk_free_rate is None:
             annual_risk_free_rate = Defaults.DEFAULT_RISK_FREE_RATE
 
+        # Extract return series from database
+        portfolio_mod_dietz_returns = portfolio_summary.set_index("date")[
+            "portfolio_mod_dietz_return"
+        ].dropna()
+        portfolio_twr_returns = portfolio_summary.set_index("date")[
+            "portfolio_twr_return"
+        ].dropna()
+
         # Calculate portfolio metrics
         portfolio_metrics = {
             "mod_dietz": calculate_metrics(
-                self.portfolio_history["portfolio_daily_return_mod_dietz"],
+                portfolio_mod_dietz_returns,
                 "Portfolio (Mod. Dietz)",
                 annual_trading_days,
                 annual_risk_free_rate,
             ),
             "twr": calculate_metrics(
-                self.portfolio_history["portfolio_daily_return_twr"],
+                portfolio_twr_returns,
                 "Portfolio (TWR)",
                 annual_trading_days,
                 annual_risk_free_rate,
             ),
             "irr": {
                 "annualized_return": calculate_irr(
-                    self.portfolio_history, self.config
+                    portfolio_summary["net_cash_flow"],
+                    portfolio_summary["total_value"],
+                    self.config,
                 )
             },
         }
@@ -350,7 +371,7 @@ class BogleBenchAnalyzer:
             relative_metrics = calculate_relative_metrics(
                 # Skip first day invested as benchmark return is calculated
                 # as period-over-period change
-                self.portfolio_history["portfolio_daily_return_twr"][1:],
+                portfolio_twr_returns[1:],
                 self.benchmark_history["benchmark_return"][1:],
                 annual_trading_days,
                 annual_risk_free_rate,
@@ -362,6 +383,7 @@ class BogleBenchAnalyzer:
             portfolio_history=self.portfolio_history,
             transactions=self.transactions,
             attrib_group_cols=self.attrib_group_cols,
+            portfolio_db=self.portfolio_db,
         )
 
         # Calculate attribution by holding and account
@@ -398,6 +420,7 @@ class BogleBenchAnalyzer:
                     portfolio_history=self.portfolio_history,
                     benchmark_history=self.benchmark_history,
                     transactions=self.transactions,
+                    portfolio_db=self.portfolio_db,
                 )
                 group_by = self.config.get(
                     "analysis.attribution_analysis.transaction_groups",

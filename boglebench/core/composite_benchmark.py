@@ -1,5 +1,10 @@
 """
-Builds a daily performance history for a composite benchmark.
+Composite benchmark construction and performance tracking.
+
+This module builds a daily performance history for a composite benchmark from
+multiple component securities (e.g., ETFs). Handles rebalancing at specified
+frequencies and tracks the benchmark's performance for comparison with the
+portfolio.
 """
 
 import pandas as pd
@@ -24,6 +29,15 @@ class CompositeBenchmarkBuilder:
         start_date: pd.Timestamp,
         end_date: pd.Timestamp,
     ):
+        """
+        Initialize the CompositeBenchmarkBuilder.
+
+        Args:
+            config: ConfigManager with benchmark configuration
+            market_data: Dictionary mapping symbols to their market data DataFrames
+            start_date: Start date for benchmark history
+            end_date: End date for benchmark history
+        """
         self.config = config
         self.market_data = market_data
         self.start_date = start_date

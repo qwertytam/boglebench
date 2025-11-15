@@ -1,5 +1,10 @@
 """
-Extracts and loads symbol attributes from transactions into database.
+Symbol attributes extraction and database loading.
+
+This module extracts symbol attributes (asset class, geography, sector, etc.)
+from transaction data and loads them into the database with temporal tracking.
+Handles attribute mapping and ensures attributes are properly associated with
+their effective dates.
 """
 
 from typing import List
