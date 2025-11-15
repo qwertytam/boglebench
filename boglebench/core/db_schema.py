@@ -221,23 +221,64 @@ SELECT
     s.adj_price,
     s.market_return,
     s.twr_return,
-    sa.asset_class,
-    sa.geography,
-    sa.region,
-    sa.sector,
-    sa.style,
-    sa.market_cap,
-    sa.fund_type
+    (
+        SELECT asset_class FROM symbol_attributes sa
+        WHERE sa.symbol = h.symbol
+          AND sa.effective_date <= h.date
+          AND (sa.end_date IS NULL OR sa.end_date >= h.date)
+        ORDER BY sa.effective_date DESC
+        LIMIT 1
+    ) as asset_class,
+    (
+        SELECT geography FROM symbol_attributes sa
+        WHERE sa.symbol = h.symbol
+          AND sa.effective_date <= h.date
+          AND (sa.end_date IS NULL OR sa.end_date >= h.date)
+        ORDER BY sa.effective_date DESC
+        LIMIT 1
+    ) as geography,
+    (
+        SELECT region FROM symbol_attributes sa
+        WHERE sa.symbol = h.symbol
+          AND sa.effective_date <= h.date
+          AND (sa.end_date IS NULL OR sa.end_date >= h.date)
+        ORDER BY sa.effective_date DESC
+        LIMIT 1
+    ) as region,
+    (
+        SELECT sector FROM symbol_attributes sa
+        WHERE sa.symbol = h.symbol
+          AND sa.effective_date <= h.date
+          AND (sa.end_date IS NULL OR sa.end_date >= h.date)
+        ORDER BY sa.effective_date DESC
+        LIMIT 1
+    ) as sector,
+    (
+        SELECT style FROM symbol_attributes sa
+        WHERE sa.symbol = h.symbol
+          AND sa.effective_date <= h.date
+          AND (sa.end_date IS NULL OR sa.end_date >= h.date)
+        ORDER BY sa.effective_date DESC
+        LIMIT 1
+    ) as style,
+    (
+        SELECT market_cap FROM symbol_attributes sa
+        WHERE sa.symbol = h.symbol
+          AND sa.effective_date <= h.date
+          AND (sa.end_date IS NULL OR sa.end_date >= h.date)
+        ORDER BY sa.effective_date DESC
+        LIMIT 1
+    ) as market_cap,
+    (
+        SELECT fund_type FROM symbol_attributes sa
+        WHERE sa.symbol = h.symbol
+          AND sa.effective_date <= h.date
+          AND (sa.end_date IS NULL OR sa.end_date >= h.date)
+        ORDER BY sa.effective_date DESC
+        LIMIT 1
+    ) as fund_type
 FROM holdings h
-LEFT JOIN symbol_data s ON h.date = s.date AND h.symbol = s.symbol
-LEFT JOIN LATERAL (
-    SELECT * FROM symbol_attributes sa_inner
-    WHERE sa_inner.symbol = h.symbol
-      AND sa_inner.effective_date <= h.date
-      AND (sa_inner.end_date IS NULL OR sa_inner.end_date >= h.date)
-    ORDER BY sa_inner.effective_date DESC
-    LIMIT 1
-) sa ON TRUE;
+LEFT JOIN symbol_data s ON h.date = s.date AND h.symbol = s.symbol;
 
 -- View: Symbol data with current attributes
 CREATE VIEW IF NOT EXISTS symbol_data_with_attributes AS
@@ -252,22 +293,63 @@ SELECT
     sd.cash_flow,
     sd.market_return,
     sd.twr_return,
-    sa.asset_class,
-    sa.geography,
-    sa.region,
-    sa.sector,
-    sa.style,
-    sa.market_cap,
-    sa.fund_type
-FROM symbol_data sd
-LEFT JOIN LATERAL (
-    SELECT * FROM symbol_attributes sa_inner
-    WHERE sa_inner.symbol = sd.symbol
-      AND sa_inner.effective_date <= sd.date
-      AND (sa_inner.end_date IS NULL OR sa_inner.end_date >= sd.date)
-    ORDER BY sa_inner.effective_date DESC
-    LIMIT 1
-) sa ON TRUE;
+    (
+        SELECT asset_class FROM symbol_attributes sa
+        WHERE sa.symbol = sd.symbol
+          AND sa.effective_date <= sd.date
+          AND (sa.end_date IS NULL OR sa.end_date >= sd.date)
+        ORDER BY sa.effective_date DESC
+        LIMIT 1
+    ) as asset_class,
+    (
+        SELECT geography FROM symbol_attributes sa
+        WHERE sa.symbol = sd.symbol
+          AND sa.effective_date <= sd.date
+          AND (sa.end_date IS NULL OR sa.end_date >= sd.date)
+        ORDER BY sa.effective_date DESC
+        LIMIT 1
+    ) as geography,
+    (
+        SELECT region FROM symbol_attributes sa
+        WHERE sa.symbol = sd.symbol
+          AND sa.effective_date <= sd.date
+          AND (sa.end_date IS NULL OR sa.end_date >= sd.date)
+        ORDER BY sa.effective_date DESC
+        LIMIT 1
+    ) as region,
+    (
+        SELECT sector FROM symbol_attributes sa
+        WHERE sa.symbol = sd.symbol
+          AND sa.effective_date <= sd.date
+          AND (sa.end_date IS NULL OR sa.end_date >= sd.date)
+        ORDER BY sa.effective_date DESC
+        LIMIT 1
+    ) as sector,
+    (
+        SELECT style FROM symbol_attributes sa
+        WHERE sa.symbol = sd.symbol
+          AND sa.effective_date <= sd.date
+          AND (sa.end_date IS NULL OR sa.end_date >= sd.date)
+        ORDER BY sa.effective_date DESC
+        LIMIT 1
+    ) as style,
+    (
+        SELECT market_cap FROM symbol_attributes sa
+        WHERE sa.symbol = sd.symbol
+          AND sa.effective_date <= sd.date
+          AND (sa.end_date IS NULL OR sa.end_date >= sd.date)
+        ORDER BY sa.effective_date DESC
+        LIMIT 1
+    ) as market_cap,
+    (
+        SELECT fund_type FROM symbol_attributes sa
+        WHERE sa.symbol = sd.symbol
+          AND sa.effective_date <= sd.date
+          AND (sa.end_date IS NULL OR sa.end_date >= sd.date)
+        ORDER BY sa.effective_date DESC
+        LIMIT 1
+    ) as fund_type
+FROM symbol_data sd;
 """
 
 ALL_TABLES = [
