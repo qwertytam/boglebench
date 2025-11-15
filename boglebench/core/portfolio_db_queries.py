@@ -30,10 +30,10 @@ class PortfolioQueryMixin:
             conditions = []
             if start_date:
                 conditions.append("date >= ?")
-                params.append(start_date)
+                params.append(start_date.isoformat())
             if end_date:
                 conditions.append("date <= ?")
-                params.append(end_date)
+                params.append(end_date.isoformat())
             query += " AND ".join(conditions)
 
         query += " ORDER BY date"
