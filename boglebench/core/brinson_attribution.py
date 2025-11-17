@@ -9,7 +9,6 @@ selection. Supports both database and DataFrame data sources.
 
 from typing import Dict, List, Optional, Tuple
 
-import numpy as np
 import pandas as pd
 
 from ..core.portfolio_db import PortfolioDatabase
@@ -22,7 +21,6 @@ class BrinsonAttributionCalculator:
     """
     Implements Brinson-Fachler attribution analysis.
 
-    Supports both normalized database and legacy DataFrame sources.
     """
 
     def __init__(
@@ -39,7 +37,7 @@ class BrinsonAttributionCalculator:
             benchmark_history: DataFrame with benchmark performance data
             transactions: DataFrame containing transaction data (optional)
             benchmark_components: List of benchmark components (optional)
-            portfolio_db: PortfolioDatabase for normalized data access (preferred)
+            portfolio_db: PortfolioDatabase for normalized data access (optional)
         """
         self.benchmark_history = benchmark_history
         self.transactions = transactions
@@ -462,63 +460,3 @@ class BrinsonAttributionCalculator:
                 )
 
         return drilldown
-
-    def _get_grouped_data(
-        self, history_df: pd.DataFrame, group_by: str, source: str
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """
-        Aggregates daily returns and weights by category (legacy DataFrame method).
-        """
-        if source == "portfolio":
-            trans_df = self.transactions
-        elif source == "benchmark":
-            trans_df = pd.DataFrame(self.benchmark_components)
-        else:
-            raise ValueError(f"Invalid source '{source}' specified.")
-
-        if trans_df is None or trans_df.empty:
-            return pd.DataFrame(), pd.DataFrame()
-
-        grouped_returns = pd.DataFrame(index=history_df.index)
-        grouped_weights = pd.DataFrame(index=history_df.index)
-
-        categories = trans_df[group_by].unique()
-
-        for category in categories:
-            symbols_in_cat = trans_df[trans_df[group_by] == category][
-                "symbol"
-            ].unique()
-
-            # Aggregate returns (weighted average of symbol returns)
-            cat_return = pd.Series(0.0, index=history_df.index)
-            cat_total_value = pd.Series(0.0, index=history_df.index)
-
-            for symbol in symbols_in_cat:
-                return_col = f"{symbol}_twr_return"
-                value_col = f"{symbol}_total_value"
-                if (
-                    return_col in history_df.columns
-                    and value_col in history_df.columns
-                ):
-                    symbol_start_value = (
-                        history_df[value_col].shift(1).fillna(0)
-                    )
-                    cat_return += symbol_start_value * history_df[return_col]
-                    cat_total_value += symbol_start_value
-
-            grouped_returns[category] = (
-                (cat_return / cat_total_value)
-                .replace([np.inf, -np.inf], 0)
-                .fillna(0)
-            )
-
-            # Aggregate weights
-            weight_cols = [
-                f"{symbol}_weight"
-                for symbol in symbols_in_cat
-                if f"{symbol}_weight" in history_df.columns
-            ]
-            if weight_cols:
-                grouped_weights[category] = history_df[weight_cols].sum(axis=1)
-
-        return grouped_returns, grouped_weights

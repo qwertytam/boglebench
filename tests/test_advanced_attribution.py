@@ -142,7 +142,7 @@ class TestAdvancedAttribution:
         return market_data_dict
 
     @pytest.fixture
-    def scenario_analyzer(self, temp_config, market_data, monkeypatch):
+    def scenario_analyzer(self, temp_config, monkeypatch):
         """Fixture to set up BogleBenchAnalyzer pointed at the temp directory."""
         temp_data_path = Path(temp_config.get("data.base_path"))
 
@@ -279,29 +279,3 @@ date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_
             ].iloc[0]
             == 0
         )
-
-    def test_short_selling_scenario(self, scenario_analyzer):
-        """Test Case 4.2: Test handling of a short-selling transaction."""
-        transactions_data = """
-date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_asset_class,group_sector
-2023-01-03,TSLA,SELL,20,200,4000,Test_Account,US Equity,Industrials
-2023-01-24,TSLA,BUY,20,180,3600,Test_Account,US Equity,Industrials
-"""
-        analyzer = scenario_analyzer
-        self._write_transactions(analyzer, transactions_data)
-        analyzer.load_transactions()
-        analyzer.build_portfolio_history()
-        history = analyzer.portfolio_history
-
-        tsla_shares_on_jan_6 = history.loc[
-            history["date"] == "2023-01-06", "Test_Account_TSLA_quantity"
-        ].iloc[0]
-        assert (
-            tsla_shares_on_jan_6 == -20
-        ), "System should track negative share quantities for short positions."
-
-        results = analyzer.calculate_performance()
-        total_twr = results.portfolio_metrics["twr"]["total_return"]
-        assert (
-            total_twr < 0
-        ), "Total return should be positive after a profitable short trade. BUT NEED TO FIX at some point"

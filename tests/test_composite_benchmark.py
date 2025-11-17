@@ -19,7 +19,7 @@ def mock_market_data():
     dates = pd.to_datetime(
         pd.date_range("2023-01-01", "2023-03-30", freq="D"), utc=True
     )
-    VTI_close = (
+    vti_close = (
         pd.concat(
             [
                 pd.Series(range(100, 130)),  # Jan: VTI rises
@@ -28,7 +28,7 @@ def mock_market_data():
             ]
         ).reset_index(drop=True),
     )
-    VXUS_close = (
+    vxus_close = (
         pd.concat(
             [
                 pd.Series(range(80, 50, -1)),  # Jan: VXUS falls
@@ -43,8 +43,8 @@ def mock_market_data():
         "VTI": pd.DataFrame(
             {
                 "date": dates,
-                "close": VTI_close[0],
-                "adj_close": VTI_close[0],
+                "close": vti_close[0],
+                "adj_close": vti_close[0],
                 "dividend": zeros,
                 "split_coefficient": zeros,
             }
@@ -52,8 +52,8 @@ def mock_market_data():
         "VXUS": pd.DataFrame(
             {
                 "date": dates,
-                "close": VXUS_close[0],
-                "adj_close": VXUS_close[0],
+                "close": vxus_close[0],
+                "adj_close": vxus_close[0],
                 "dividend": zeros,
                 "split_coefficient": zeros,
             }

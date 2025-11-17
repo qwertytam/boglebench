@@ -545,6 +545,4 @@ class PerformanceResults:
         if self.portfolio_db is not None:
             self.portfolio_db.print_stats()
         else:
-            self.logger.warning(
-                "No database available. Using legacy DataFrame."
-            )
+            self.logger.warning("No database available.")

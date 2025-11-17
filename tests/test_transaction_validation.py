@@ -39,7 +39,9 @@ def series_empty() -> pd.Series:
 # --- Tests for get_valid_transactions() ---
 
 
-def test_get_valid_transactions_all_valid(series_all_valid):
+def test_get_valid_transactions_all_valid(
+    series_all_valid,
+):  # pylint: disable=redefined-outer-name
     """
     Tests that it returns all True for a fully valid series.
     """
@@ -48,7 +50,9 @@ def test_get_valid_transactions_all_valid(series_all_valid):
     pd.testing.assert_series_equal(result, expected)
 
 
-def test_get_valid_transactions_with_invalid(series_with_invalid):
+def test_get_valid_transactions_with_invalid(
+    series_with_invalid,
+):  # pylint: disable=redefined-outer-name
     """
     Tests that it correctly creates a boolean mask for a mixed series.
     """
@@ -57,7 +61,9 @@ def test_get_valid_transactions_with_invalid(series_with_invalid):
     pd.testing.assert_series_equal(result, expected)
 
 
-def test_get_valid_transactions_all_invalid(series_all_invalid):
+def test_get_valid_transactions_all_invalid(
+    series_all_invalid,
+):  # pylint: disable=redefined-outer-name
     """
     Tests that it returns all False for a fully invalid series.
     """
@@ -66,7 +72,9 @@ def test_get_valid_transactions_all_invalid(series_all_invalid):
     pd.testing.assert_series_equal(result, expected)
 
 
-def test_get_valid_transactions_empty(series_empty):
+def test_get_valid_transactions_empty(
+    series_empty,
+):  # pylint: disable=redefined-outer-name
     """
     Tests that it returns an empty boolean Series for empty input.
     """
@@ -78,28 +86,36 @@ def test_get_valid_transactions_empty(series_empty):
 # --- Tests for is_series_valid() ---
 
 
-def test_is_series_valid_all_valid(series_all_valid):
+def test_is_series_valid_all_valid(
+    series_all_valid,
+):  # pylint: disable=redefined-outer-name
     """
     Tests that it returns True when all transaction types are valid.
     """
     assert is_series_valid(series_all_valid) is True
 
 
-def test_is_series_valid_with_invalid(series_with_invalid):
+def test_is_series_valid_with_invalid(
+    series_with_invalid,
+):  # pylint: disable=redefined-outer-name
     """
     Tests that it returns False when the series contains invalid types.
     """
     assert is_series_valid(series_with_invalid) is False
 
 
-def test_is_series_valid_all_invalid(series_all_invalid):
+def test_is_series_valid_all_invalid(
+    series_all_invalid,
+):  # pylint: disable=redefined-outer-name
     """
     Tests that it returns False when all types are invalid.
     """
     assert is_series_valid(series_all_invalid) is False
 
 
-def test_is_series_valid_empty(series_empty):
+def test_is_series_valid_empty(
+    series_empty,
+):  # pylint: disable=redefined-outer-name
     """
     Tests that it returns True for an empty series (as there are no invalid items).
     """

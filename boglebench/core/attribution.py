@@ -21,14 +21,13 @@ class AttributionCalculator:
     """
     Calculates performance attribution based on detailed portfolio history.
 
-    Supports both normalized database and legacy DataFrame sources.
     """
 
     def __init__(
         self,
         transactions: Optional[pd.DataFrame] = None,
         attrib_group_cols: Optional[List[str]] = None,
-        portfolio_db: Optional[PortfolioDatabase] = None,  # NEW
+        portfolio_db: Optional[PortfolioDatabase] = None,
     ):
         """
         Initialize the AttributionCalculator.
@@ -36,11 +35,11 @@ class AttributionCalculator:
         Args:
             transactions: DataFrame containing transaction data (optional)
             attrib_group_cols: List of column names for grouping attributes (optional)
-            portfolio_db: PortfolioDatabase for normalized data access (preferred)
+            portfolio_db: PortfolioDatabase for normalized data access (optional)
         """
         self.transactions = transactions
         self.attrib_group_cols = attrib_group_cols or []
-        self.portfolio_db = portfolio_db  # NEW
+        self.portfolio_db = portfolio_db
         self.symbol_to_groups_map = self._create_symbol_map()
 
     def _create_symbol_map(self) -> dict:
@@ -340,30 +339,3 @@ class AttributionCalculator:
 
         result_df = result_df.set_index("Category")
         return result_df.sort_values("Avg. Weight", ascending=False)
-
-    def _calculate_daily_twr(
-        self,
-        group_values: pd.DataFrame,
-        group_cash_flows: pd.DataFrame,
-    ) -> pd.DataFrame:
-        """Calculate time-weighted returns for each group (legacy DataFrame method)."""
-        group_returns = pd.DataFrame(index=group_values.index)
-
-        for group in group_values.columns:
-            values = group_values[group]
-            cash_flows = (
-                group_cash_flows[group]
-                if group in group_cash_flows.columns
-                else pd.Series(0, index=values.index)
-            )
-
-            # Calculate TWR
-            beginning_values = values.shift(1).fillna(0)
-            returns = (
-                (values - cash_flows - beginning_values) / beginning_values
-            ).fillna(0)
-            returns = returns.replace([np.inf, -np.inf], 0)
-
-            group_returns[group] = returns
-
-        return group_returns

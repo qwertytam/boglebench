@@ -78,7 +78,7 @@ class TestBogleBenchAnalyzer:
         analyzer = BogleBenchAnalyzer()
         assert analyzer.config is not None
         assert analyzer.transactions.empty is True
-        assert not analyzer.market_data is True
+        assert analyzer.market_data is not None
         assert analyzer.portfolio_db is None
         assert analyzer.benchmark_history.empty is True
 
