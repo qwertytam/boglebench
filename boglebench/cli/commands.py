@@ -70,6 +70,11 @@ def init_workspace(path: str, force: bool):
         workspace_path / "transactions" / "sample_transactions.csv", force
     )
 
+    # Create sample attributions file
+    _create_sample_attributions(
+        workspace_path / "transactions" / "sample_attributions.csv", force
+    )
+
     click.echo(f"\n✅ BogleBench workspace initialized successfully!")
     click.echo(f"\nNext steps:")
     click.echo(f"1. Edit your configuration: {config_path}")
@@ -140,6 +145,38 @@ def _create_sample_transactions(file_path: Path, force: bool):
     click.echo("   - Schwab_401k (401k retirement account)")
     click.echo("   - Fidelity_IRA (IRA retirement account)")
     click.echo("   - Personal_Brokerage (taxable brokerage account)")
+
+
+def _create_sample_attributions(file_path: Path, force: bool):
+    """Create a sample attributions CSV file from template."""
+    if file_path.exists() and not force:
+        click.echo(f"Sample attributions file already exists: {file_path}")
+        return
+
+    # Get template file path
+    templates_source = Path(__file__).parent.parent / "templates"
+    sample_template = templates_source / "sample_attributions.csv"
+
+    if sample_template.exists():
+        # Copy template to destination
+        import shutil
+
+        shutil.copy2(sample_template, file_path)
+        click.echo(f"Created sample attributions: {file_path}")
+    else:
+        # Fallback if template not found
+        click.echo(f"WARNING: Sample attributions template not found at {sample_template}")
+        click.echo("Creating minimal sample file")
+
+        minimal_sample = """symbol,effective_date,asset_class,geography,sector,fund_type
+AAPL,2023-01-01,Equity,US,Technology,Stock
+SPY,2023-01-01,Equity,US,Diversified,ETF
+"""
+        with open(file_path, "w") as f:
+            f.write(minimal_sample)
+        click.echo(f"Created minimal sample attributions: {file_path}")
+
+    click.echo("Sample includes attributes for symbols used in sample_transactions.csv")
 
 
 @click.command()

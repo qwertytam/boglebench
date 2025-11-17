@@ -81,7 +81,7 @@ cause an error.
 
 ### Example Usage
 
-See the included template in `templates/transactions_example.csv`.
+See the included template in `boglebench/templates/sample_transactions.csv`.
 
 ### 3. Symbol Attributes (Optional but Recommended)
 
@@ -107,6 +107,8 @@ analyzer.load_symbol_attributes(csv_path='path/to/symbol_attributes.csv')
 ```
 
 Attributes support temporal tracking - you can load multiple versions with different effective dates to track changes over time.
+
+See the included template in `boglebench/templates/sample_attributions.csv`.
 
 ### 4. Run Analysis
 
