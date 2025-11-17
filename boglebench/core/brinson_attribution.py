@@ -202,7 +202,16 @@ class BrinsonAttributionCalculator:
         # Get attributes for benchmark symbols
         result_data = []
 
-        for date in pd.to_datetime(self.benchmark_history["date"], utc=True):
+        # Get dates from index or column
+        if "date" in self.benchmark_history.columns:
+            dates = pd.to_datetime(self.benchmark_history["date"], utc=True)
+        else:
+            # Date is in the index
+            dates = self.benchmark_history.index
+            if not isinstance(dates, pd.DatetimeIndex):
+                dates = pd.to_datetime(dates, utc=True)
+
+        for date in dates:
             # Get attributes as of this date
             attributes_at_date = (
                 self.portfolio_db.get_symbol_attributes_at_date(
@@ -222,9 +231,24 @@ class BrinsonAttributionCalculator:
                 continue
 
             # Get weights and returns from benchmark_history
-            date_row = self.benchmark_history[
-                self.benchmark_history["date"].dt.date == date.date()
-            ]
+            if "date" in self.benchmark_history.columns:
+                date_row = self.benchmark_history[
+                    self.benchmark_history["date"].dt.date == date.date()
+                ]
+            else:
+                # Date is in the index
+                try:
+                    date_row = self.benchmark_history.loc[[date]]
+                except KeyError:
+                    # Try with date() if it's a timestamp
+                    try:
+                        matching_idx = [idx for idx in self.benchmark_history.index if idx.date() == date.date()]
+                        if matching_idx:
+                            date_row = self.benchmark_history.loc[matching_idx]
+                        else:
+                            date_row = pd.DataFrame()
+                    except:
+                        date_row = pd.DataFrame()
 
             if date_row.empty:
                 continue
