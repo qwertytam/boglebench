@@ -2,11 +2,8 @@
 Performance attribution analysis for portfolio holdings.
 
 This module calculates how different holdings, accounts, or attribute groups
-contributed to overall portfolio performance. Supports both database and
-DataFrame data sources for backward compatibility.
+contributed to overall portfolio performance using database as the single source of truth.
 """
-
-from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -25,36 +22,20 @@ class AttributionCalculator:
 
     def __init__(
         self,
-        transactions: Optional[pd.DataFrame] = None,
-        attrib_group_cols: Optional[List[str]] = None,
-        portfolio_db: Optional[PortfolioDatabase] = None,
+        portfolio_db: PortfolioDatabase,
     ):
         """
         Initialize the AttributionCalculator.
-
+        
         Args:
-            transactions: DataFrame containing transaction data (optional)
-            attrib_group_cols: List of column names for grouping attributes (optional)
-            portfolio_db: PortfolioDatabase for normalized data access (optional)
+            portfolio_db: PortfolioDatabase for normalized data access (required)
+            
+        Raises:
+            ValueError: If portfolio_db is None
         """
-        self.transactions = transactions
-        self.attrib_group_cols = attrib_group_cols or []
+        if portfolio_db is None:
+            raise ValueError("portfolio_db is required for attribution calculation")
         self.portfolio_db = portfolio_db
-        self.symbol_to_groups_map = self._create_symbol_map()
-
-    def _create_symbol_map(self) -> dict:
-        """Creates a map from symbol to its associated factor groups."""
-        if not self.attrib_group_cols or self.transactions is None:
-            return {}
-
-        factor_cols = sorted(list(set(self.attrib_group_cols)))
-        if not factor_cols:
-            return {}
-        return (
-            self.transactions.drop_duplicates(subset=["symbol"], keep="last")
-            .set_index("symbol")[factor_cols]
-            .to_dict("index")
-        )
 
     def calculate(self, group_by: str) -> pd.DataFrame:
         """
@@ -66,17 +47,7 @@ class AttributionCalculator:
         Returns:
             DataFrame with attribution analysis
         """
-        if self.portfolio_db is not None:
-            try:
-                return self._calculate_from_database(group_by)
-            except Exception as e:  # pylint: disable=broad-except
-                logger.warning(
-                    "Database calculation failed: %s",
-                    e,
-                )
-
-        logger.error("No data source available for attribution calculation")
-        return pd.DataFrame()
+        return self._calculate_from_database(group_by)
 
     def _calculate_from_database(self, group_by: str) -> pd.DataFrame:
         """Calculate attribution using database queries."""

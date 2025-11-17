@@ -54,9 +54,6 @@ Add your transaction CSV file to `~/my_boglebench_data/transactions/`. Required 
 ### Optional columns
 
 - `account`: Broker account name (defaults to "Default")
-- `group1`: Primary grouping (e.g., sector, asset class)
-- `group2`: Secondary grouping (e.g., market cap, geography)
-- `group3`: Tertiary grouping (e.g., region, style)
 - `notes`: Free-form notes about the transaction
 
 ### Supported Columns for Dividend Transactions
@@ -86,7 +83,32 @@ cause an error.
 
 See the included template in `templates/transactions_example.csv`.
 
-### 3. Run Analysis
+### 3. Symbol Attributes (Optional but Recommended)
+
+Symbol attributes (asset class, geography, sector, etc.) are managed separately from transactions and enable attribution analysis.
+
+Create an attributes CSV file with these columns:
+
+- `symbol`: Stock/ETF ticker (required)
+- `effective_date`: Date these attributes become effective in ISO8601 format (YYYY-MM-DD) (required)
+- `asset_class`: e.g., "Equity", "Bond", "Real Estate" (optional)
+- `geography`: e.g., "US", "International", "Emerging Markets" (optional)
+- `region`: e.g., "North America", "Europe", "Asia Pacific" (optional)
+- `sector`: e.g., "Technology", "Healthcare", "Financials" (optional)
+- `style`: e.g., "Growth", "Value", "Blend" (optional)
+- `market_cap`: e.g., "Large", "Mid", "Small" (optional)
+- `fund_type`: e.g., "ETF", "Mutual Fund", "Stock" (optional)
+
+Load attributes after building portfolio history:
+
+```python
+analyzer.build_portfolio_history()
+analyzer.load_symbol_attributes(csv_path='path/to/symbol_attributes.csv')
+```
+
+Attributes support temporal tracking - you can load multiple versions with different effective dates to track changes over time.
+
+### 4. Run Analysis
 
 ```python
 from boglebench import BogleBenchAnalyzer
@@ -97,6 +119,10 @@ analyzer = BogleBenchAnalyzer(config_path="~/my_boglebench_data/config/config.ya
 # Load and analyze
 analyzer.load_transactions()
 analyzer.build_portfolio_history()
+
+# Optional: Load symbol attributes for attribution analysis
+analyzer.load_symbol_attributes(csv_path='path/to/symbol_attributes.csv')
+
 results = analyzer.calculate_performance()
 
 # View results

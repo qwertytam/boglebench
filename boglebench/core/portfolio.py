@@ -33,7 +33,7 @@ from ..core.metrics import (
 )
 from ..core.portfolio_db import PortfolioDatabase
 from ..core.results import PerformanceResults
-from ..core.symbol_attributes_loader import load_symbol_attributes_to_database
+from ..core.symbol_attributes_loader import load_symbol_attributes_from_csv
 from ..core.transaction_loader import load_validate_transactions
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
@@ -72,7 +72,6 @@ class BogleBenchAnalyzer:
         self.market_data: Dict[str, pd.DataFrame] = {}
         self.benchmark_history = pd.DataFrame()
         self.performance_results = PerformanceResults()
-        self.attrib_group_cols: list[str] = []
         self.start_date: Optional[pd.Timestamp] = None
         self.end_date: Optional[pd.Timestamp] = None
 
@@ -146,41 +145,53 @@ class BogleBenchAnalyzer:
             file_path = str(self.config.get_transactions_file_path())
         self.logger.info("📄 Loading transactions from: %s", file_path)
 
-        self.transactions, self.attrib_group_cols = load_validate_transactions(
-            Path(file_path)
-        )
+        self.transactions = load_validate_transactions(Path(file_path))
         self.logger.info("✅ Loaded %d transactions", len(self.transactions))
 
         return self.transactions
 
-    def load_symbol_attributes(self) -> None:
+    def load_symbol_attributes(
+        self, 
+        csv_path: Optional[str] = None,
+        api_source: Optional[str] = None
+    ) -> None:
         """
         Load symbol attributes into database.
-
+        
+        Attributes must be loaded separately from transactions via CSV file or API.
         This should be called after build_portfolio_history() to ensure database exists.
-        Attributes are extracted from transactions and loaded with the portfolio start date
-        as the effective date.
+        
+        Args:
+            csv_path: Path to attributes CSV file (optional)
+            api_source: API source for attributes (optional, not yet implemented)
+            
+        Raises:
+            ValueError: If portfolio_db not initialized
         """
         if self.portfolio_db is None:
             raise ValueError(
                 "Must build portfolio history first using build_portfolio_history()"
             )
-
-        if not self.attrib_group_cols:
-            self.logger.info("No attribute columns found in transactions")
-            return
-
+        
         # Use portfolio start date as effective date for attributes
         effective_date = (
             self.start_date if self.start_date else pd.Timestamp.now(tz="UTC")
         )
-
-        load_symbol_attributes_to_database(
-            db=self.portfolio_db,
-            transactions_df=self.transactions,
-            attribute_columns=self.attrib_group_cols,
-            effective_date=effective_date,
-        )
+        
+        if csv_path:
+            load_symbol_attributes_from_csv(
+                db=self.portfolio_db,
+                csv_path=csv_path,
+                effective_date=effective_date,
+            )
+        elif api_source:
+            # Future: load from API
+            self.logger.warning("API loading not yet implemented")
+        else:
+            self.logger.info(
+                "No attribute source specified. "
+                "Attributes are optional but required for attribution analysis."
+            )
 
     def build_portfolio_history(self) -> PortfolioDatabase:
         """
@@ -381,8 +392,6 @@ class BogleBenchAnalyzer:
         # Calculate performance attribution
         self.logger.info("📊 Calculating performance attribution...")
         attrib_calculator = AttributionCalculator(
-            transactions=self.transactions,
-            attrib_group_cols=self.attrib_group_cols,
             portfolio_db=self.portfolio_db,
         )
 
@@ -392,12 +401,23 @@ class BogleBenchAnalyzer:
 
         # Calculate for all discovered factor columns
         factor_attributions = {}
-        factor_columns = sorted(list(set(self.attrib_group_cols)))
-        for factor in factor_columns:
-            self.logger.info("Calculating attribution for factor: %s", factor)
-            factor_attributions[factor] = attrib_calculator.calculate(
-                group_by=factor
-            )
+        # Get factor columns from database attributes
+        if self.portfolio_db:
+            attributes_df = self.portfolio_db.get_symbol_attributes()
+            if not attributes_df.empty:
+                # Standard attribute columns in database
+                factor_columns = [
+                    col for col in [
+                        "asset_class", "geography", "region", "sector",
+                        "style", "market_cap", "fund_type"
+                    ]
+                    if col in attributes_df.columns and not attributes_df[col].isna().all()
+                ]
+                for factor in factor_columns:
+                    self.logger.info("Calculating attribution for factor: %s", factor)
+                    factor_attributions[factor] = attrib_calculator.calculate(
+                        group_by=factor
+                    )
 
         # Calculate Brinson-Fachler attribution
         brinson_summary = None
@@ -418,38 +438,44 @@ class BogleBenchAnalyzer:
                 self.logger.info("Calculating Brinson attribution...")
                 brinson_calculator = BrinsonAttributionCalculator(
                     benchmark_history=self.benchmark_history,
-                    transactions=self.transactions,
                     portfolio_db=self.portfolio_db,
                 )
                 group_by = self.config.get(
                     "analysis.attribution_analysis.transaction_groups",
-                    ["group1"],
+                    ["asset_class"],
                 )
                 if isinstance(group_by, Dict):
-                    group_by = group_by.get("value", ["group1"])
+                    group_by = group_by.get("value", ["asset_class"])
                 if group_by is None or not isinstance(group_by, list):
-                    group_by = ["group1"]
+                    group_by = ["asset_class"]
                     self.logger.warning(
-                        "Invalid group_by for Brinson attribution. Using default ['group1']."
+                        "Invalid group_by for Brinson attribution. Using default ['asset_class']."
                     )
                 if self.start_date is None or self.end_date is None:
                     raise ValueError(
                         "Start date and end date must both be set"
                     )
 
+                # Validate that attributes exist in database
+                valid_attributes = [
+                    "asset_class", "geography", "region", "sector",
+                    "style", "market_cap", "fund_type"
+                ]
+                
                 for group in group_by:
-                    if group not in self.transactions.columns:
+                    if group not in valid_attributes:
                         self.logger.error(
-                            "Grouping column '%s' not found in transactions. "
+                            "Grouping attribute '%s' not valid. Must be one of: %s. "
                             "Skipping Brinson attribution.",
                             group,
+                            ", ".join(valid_attributes),
                         )
                     else:
                         brinson_summary = {}
                         selection_drilldown = {}
                         for group in group_by:
                             self.logger.info(
-                                " - Grouping by transaction column: %s", group
+                                " - Grouping by attribute: %s", group
                             )
                             (
                                 brinson_summary[group],

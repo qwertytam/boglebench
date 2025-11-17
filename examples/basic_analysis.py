@@ -51,14 +51,17 @@ def main():
         print("   ✅ Portfolio history stored in database")
         portfolio_db.print_stats()
 
-        # Step 3: Load symbol attributes
+        # Step 3: Load symbol attributes (separate from transactions)
         print("\n📋 Step 3: Loading symbol attributes...")
-        analyzer.load_symbol_attributes()
+        # Note: Attributes are now loaded separately, not from transactions
+        # analyzer.load_symbol_attributes(csv_path='path/to/attributes.csv')
+        print("   ℹ️  Attributes not loaded (optional)")
+        print("   ℹ️  To enable attribution analysis, create an attributes CSV and load it")
 
         # Show current attributes
         attributes = portfolio_db.get_symbol_attributes()
         if not attributes.empty:
-            print(f"   ✅ Loaded attributes for {len(attributes)} symbols")
+            print(f"   ✅ Found attributes for {len(attributes)} symbols")
             print("\n   Attribute Summary:")
             if "geography" in attributes.columns:
                 print(
