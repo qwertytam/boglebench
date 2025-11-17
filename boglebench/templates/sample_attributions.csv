@@ -1,0 +1,6 @@
+symbol,effective_date,asset_class,geography,region,sector,style,market_cap,fund_type
+AAPL,2023-01-01,Equity,US,North America,Technology,Growth,Large Cap,Stock
+MSFT,2023-01-01,Equity,US,North America,Technology,Growth,Large Cap,Stock
+GOOGL,2023-01-01,Equity,US,North America,Technology,Growth,Large Cap,Stock
+SPY,2023-01-01,Equity,US,North America,Diversified,Blend,Large Cap,ETF
+VTI,2023-01-01,Equity,US,North America,Diversified,Blend,Total Market,ETF
