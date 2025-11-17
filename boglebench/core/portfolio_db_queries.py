@@ -139,6 +139,7 @@ class PortfolioQueryMixin:
         symbol: Optional[str] = None,
         start_date: Optional[pd.Timestamp] = None,
         end_date: Optional[pd.Timestamp] = None,
+        date: Optional[pd.Timestamp] = None,
     ) -> pd.DataFrame:
         """Query symbol data."""
         query = "SELECT * FROM symbol_data"
@@ -148,12 +149,17 @@ class PortfolioQueryMixin:
         if symbol:
             conditions.append("symbol = ?")
             params.append(symbol)
-        if start_date:
-            conditions.append("date >= ?")
-            params.append(start_date.isoformat())
-        if end_date:
-            conditions.append("date <= ?")
-            params.append(end_date.isoformat())
+
+        if date:
+            conditions.append("date = ?")
+            params.append(date.isoformat())
+        else:
+            if start_date:
+                conditions.append("date >= ?")
+                params.append(start_date.isoformat())
+            if end_date:
+                conditions.append("date <= ?")
+                params.append(end_date.isoformat())
 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
