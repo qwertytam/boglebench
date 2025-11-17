@@ -78,7 +78,11 @@ class TestMultiTransactionPerformance:
         output_path = temp_config.get_output_path()
 
         monkeypatch.setattr(
-            ConfigManager, "get_data_path", lambda self, config: temp_data_path
+            ConfigManager,
+            "get_data_path",
+            lambda self, subdir=None: (
+                temp_data_path / subdir if subdir else temp_data_path
+            ),
         )
 
         monkeypatch.setattr(
@@ -127,8 +131,7 @@ class TestMultiTransactionPerformance:
         results = analyzer.calculate_performance()
 
         # Build portfolio history
-        portfolio_history = results.portfolio_history
-        portfolio_history["date"] = pd.to_datetime(portfolio_history["date"])
+        portfolio_db = results.portfolio_db
 
         # June 5: 100 AAPL shares at $180
         expected_quantity_aapl = 100
@@ -137,78 +140,83 @@ class TestMultiTransactionPerformance:
             expected_quantity_aapl * expected_close_price_aapl
         )
 
-        june_5_data = portfolio_history[
-            portfolio_history["date"].dt.date
-            == pd.Timestamp("2023-06-05").date()
-        ]
-        assert not june_5_data.empty, "No data found for June 5"
-        assert (
-            june_5_data.iloc[0]["Test_Account_AAPL_quantity"]
-            == expected_quantity_aapl
+        date = pd.Timestamp("2023-06-05", tz="UTC")
+        symbol = "AAPL"
+        symbol_data = portfolio_db.get_symbol_data(
+            symbol=symbol, start_date=date, end_date=date
         )
+        assert not symbol_data.empty, "No data found for AAPL on June 5"
+        assert symbol_data.iloc[0]["total_quantity"] == expected_quantity_aapl
         assert (
-            abs(
-                june_5_data.iloc[0]["Test_Account_AAPL_value"]
-                - expected_close_value_aapl
-            )
+            abs(symbol_data.iloc[0]["total_value"] - expected_close_value_aapl)
             < 1
         )
-        assert june_5_data.iloc[0]["Test_Account_MSFT_quantity"] == 0
+        symbol = "MSFT"
+        symbol_data = portfolio_db.get_symbol_data(
+            symbol=symbol, start_date=date, end_date=date
+        )
+        assert not symbol_data.empty, "No data found for MSFT on June 5"
+        assert symbol_data.iloc[0]["total_quantity"] == 0
 
         # June 8: 100 AAPL + 50 MSFT
-        june_8_data = portfolio_history[
-            portfolio_history["date"].dt.date
-            == pd.Timestamp("2023-06-08").date()
-        ]
         expected_quantity_aapl = 100
         expected_close_price_aapl = 180.57
 
         expected_quantity_msft = 50
         expected_close_price_msft = 325.26
 
-        assert not june_8_data.empty, "No data found for June 8"
-        assert (
-            june_8_data.iloc[0]["Test_Account_AAPL_quantity"]
-            == expected_quantity_aapl
+        date = pd.Timestamp("2023-06-08", tz="UTC")
+        symbol = "AAPL"
+        symbol_data = portfolio_db.get_symbol_data(
+            symbol=symbol, start_date=date, end_date=date
         )
-        assert (
-            june_8_data.iloc[0]["Test_Account_MSFT_quantity"]
-            == expected_quantity_msft
+
+        assert not symbol_data.empty, "No data found for AAPL on June 8"
+        assert symbol_data.iloc[0]["total_quantity"] == expected_quantity_aapl
+
+        symbol = "MSFT"
+        symbol_data = portfolio_db.get_symbol_data(
+            symbol=symbol, start_date=date, end_date=date
         )
+        assert symbol_data.iloc[0]["total_quantity"] == expected_quantity_msft
 
         expected_total = (
             expected_quantity_aapl * expected_close_price_aapl
             + expected_quantity_msft * expected_close_price_msft
         )
-        assert abs(june_8_data.iloc[0]["total_value"] - expected_total) < 1
+        portfolio_summary = portfolio_db.get_portfolio_summary(
+            start_date=date, end_date=date
+        )
+        assert not portfolio_summary.empty, "No portfolio summary for June 8"
+        assert (
+            abs(portfolio_summary.iloc[0]["total_value"] - expected_total) < 1
+        )
 
         # June 12: 0 AAPL + 25 MSFT (after sales)
-        june_12_data = portfolio_history[
-            portfolio_history["date"].dt.date
-            == pd.Timestamp("2023-06-12").date()
-        ]
-
         expected_quantity_aapl = 0
         expected_quantity_msft = 25
         expected_close_price_msft = 331.85
 
-        assert not june_12_data.empty, "No data found for June 12"
-        assert (
-            june_12_data.iloc[0]["Test_Account_AAPL_quantity"]
-            == expected_quantity_aapl
+        date = pd.Timestamp("2023-06-12", tz="UTC")
+        symbol = "AAPL"
+        symbol_data = portfolio_db.get_symbol_data(
+            symbol=symbol, start_date=date, end_date=date
         )
-        assert (
-            june_12_data.iloc[0]["Test_Account_MSFT_quantity"]
-            == expected_quantity_msft
+
+        assert not symbol_data.empty, "No data found for June 12"
+        assert symbol_data.iloc[0]["total_quantity"] == expected_quantity_aapl
+
+        symbol = "MSFT"
+        symbol_data = portfolio_db.get_symbol_data(
+            symbol=symbol, start_date=date, end_date=date
         )
+        assert symbol_data.iloc[0]["total_quantity"] == expected_quantity_msft
         # Only 25 MSFT shares
         expected_close_value_msft = (
             expected_quantity_msft * expected_close_price_msft
         )
         assert (
-            abs(
-                june_12_data.iloc[0]["total_value"] - expected_close_value_msft
-            )
+            abs(symbol_data.iloc[0]["total_value"] - expected_close_value_msft)
             < 1
         )
 
@@ -246,14 +254,14 @@ class TestMultiTransactionPerformance:
         assert len(portfolio_returns) > 0
 
         # On sale dates, there should be significant portfolio value changes
-        portfolio_history = results.portfolio_history
-        portfolio_history["date"] = pd.to_datetime(portfolio_history["date"])
+        date = pd.Timestamp("2023-06-12", tz="UTC")
+        portfolio_summary = results.portfolio_db.get_portfolio_summary(
+            start_date=date, end_date=date
+        )
+        assert not portfolio_summary.empty, "No portfolio summary for June 12"
 
         # Check for value changes on transaction dates
-        june_12_returns = portfolio_history[
-            portfolio_history["date"].dt.date
-            == pd.Timestamp("2023-06-12").date()
-        ]["portfolio_daily_return_mod_dietz"]
+        june_12_returns = portfolio_summary["portfolio_mod_dietz_return"]
 
         if not june_12_returns.empty:
             # Should see portfolio composition change on sale date
