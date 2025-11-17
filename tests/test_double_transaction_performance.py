@@ -283,33 +283,28 @@ class TestMultiTransactionPerformance:
         # Build portfolio and calculate performance
         analyzer.build_portfolio_history()
         results = analyzer.calculate_performance()
-        portfolio_history = results.portfolio_history
-
-        portfolio_history["date"] = pd.to_datetime(portfolio_history["date"])
+        symbol_data = results.portfolio_db.get_symbol_data(symbol="MSFT")
 
         # Before MSFT purchase (June 7): 0 MSFT shares
-        june_7_data = portfolio_history[
-            portfolio_history["date"].dt.date
-            == pd.Timestamp("2023-06-07").date()
+        june_7_data = symbol_data[
+            symbol_data["date"].dt.date == pd.Timestamp("2023-06-07").date()
         ]
         if not june_7_data.empty:
-            assert june_7_data.iloc[0]["Test_Account_MSFT_quantity"] == 0
+            assert june_7_data.iloc[0]["total_quantity"] == 0
 
         # After MSFT purchase, before sale (June 9): 50 MSFT shares
-        june_9_data = portfolio_history[
-            portfolio_history["date"].dt.date
-            == pd.Timestamp("2023-06-09").date()
+        june_9_data = symbol_data[
+            symbol_data["date"].dt.date == pd.Timestamp("2023-06-09").date()
         ]
         if not june_9_data.empty:
-            assert june_9_data.iloc[0]["Test_Account_MSFT_quantity"] == 50
+            assert june_9_data.iloc[0]["total_quantity"] == 50
 
         # After partial sale (June 13): 25 MSFT shares remaining
-        june_13_data = portfolio_history[
-            portfolio_history["date"].dt.date
-            == pd.Timestamp("2023-06-13").date()
+        june_13_data = symbol_data[
+            symbol_data["date"].dt.date == pd.Timestamp("2023-06-13").date()
         ]
         if not june_13_data.empty:
-            assert june_13_data.iloc[0]["Test_Account_MSFT_quantity"] == 25
+            assert june_13_data.iloc[0]["total_quantity"] == 25
 
     def test_transaction_data_validation(
         self, test_data_dir, scenario_analyzer
@@ -370,7 +365,6 @@ class TestMultiTransactionPerformance:
         analyzer.build_portfolio_history()
         results = analyzer.calculate_performance()
         summary = results.summary()
-        print(summary)
 
         expected_periods = 10
 
@@ -419,11 +413,11 @@ class TestMultiTransactionPerformance:
         )
 
         # Verify portfolio history was built correctly
-        portfolio_history = results.portfolio_history
-        assert len(portfolio_history) == 10  # 10 trading days
-        assert "total_value" in portfolio_history.columns
-        assert "portfolio_daily_return_mod_dietz" in portfolio_history.columns
-        assert "portfolio_daily_return_twr" in portfolio_history.columns
+        portfolio_summary = results.portfolio_db.get_portfolio_summary()
+        assert len(portfolio_summary) == 10  # 10 trading days
+        assert "total_value" in portfolio_summary.columns
+        assert "portfolio_mod_dietz_return" in portfolio_summary.columns
+        assert "portfolio_twr_return" in portfolio_summary.columns
 
         # Verify benchmark history was built correctly
         benchmark_history = results.benchmark_history
@@ -478,7 +472,7 @@ class TestMultiTransactionPerformance:
             )
         )
         # Annualized return
-        return_days = len(portfolio_history)
+        return_days = len(portfolio_summary)
         expected_annualized_asset_mod_dietz_return = (
             1 + expected_asset_total_mod_dietz_return
         ) ** (annual_trading_days / return_days) - 1
@@ -590,7 +584,7 @@ class TestMultiTransactionPerformance:
         # Verify comprehensive summary content
         assert "BOGLEBENCH PERFORMANCE ANALYSIS" in summary
         assert "PORTFOLIO PERFORMANCE" in summary
-        assert "'SPY' PERFORMANCE" in summary
+        assert "BENCHMARK PERFORMANCE" in summary
         assert "RELATIVE PERFORMANCE" in summary
         assert "Total Return:" in summary
         assert "Volatility:" in summary
