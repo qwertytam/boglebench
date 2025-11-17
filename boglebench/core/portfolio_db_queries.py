@@ -281,3 +281,131 @@ class PortfolioQueryMixin:
         if not df.empty:
             df["date"] = pd.to_datetime(df["date"], utc=True)
         return df
+
+    def get_cash_flows(
+        self,
+        accounts: Optional[List[str]] = None,
+        symbols: Optional[List[str]] = None,
+        date: Optional[pd.Timestamp] = None,
+        start_date: Optional[pd.Timestamp] = None,
+        end_date: Optional[pd.Timestamp] = None,
+    ) -> pd.DataFrame:
+        """
+        Query cash flows for specified accounts and symbols.
+
+        Cash flows are derived from the symbol_data table (aggregated across accounts)
+        or can be filtered by account through holdings with calculated cash flows.
+
+        Args:
+            accounts: List of account names to filter by. If None, all accounts.
+            symbols: List of symbol tickers to filter by. If None, all symbols.
+            date: Specific date to query. Mutually exclusive with start_date/end_date.
+            start_date: Start date for date range query.
+            end_date: End date for date range query.
+
+        Returns:
+            DataFrame with columns: date, symbol, cash_flow
+            If accounts specified, also includes: account (via join with holdings)
+
+        Examples:
+            # Get cash flows for AAPL in Test_Account for a specific date
+            df = db.get_cash_flows(
+                accounts=['Test_Account'],
+                symbols=['AAPL'],
+                date=pd.Timestamp('2023-06-05', tz='UTC')
+            )
+
+            # Get cash flows for multiple symbols across date range
+            df = db.get_cash_flows(
+                symbols=['AAPL', 'GOOGL'],
+                start_date=pd.Timestamp('2023-06-01', tz='UTC'),
+                end_date=pd.Timestamp('2023-06-30', tz='UTC')
+            )
+
+            # Get all cash flows for all accounts and symbols
+            df = db.get_cash_flows()
+        """
+        params = []
+        conditions = []
+
+        # If accounts are specified, we need to join with holdings to filter by account
+        if accounts:
+            query = """
+            SELECT 
+                h.date,
+                h.account,
+                h.symbol,
+                sd.cash_flow
+            FROM holdings h
+            INNER JOIN symbol_data sd ON h.date = sd.date AND h.symbol = sd.symbol
+            WHERE 1=1
+            """
+        else:
+            query = """
+            SELECT 
+                date,
+                symbol,
+                cash_flow
+            FROM symbol_data
+            WHERE 1=1
+            """
+
+        # Date filtering
+        if accounts:
+            date_prefix = "h.date"
+        else:
+            date_prefix = "date"
+
+        if date:
+            conditions.append(f"{date_prefix} = ?")
+            params.append(date.isoformat())
+        else:
+            if start_date:
+                conditions.append(f"{date_prefix} >= ?")
+                params.append(start_date.isoformat())
+            if end_date:
+                conditions.append(f"{date_prefix} <= ?")
+                params.append(end_date.isoformat())
+
+        # Account filtering (only applies if joining with holdings)
+        if accounts:
+            if len(accounts) == 1:
+                conditions.append("h.account = ?")
+                params.append(accounts[0])
+            else:
+                placeholders = ",".join("?" * len(accounts))
+                conditions.append(f"h.account IN ({placeholders})")
+                params.extend(accounts)
+
+        # Symbol filtering
+        if symbols:
+            symbol_prefix = "h.symbol" if accounts else "symbol"
+            if len(symbols) == 1:
+                conditions.append(f"{symbol_prefix} = ?")
+                params.append(symbols[0])
+            else:
+                placeholders = ",".join("?" * len(symbols))
+                conditions.append(f"{symbol_prefix} IN ({placeholders})")
+                params.extend(symbols)
+
+        # Add conditions to query
+        if conditions:
+            query += " AND " + " AND ".join(conditions)
+
+        # Order results
+        if accounts:
+            query += " ORDER BY h.date, h.account, h.symbol"
+        else:
+            query += " ORDER BY date, symbol"
+
+        conn = cast(DatabaseProtocol, self).get_connection()
+        df = pd.read_sql_query(
+            query,
+            conn,
+            params=cast(DatabaseProtocol, self).normalize_params(params),
+        )
+
+        if not df.empty:
+            df["date"] = pd.to_datetime(df["date"], utc=True)
+
+        return df
