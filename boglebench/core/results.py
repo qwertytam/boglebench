@@ -25,7 +25,6 @@ class PerformanceResults:
         portfolio_metrics: Optional[Dict] = None,
         benchmark_metrics: Optional[Dict] = None,
         relative_metrics: Optional[Dict] = None,
-        portfolio_history: Optional[pd.DataFrame] = None,
         benchmark_history: Optional[pd.DataFrame] = None,
         holding_attribution: Optional[pd.DataFrame] = None,
         account_attribution: Optional[pd.DataFrame] = None,
@@ -45,7 +44,6 @@ class PerformanceResults:
             portfolio_metrics: Dictionary of portfolio performance metrics
             benchmark_metrics: Dictionary of benchmark performance metrics
             relative_metrics: Dictionary of relative performance metrics
-            portfolio_history: DataFrame with historical portfolio data
             benchmark_history: DataFrame with historical benchmark data
             holding_attribution: DataFrame with attribution by holding
             account_attribution: DataFrame with attribution by account
@@ -59,7 +57,6 @@ class PerformanceResults:
         self.portfolio_metrics = portfolio_metrics
         self.benchmark_metrics = benchmark_metrics
         self.relative_metrics = relative_metrics
-        self.portfolio_history = portfolio_history
         self.benchmark_history = benchmark_history
         self.holding_attribution = holding_attribution
         self.account_attribution = account_attribution
@@ -130,7 +127,6 @@ class PerformanceResults:
         if self.relative_metrics:
             r = self.relative_metrics
             lines.append("\n📊 RELATIVE PERFORMANCE\n")
-            lines.append(f"  Excess Return:       {r['excess_return']:>+8.2%}")
             lines.append(
                 f"  Tracking Error:      {r['tracking_error']:>+8.2%}"
             )
@@ -138,7 +134,7 @@ class PerformanceResults:
                 f"  Information Ratio:   {r['information_ratio']:>+8.3f}"
             )
             lines.append(f"  Beta:                {r['beta']:>+8.3f}")
-            lines.append(f"  Alpha:               {r['alpha']:>+8.2%}")
+            lines.append(f"  Alpha:               {r['jensens_alpha']:>+8.2%}")
             lines.append(f"  Correlation:         {r['correlation']:>+8.3f}")
 
         # Attribution summaries
@@ -179,21 +175,20 @@ class PerformanceResults:
         Returns:
             Series with date index and daily returns
         """
-        # Try database first
-        if self.portfolio_db is not None:
-            df = self.portfolio_db.get_portfolio_summary()
-            if not df.empty:
-                return df.set_index("date")[
-                    "portfolio_mod_dietz_return"
-                ].dropna()
-
-        # Fallback to DataFrame
-        if self.portfolio_history is None:
+        if self.portfolio_db is None:
+            self.logger.warning(
+                "Portfolio returns require database. "
+                "Ensure portfolio_db is set."
+            )
             return pd.Series(dtype=float)
 
-        return self.portfolio_history[
-            "portfolio_daily_return_mod_dietz"
-        ].dropna()
+        df = self.portfolio_db.get_portfolio_summary()
+        if not df.empty:
+            s = df.set_index("date")["portfolio_mod_dietz_return"].dropna()
+        else:
+            s = pd.Series(dtype=float)
+
+        return s
 
     def get_cumulative_returns(self) -> pd.Series:
         """
@@ -214,7 +209,13 @@ class PerformanceResults:
             DataFrame with account, current_value, weight_of_portfolio
         """
         # Try database first
-        if self.portfolio_db is not None:
+        if self.portfolio_db is None:
+            self.logger.warning(
+                "Account summary requires database. "
+                "Ensure portfolio_db is set."
+            )
+            return pd.DataFrame()
+        else:
             df = self.portfolio_db.get_account_data()
             if df.empty:
                 return pd.DataFrame()
@@ -231,36 +232,6 @@ class PerformanceResults:
 
             return summary.sort_values("current_value", ascending=False)
 
-        # Fallback to DataFrame
-        if self.portfolio_history is None or self.portfolio_history.empty:
-            return pd.DataFrame()
-
-        latest_data = self.portfolio_history.iloc[-1]
-        accounts = self._extract_accounts_from_columns(
-            self.portfolio_history.columns
-        )
-
-        account_data = []
-        for account in accounts:
-            total_value_col = f"{account}_total_value"
-            weight_col = f"{account}_weight"
-
-            if (
-                total_value_col in self.portfolio_history.columns
-                and weight_col in self.portfolio_history.columns
-            ):
-                account_data.append(
-                    {
-                        "account": account,
-                        "current_value": latest_data[total_value_col],
-                        "weight_of_portfolio": latest_data[weight_col],
-                    }
-                )
-
-        return pd.DataFrame(account_data).sort_values(
-            "current_value", ascending=False
-        )
-
     def get_account_holdings(
         self, account_name: Optional[str] = None
     ) -> pd.DataFrame:
@@ -274,7 +245,13 @@ class PerformanceResults:
             DataFrame with account, symbol, shares, value, weight
         """
         # Try database first
-        if self.portfolio_db is not None:
+        if self.portfolio_db is None:
+            self.logger.warning(
+                "Account holdings require database. "
+                "Ensure portfolio_db is set."
+            )
+            return pd.DataFrame()
+        else:
             holdings_df = self.portfolio_db.get_latest_holdings(
                 account=account_name
             )
@@ -283,56 +260,6 @@ class PerformanceResults:
                     ["account", "symbol", "quantity", "value", "weight"]
                 ].rename(columns={"quantity": "shares"})
             return holdings_df
-
-        # Fallback to DataFrame
-        if self.portfolio_history is None:
-            return pd.DataFrame()
-
-        latest_data = self.portfolio_history.iloc[-1]
-
-        accounts = [account_name] if account_name else []
-        holdings_data = []
-
-        for account in accounts:
-            # Find all symbol columns for this account
-            symbol_cols = [
-                col
-                for col in self.portfolio_history.columns
-                if col.startswith(f"{account}_") and col.endswith("_quantity")
-            ]
-
-            for col in symbol_cols:
-                symbol = col.replace(f"{account}_", "").replace(
-                    "_quantity", ""
-                )
-                shares = latest_data[col]
-
-                if shares != 0:  # Only include non-zero holdings
-                    value_col = f"{account}_{symbol}_value"
-                    weight_col = f"{account}_{symbol}_weight"
-
-                    holdings_data.append(
-                        {
-                            "account": account,
-                            "symbol": symbol,
-                            "shares": shares,
-                            "value": (
-                                latest_data[value_col]
-                                if value_col in self.portfolio_history.columns
-                                else 0
-                            ),
-                            "weight": (
-                                latest_data[weight_col]
-                                if weight_col in self.portfolio_history.columns
-                                else 0
-                            ),
-                        }
-                    )
-
-        df = pd.DataFrame(holdings_data)
-        if not df.empty:
-            df = df.sort_values("value", ascending=False)
-        return df
 
     def get_holdings_history(
         self,
@@ -354,24 +281,19 @@ class PerformanceResults:
             DataFrame with date, account, symbol, quantity, value, weight
         """
         # Try database first
-        if self.portfolio_db is not None:
+        if self.portfolio_db is None:
+            self.logger.warning(
+                "Holdings history requires database. "
+                "Ensure portfolio_db is set."
+            )
+            return pd.DataFrame()
+        else:
             return self.portfolio_db.get_holdings(
                 account=account,
                 symbol=symbol,
                 start_date=start_date,
                 end_date=end_date,
             )
-
-        # Fallback to DataFrame (complex extraction)
-        if self.portfolio_history is None or self.portfolio_history.empty:
-            return pd.DataFrame()
-
-        # This is complex for wide format - recommend using database
-        self.logger.warning(
-            "Holdings history from wide DataFrame is limited. "
-            "Consider using portfolio_db.get_holdings() for full functionality."
-        )
-        return pd.DataFrame()
 
     def get_allocation_by_attribute(
         self,
@@ -477,22 +399,17 @@ class PerformanceResults:
         Returns:
             DataFrame with date, symbol, price, total_quantity, total_value, weight, returns
         """
-        if self.portfolio_db is not None:
+        if self.portfolio_db is None:
+            self.logger.warning(
+                "Symbol data requires database. Ensure portfolio_db is set."
+            )
+            return pd.DataFrame()
+        else:
             return self.portfolio_db.get_symbol_data(
                 symbol=symbol,
                 start_date=start_date,
                 end_date=end_date,
             )
-
-        # Fallback to DataFrame (limited)
-        if self.portfolio_history is None or self.portfolio_history.empty:
-            return pd.DataFrame()
-
-        self.logger.warning(
-            "Symbol data from wide DataFrame is limited. "
-            "Consider using portfolio_db.get_symbol_data() for full functionality."
-        )
-        return pd.DataFrame()
 
     def _extract_accounts_from_columns(self, columns) -> list:
         """Extract account names from column names."""
@@ -535,13 +452,6 @@ class PerformanceResults:
         if self.portfolio_db is not None:
             # Export from database (normalized format)
             self._export_from_database(output_path, prefix, timestamp)
-        elif self.portfolio_history is not None:
-            # Export legacy DataFrame
-            file_path = (
-                output_path / f"{prefix}_portfolio_history_{timestamp}.csv"
-            )
-            self.portfolio_history.to_csv(file_path, index=False)
-            self.logger.info("Exported portfolio history to: %s", file_path)
 
         # Export metrics
         if self.portfolio_metrics:

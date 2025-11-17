@@ -388,33 +388,3 @@ def calculate_relative_metrics(
         "jensens_alpha": jensens_alpha_annualized,
         "correlation": np.corrcoef(aligned_portfolio, aligned_benchmark)[0, 1],
     }
-
-
-def calculate_market_change_and_returns(
-    portfolio_history: pd.DataFrame,
-) -> pd.DataFrame:
-    """Calculate market change and returns for the benchmark."""
-    if portfolio_history is None or portfolio_history.empty:
-        return portfolio_history
-
-    portfolio_history_df = portfolio_history.copy()
-
-    for i in range(0, len(portfolio_history_df)):
-        if i == 0:
-            prev_value = 0.0
-        else:
-            prev_value = portfolio_history_df.at[i - 1, "total_value"]
-
-        current_value = portfolio_history_df.at[i, "total_value"]
-        cash_flow = portfolio_history_df.at[i, "investment_cash_flow"]
-        market_change = current_value - prev_value - cash_flow
-
-        if prev_value == 0:
-            market_return = 0.0
-        else:
-            market_return = market_change / prev_value
-
-        portfolio_history_df.at[i, "market_value_change"] = market_change
-        portfolio_history_df.at[i, "market_value_return"] = market_return
-
-    return portfolio_history_df
