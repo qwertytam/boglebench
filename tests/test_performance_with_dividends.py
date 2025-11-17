@@ -358,7 +358,7 @@ class TestPerformanceWithDividends:
         final_day_holdings = results.portfolio_db.get_latest_holdings(
             include_zero=True
         )
-        start_date, end_date = results.portfolio_db.get_date_range()
+        _, end_date = results.portfolio_db.get_date_range()
 
         if scenario_name == "no_dividends":
             sym = "VOO"
