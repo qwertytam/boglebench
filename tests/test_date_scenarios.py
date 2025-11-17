@@ -165,7 +165,11 @@ class TestDateScenarios:
         output_path = temp_config.get_output_path()
 
         monkeypatch.setattr(
-            ConfigManager, "get_data_path", lambda self, config: temp_data_path
+            ConfigManager,
+            "get_data_path",
+            lambda self, subdir=None: (
+                temp_data_path / subdir if subdir else temp_data_path
+            ),
         )
 
         monkeypatch.setattr(
@@ -224,69 +228,87 @@ class TestDateScenarios:
 
         # --- Main Workflow ---
         analyzer.load_transactions(transactions_file)
-        portfolio_df = analyzer.build_portfolio_history()
+        analyzer.build_portfolio_history()
+
+        portfolio_db = analyzer.portfolio_db
+        symbol_data = portfolio_db.get_symbol_data("TICK")
+        portfolio_summary = portfolio_db.get_portfolio_summary()
 
         # --- Assertions ---
         if scenario_name == "user_dates_outside_transaction_range":
             # This range has no transactions, so the portfolio should be all
             # zeros
-            assert portfolio_df["TICK_total_quantity"].eq(0).all()
-            assert portfolio_df["TICK_total_value"].eq(0).all()
-            assert portfolio_df["total_value"].eq(0).all()
-            assert portfolio_df["investment_cash_flow"].eq(0).all()
-            assert portfolio_df["income_cash_flow"].eq(0).all()
+            assert symbol_data["total_quantity"].eq(0).all()
+            assert symbol_data["total_value"].eq(0).all()
+            assert portfolio_summary["total_value"].eq(0).all()
+            assert portfolio_summary["investment_cash_flow"].eq(0).all()
+            assert portfolio_summary["income_cash_flow"].eq(0).all()
             return
 
         # --- Assertions for all other valid scenarios ---
-        assert not portfolio_df.empty
-        first_day = portfolio_df.iloc[0]
-        final_day = portfolio_df.iloc[-1]
+        assert not portfolio_summary.empty
+        start_date, end_date = portfolio_db.get_date_range()
 
         if scenario_name == "user_start_end_equal_transaction_dates":
+            assert start_date.date() == pd.to_datetime("2023-01-02").date()
+            assert end_date.date() == pd.to_datetime("2023-01-06").date()
             assert (
-                first_day["date"].date() == pd.to_datetime("2023-01-02").date()
+                symbol_data.loc[
+                    symbol_data["date"] == end_date, "total_quantity"
+                ].iloc[0]
+                == 5.0
             )
-            assert (
-                final_day["date"].date() == pd.to_datetime("2023-01-06").date()
-            )
-            assert final_day["Taxable_TICK_quantity"] == 5.0
 
         elif scenario_name == "no_user_start_end_dates":
             # Falls back to first transaction date and mocked end date
+            assert start_date.date() == pd.to_datetime("2023-01-02").date()
+            assert end_date.date() == pd.to_datetime("2023-01-10").date()
             assert (
-                first_day["date"].date() == pd.to_datetime("2023-01-02").date()
+                symbol_data.loc[
+                    symbol_data["date"] == end_date, "total_quantity"
+                ].iloc[0]
+                == 5.0
             )
-            assert (
-                final_day["date"].date() == pd.to_datetime("2023-01-10").date()
-            )
-            assert final_day["Taxable_TICK_quantity"] == 5.0
 
         elif scenario_name == "user_start_end_inside_transaction_dates":
-            assert (
-                first_day["date"].date() == pd.to_datetime("2023-01-03").date()
-            )
-            assert (
-                final_day["date"].date() == pd.to_datetime("2023-01-05").date()
-            )
+            assert start_date.date() == pd.to_datetime("2023-01-03").date()
+            assert end_date.date() == pd.to_datetime("2023-01-05").date()
             # The initial buy is before the start date
-            assert first_day["Taxable_TICK_quantity"] == 1.0
-            assert final_day["Taxable_TICK_quantity"] == 0.0
+            assert (
+                symbol_data.loc[
+                    symbol_data["date"] == start_date, "total_quantity"
+                ].iloc[0]
+                == 1.0
+            )
+            assert (
+                symbol_data.loc[
+                    symbol_data["date"] == end_date, "total_quantity"
+                ].iloc[0]
+                == 0.0
+            )
 
         elif scenario_name == "user_end_date_only":
+            assert start_date.date() == pd.to_datetime("2023-01-02").date()
+            assert end_date.date() == pd.to_datetime("2023-01-06").date()
             assert (
-                first_day["date"].date() == pd.to_datetime("2023-01-02").date()
+                symbol_data.loc[
+                    symbol_data["date"] == end_date, "total_quantity"
+                ].iloc[0]
+                == 5.0
             )
-            assert (
-                final_day["date"].date() == pd.to_datetime("2023-01-06").date()
-            )
-            assert final_day["Taxable_TICK_quantity"] == 5.0
 
         elif scenario_name == "user_start_end_outside_transaction_dates":
+            assert start_date.date() == pd.to_datetime("2022-12-30").date()
+            assert end_date.date() == pd.to_datetime("2023-01-09").date()
             assert (
-                first_day["date"].date() == pd.to_datetime("2022-12-30").date()
+                symbol_data.loc[
+                    symbol_data["date"] == start_date, "total_quantity"
+                ].iloc[0]
+                == 0
             )
             assert (
-                final_day["date"].date() == pd.to_datetime("2023-01-09").date()
+                symbol_data.loc[
+                    symbol_data["date"] == end_date, "total_quantity"
+                ].iloc[0]
+                == 5.0
             )
-            assert first_day["Taxable_TICK_quantity"] == 0
-            assert final_day["Taxable_TICK_quantity"] == 5.0

@@ -5,6 +5,7 @@ Simple tests to verify BogleBench setup.
 
 def test_imports():
     """Test that we can import the main modules."""
+    # pylint: disable=import-outside-toplevel
     from boglebench import BogleBenchAnalyzer, ConfigManager
 
     assert BogleBenchAnalyzer is not None
@@ -13,6 +14,7 @@ def test_imports():
 
 def test_analyzer_creation():
     """Test that we can create an analyzer instance."""
+    # pylint: disable=import-outside-toplevel
     from boglebench import BogleBenchAnalyzer
 
     analyzer = BogleBenchAnalyzer()
@@ -23,6 +25,7 @@ def test_analyzer_creation():
 
 def test_config_manager():
     """Test that ConfigManager works."""
+    # pylint: disable=import-outside-toplevel
     from boglebench.utils.config import ConfigManager
 
     config = ConfigManager()

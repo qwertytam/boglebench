@@ -70,7 +70,6 @@ class BogleBenchAnalyzer:
         self.portfolio_db: Optional[PortfolioDatabase] = None
         self.transactions = pd.DataFrame()
         self.market_data: Dict[str, pd.DataFrame] = {}
-        self.portfolio_history = pd.DataFrame()
         self.benchmark_history = pd.DataFrame()
         self.performance_results = PerformanceResults()
         self.attrib_group_cols: list[str] = []
@@ -282,7 +281,9 @@ class BogleBenchAnalyzer:
         """
         # Check if database exists and has data
         if self.portfolio_db is None:
-            self.logger.debug("Portfolio database not initialized, building now...")
+            self.logger.debug(
+                "Portfolio database not initialized, building now..."
+            )
             self.build_portfolio_history()
 
         if self.portfolio_db is None:
@@ -380,7 +381,6 @@ class BogleBenchAnalyzer:
         # Calculate performance attribution
         self.logger.info("📊 Calculating performance attribution...")
         attrib_calculator = AttributionCalculator(
-            portfolio_history=self.portfolio_history,
             transactions=self.transactions,
             attrib_group_cols=self.attrib_group_cols,
             portfolio_db=self.portfolio_db,
@@ -417,7 +417,6 @@ class BogleBenchAnalyzer:
             ):
                 self.logger.info("Calculating Brinson attribution...")
                 brinson_calculator = BrinsonAttributionCalculator(
-                    portfolio_history=self.portfolio_history,
                     benchmark_history=self.benchmark_history,
                     transactions=self.transactions,
                     portfolio_db=self.portfolio_db,
@@ -468,7 +467,6 @@ class BogleBenchAnalyzer:
             holding_attribution=holding_attribution,
             account_attribution=account_attribution,
             factor_attributions=factor_attributions,
-            portfolio_history=self.portfolio_history,
             benchmark_history=self.benchmark_history,
             brinson_summary=brinson_summary,
             selection_drilldown=selection_drilldown,

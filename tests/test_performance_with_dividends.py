@@ -262,7 +262,11 @@ class TestPerformanceWithDividends:
         output_path = temp_config.get_output_path()
 
         monkeypatch.setattr(
-            ConfigManager, "get_data_path", lambda self, config: temp_data_path
+            ConfigManager,
+            "get_data_path",
+            lambda self, subdir=None: (
+                temp_data_path / subdir if subdir else temp_data_path
+            ),
         )
 
         monkeypatch.setattr(
@@ -324,7 +328,7 @@ class TestPerformanceWithDividends:
         assert results.benchmark_metrics is not None
         assert results.relative_metrics is not None
         assert results.config is not None
-        assert results.portfolio_history is not None
+        assert results.portfolio_db is not None
 
         # Verify portfolio metrics structure
         portfolio_mod_dietz_metrics = results.portfolio_metrics["mod_dietz"]
@@ -344,22 +348,30 @@ class TestPerformanceWithDividends:
         assert "win_rate" in portfolio_twr_metrics
 
         # Verify portfolio history was built correctly
-        portfolio_history = results.portfolio_history
-        assert len(portfolio_history) == 3  # 3 trading days
-        assert "total_value" in portfolio_history.columns
-        assert "portfolio_daily_return_mod_dietz" in portfolio_history.columns
+        portfolio_summary = results.portfolio_db.get_portfolio_summary()
+        assert len(portfolio_summary) == 3  # 3 trading days
+        assert "total_value" in portfolio_summary.columns
+        assert "portfolio_mod_dietz_return" in portfolio_summary.columns
 
-        initial_value = portfolio_history["total_value"].iloc[0]
-        final_value = portfolio_history["total_value"].iloc[-1]
-        final_day = results.portfolio_history.iloc[-1]
-        dividend_day = results.portfolio_history[
-            results.portfolio_history["date"].dt.day == 5
-        ].iloc[0]
+        initial_value = portfolio_summary["total_value"].iloc[0]
+        final_value = portfolio_summary["total_value"].iloc[-1]
+        final_day_holdings = results.portfolio_db.get_latest_holdings(
+            include_zero=True
+        )
+        _, end_date = results.portfolio_db.get_date_range()
 
         if scenario_name == "no_dividends":
-            assert final_day["Taxable_VOO_quantity"] == 10
-            assert final_day["VOO_price"] == 102
-            assert final_day["total_value"] == 10 * 102.0
+            sym = "VOO"
+            final_day_holding_symbol = final_day_holdings[
+                final_day_holdings["symbol"] == sym
+            ].iloc[0]
+            assert final_day_holding_symbol["quantity"] == 10
+            assert final_day_holding_symbol["value"] == 10 * 102.0
+
+            final_day_symbol = results.portfolio_db.get_symbol_data(
+                symbol=sym, start_date=end_date, end_date=end_date
+            )
+            assert final_day_symbol["price"].iloc[0] == 102
 
             # Check initial and final portfolio values
             purchase_price = 100.00
@@ -390,8 +402,8 @@ class TestPerformanceWithDividends:
             # which is one less than the number of portfolio history entries
             # because returns are calculated between days.
             # However, we are calculating total return over the entire period,
-            # so we use the full length of portfolio history here.
-            return_days = len(portfolio_history)
+            # so we use the full length of portfolio summary here.
+            return_days = len(portfolio_summary)
 
             # Annualized return
             expected_annualized_return = (1 + expected_total_return) ** (
@@ -446,13 +458,23 @@ class TestPerformanceWithDividends:
             )
 
         elif scenario_name == "cash_dividends":
-            assert final_day["Ira_VTI_quantity"] == 100  # Shares don't change
+            acct = "Ira"
+            final_day_holding_acct = final_day_holdings[
+                final_day_holdings["account"] == acct
+            ].iloc[0]
             assert (
-                dividend_day["net_cash_flow"] == -75.0
-            )  # Cash flow from dividend
+                final_day_holding_acct["quantity"] == 100
+            )  # Shares don't change
             assert (
-                final_day["total_value"] == 100 * 50.5
+                final_day_holding_acct["value"] == 100 * 50.5
             )  # Final value = shares * final price
+
+            final_day_account = results.portfolio_db.get_account_data(
+                account=acct, start_date=end_date, end_date=end_date
+            )
+            assert (
+                final_day_account["cash_flow"].iloc[0] == -75.0
+            )  # Cash flow from dividend
 
             # Check initial and final portfolio values
             purchase_price = 50.00
@@ -524,11 +546,15 @@ class TestPerformanceWithDividends:
             )
 
         elif scenario_name == "full_reinvestment":
+            final_day = results.portfolio_db.get_holdings(
+                account="Taxable",
+                symbol="VXUS",
+                date=end_date,
+                include_zero=True,
+            ).iloc[0]
+            assert final_day["quantity"] == 102  # 100 initial + 2 reinvested
             assert (
-                final_day["Taxable_VXUS_quantity"] == 102
-            )  # 100 initial + 2 reinvested
-            assert (
-                final_day["total_value"] == 102 * 41.0
+                final_day["value"] == 102 * 41.0
             )  # Final value = final shares * final price
 
             # Check initial and final portfolio values
@@ -602,14 +628,21 @@ class TestPerformanceWithDividends:
             )
 
         elif scenario_name == "partial_reinvestment":
+            final_day = results.portfolio_db.get_holdings(
+                account="Roth",
+                symbol="BND",
+                date=end_date,
+                include_zero=True,
+            ).iloc[0]
+            assert final_day["quantity"] == 101  # 100 initial + 1 reinvested
             assert (
-                final_day["Roth_BND_quantity"] == 101
-            )  # 100 initial + 1 reinvested
-            assert (
-                final_day["total_value"] == 101 * 75.5
+                final_day["value"] == 101 * 75.5
             )  # Final value = final shares * final price
 
-            assert dividend_day["net_cash_flow"] == -50.0
+            dividend_day = results.portfolio_db.get_cash_flows(
+                accounts=["Roth"], start_date=end_date, end_date=end_date
+            ).iloc[0]
+            assert dividend_day["cash_flow"] == -50.0
 
             # Check initial and final portfolio values
             purchase_price = 75.00

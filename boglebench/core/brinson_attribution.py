@@ -9,7 +9,6 @@ selection. Supports both database and DataFrame data sources.
 
 from typing import Dict, List, Optional, Tuple
 
-import numpy as np
 import pandas as pd
 
 from ..core.portfolio_db import PortfolioDatabase
@@ -22,12 +21,10 @@ class BrinsonAttributionCalculator:
     """
     Implements Brinson-Fachler attribution analysis.
 
-    Supports both normalized database and legacy DataFrame sources.
     """
 
     def __init__(
         self,
-        portfolio_history: Optional[pd.DataFrame] = None,
         benchmark_history: Optional[pd.DataFrame] = None,
         transactions: Optional[pd.DataFrame] = None,
         benchmark_components: Optional[List[Dict]] = None,
@@ -37,13 +34,11 @@ class BrinsonAttributionCalculator:
         Initialize the BrinsonAttributionCalculator.
 
         Args:
-            portfolio_history: Legacy DataFrame with portfolio history (optional)
             benchmark_history: DataFrame with benchmark performance data
             transactions: DataFrame containing transaction data (optional)
             benchmark_components: List of benchmark components (optional)
-            portfolio_db: PortfolioDatabase for normalized data access (preferred)
+            portfolio_db: PortfolioDatabase for normalized data access (optional)
         """
-        self.portfolio_history = portfolio_history
         self.benchmark_history = benchmark_history
         self.transactions = transactions
         self.benchmark_components = benchmark_components or []
@@ -67,16 +62,9 @@ class BrinsonAttributionCalculator:
                 return self._calculate_from_database(group_by)
             except Exception as e:  # pylint: disable=broad-except
                 logger.warning(
-                    "Database calculation failed, falling back to DataFrame: %s",
+                    "Database calculation failed: %s",
                     e,
                 )
-
-        # Fallback to DataFrame
-        if (
-            self.portfolio_history is not None
-            and self.benchmark_history is not None
-        ):
-            return self._calculate_from_dataframe(group_by)
 
         logger.error("No data source available for Brinson attribution")
         return pd.DataFrame(), {}
@@ -469,216 +457,6 @@ class BrinsonAttributionCalculator:
 
                 drilldown[category] = symbol_summary.sort_values(
                     "Selection Effect", ascending=False
-                )
-
-        return drilldown
-
-    def _calculate_from_dataframe(
-        self, group_by: str
-    ) -> Tuple[pd.DataFrame, Dict[str, pd.DataFrame]]:
-        """Legacy: calculate Brinson attribution using DataFrame."""
-        if self.portfolio_history is None or self.benchmark_history is None:
-            logger.error("Portfolio or benchmark history is not available")
-            return pd.DataFrame(), {}
-
-        # Get grouped data for portfolio
-        port_returns, port_weights = self._get_grouped_data(
-            self.portfolio_history, group_by, "portfolio"
-        )
-
-        # Get grouped data for benchmark
-        bench_returns, bench_weights = self._get_grouped_data(
-            self.benchmark_history, group_by, "benchmark"
-        )
-
-        # Calculate average weights and compound returns
-        port_avg_weights = port_weights.mean()
-        bench_avg_weights = bench_weights.mean()
-
-        port_twr = (1 + port_returns).prod() - 1
-        bench_twr = (1 + bench_returns).prod() - 1
-
-        # Calculate Brinson components
-        attribution_results = {}
-
-        all_categories = set(port_avg_weights.index).union(
-            set(bench_avg_weights.index)
-        )
-
-        for category in all_categories:
-            p_w = port_avg_weights.get(category, 0)
-            b_w = bench_avg_weights.get(category, 0)
-            p_r = port_twr.get(category, 0)
-            b_r = bench_twr.get(category, 0)
-
-            # Brinson-Fachler formulation
-            allocation = (p_w - b_w) * b_r
-            selection = b_w * (p_r - b_r)
-            interaction = (p_w - b_w) * (p_r - b_r)
-
-            attribution_results[category] = {
-                "Portfolio Weight": p_w,
-                "Benchmark Weight": b_w,
-                "Portfolio Return": p_r,
-                "Benchmark Return": b_r,
-                "Allocation Effect": allocation,
-                "Selection Effect": selection,
-                "Interaction Effect": interaction,
-                "Combined Selection Effect": selection + interaction,
-            }
-
-        summary_df = pd.DataFrame.from_dict(
-            attribution_results, orient="index"
-        )
-        summary_df["Total Effect"] = (
-            summary_df["Allocation Effect"] + summary_df["Selection Effect"]
-        )
-
-        # Calculate selection drill-down
-        bench_returns_df = pd.DataFrame(bench_returns)
-        selection_drilldown = self._calculate_selection_drilldown(
-            group_by, bench_returns_df
-        )
-
-        return summary_df, selection_drilldown
-
-    def _get_grouped_data(
-        self, history_df: pd.DataFrame, group_by: str, source: str
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """
-        Aggregates daily returns and weights by category (legacy DataFrame method).
-        """
-        if source == "portfolio":
-            trans_df = self.transactions
-        elif source == "benchmark":
-            trans_df = pd.DataFrame(self.benchmark_components)
-        else:
-            raise ValueError(f"Invalid source '{source}' specified.")
-
-        if trans_df is None or trans_df.empty:
-            return pd.DataFrame(), pd.DataFrame()
-
-        grouped_returns = pd.DataFrame(index=history_df.index)
-        grouped_weights = pd.DataFrame(index=history_df.index)
-
-        categories = trans_df[group_by].unique()
-
-        for category in categories:
-            symbols_in_cat = trans_df[trans_df[group_by] == category][
-                "symbol"
-            ].unique()
-
-            # Aggregate returns (weighted average of symbol returns)
-            cat_return = pd.Series(0.0, index=history_df.index)
-            cat_total_value = pd.Series(0.0, index=history_df.index)
-
-            for symbol in symbols_in_cat:
-                return_col = f"{symbol}_twr_return"
-                value_col = f"{symbol}_total_value"
-                if (
-                    return_col in history_df.columns
-                    and value_col in history_df.columns
-                ):
-                    symbol_start_value = (
-                        history_df[value_col].shift(1).fillna(0)
-                    )
-                    cat_return += symbol_start_value * history_df[return_col]
-                    cat_total_value += symbol_start_value
-
-            grouped_returns[category] = (
-                (cat_return / cat_total_value)
-                .replace([np.inf, -np.inf], 0)
-                .fillna(0)
-            )
-
-            # Aggregate weights
-            weight_cols = [
-                f"{symbol}_weight"
-                for symbol in symbols_in_cat
-                if f"{symbol}_weight" in history_df.columns
-            ]
-            if weight_cols:
-                grouped_weights[category] = history_df[weight_cols].sum(axis=1)
-
-        return grouped_returns, grouped_weights
-
-    def _calculate_selection_drilldown(
-        self,
-        group_by: str,
-        bench_returns: pd.DataFrame,
-    ) -> Dict[str, pd.DataFrame]:
-        """
-        Calculates the contribution of each individual symbol to the Selection Effect
-        (legacy DataFrame method).
-        """
-        if self.portfolio_history is None or self.transactions is None:
-            return {}
-
-        drilldown = {}
-        port_symbols_by_cat = self.transactions.groupby(group_by)[
-            "symbol"
-        ].unique()
-
-        for category, symbols in port_symbols_by_cat.items():
-            category_str = str(category)
-            symbol_data = []
-
-            for symbol in symbols:
-                return_col = f"{symbol}_twr_return"
-                value_col = f"{symbol}_total_value"
-
-                if (
-                    return_col in self.portfolio_history.columns
-                    and value_col in self.portfolio_history.columns
-                ):
-                    # Symbol return
-                    symbol_returns = self.portfolio_history[return_col]
-                    symbol_twr = (1 + symbol_returns).prod()
-                    if isinstance(symbol_twr, (int, float, np.number)):
-                        symbol_twr -= 1
-                    else:
-                        logger.error(
-                            "Invalid TWR calculation for symbol %s", symbol
-                        )
-                        symbol_twr = 0
-
-                    # Symbol weight
-                    total_value = self.portfolio_history["total_value"]
-                    symbol_value = self.portfolio_history[value_col]
-                    symbol_weights = symbol_value / total_value
-                    avg_weight = symbol_weights.mean()
-                    # Benchmark return for this category
-                    if category_str in bench_returns.columns:
-                        bench_cat_ret = (
-                            1 + bench_returns[category_str]
-                        ).prod()
-                        bench_cat_ret = (1 + bench_returns[category]).prod()
-                        if isinstance(bench_cat_ret, (int, float, np.number)):
-                            bench_cat_ret -= 1
-                        else:
-                            logger.error(
-                                "Invalid TWR calculation for symbol %s", symbol
-                            )
-                            bench_cat_ret = 0
-                    else:
-                        bench_cat_ret = 0
-
-                    # Selection effect
-                    selection_effect = avg_weight * (
-                        symbol_twr - bench_cat_ret
-                    )
-
-                    symbol_data.append(
-                        {
-                            "Symbol": symbol,
-                            "Avg. Weight": avg_weight,
-                            "Return (TWR)": symbol_twr,
-                            "Selection Effect": selection_effect,
-                        }
-                    )
-            if symbol_data:
-                drilldown[category_str] = pd.DataFrame(symbol_data).set_index(
-                    "Symbol"
                 )
 
         return drilldown

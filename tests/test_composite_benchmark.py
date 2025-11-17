@@ -19,7 +19,7 @@ def mock_market_data():
     dates = pd.to_datetime(
         pd.date_range("2023-01-01", "2023-03-30", freq="D"), utc=True
     )
-    VTI_close = (
+    vti_close = (
         pd.concat(
             [
                 pd.Series(range(100, 130)),  # Jan: VTI rises
@@ -28,7 +28,7 @@ def mock_market_data():
             ]
         ).reset_index(drop=True),
     )
-    VXUS_close = (
+    vxus_close = (
         pd.concat(
             [
                 pd.Series(range(80, 50, -1)),  # Jan: VXUS falls
@@ -43,8 +43,8 @@ def mock_market_data():
         "VTI": pd.DataFrame(
             {
                 "date": dates,
-                "close": VTI_close[0],
-                "adj_close": VTI_close[0],
+                "close": vti_close[0],
+                "adj_close": vti_close[0],
                 "dividend": zeros,
                 "split_coefficient": zeros,
             }
@@ -52,8 +52,8 @@ def mock_market_data():
         "VXUS": pd.DataFrame(
             {
                 "date": dates,
-                "close": VXUS_close[0],
-                "adj_close": VXUS_close[0],
+                "close": vxus_close[0],
+                "adj_close": vxus_close[0],
                 "dividend": zeros,
                 "split_coefficient": zeros,
             }
@@ -143,20 +143,18 @@ def test_composite_benchmark_calculation(
         analyzer.build_portfolio_history()
         results = analyzer.calculate_performance()
 
+        benchmark_history = analyzer.benchmark_history
+
         # --- Assertions ---
         assert (
-            not analyzer.benchmark_history.empty
+            not benchmark_history.empty
         ), "Benchmark history should be generated"
 
         # Check that the benchmark value reflects the component movements
         # Start of Feb, VTI is high, VXUS is low.
         # Start of Mar, VTI is low, VXUS is high.
-        jan_31_val = analyzer.benchmark_history.loc[
-            analyzer.benchmark_history["date"] == "2023-01-31"
-        ]["adj_close"].iloc[0]
-        feb_28_val = analyzer.benchmark_history.loc[
-            analyzer.benchmark_history["date"] == "2023-02-28"
-        ]["adj_close"].iloc[0]
+        jan_31_val = benchmark_history.at["2023-01-31", "adj_close"]
+        feb_28_val = benchmark_history.at["2023-02-28", "adj_close"]
 
         # In Jan, VTI (60%) went up, VXUS (40%) went down. Net should be up slightly.
         # VTI: 100->129 (+29%), VXUS: 80->51 (-36.25%). (0.6*1.29) + (0.4*0.6375) > 1

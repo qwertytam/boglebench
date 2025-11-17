@@ -38,7 +38,7 @@ class PortfolioInsertMixin:
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                date,
+                date.isoformat(),
                 total_value,
                 net_cash_flow,
                 investment_cash_flow,
@@ -69,7 +69,7 @@ class PortfolioInsertMixin:
             ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                date,
+                date.isoformat(),
                 account,
                 total_value,
                 cash_flow,
@@ -96,7 +96,7 @@ class PortfolioInsertMixin:
                 date, account, symbol, quantity, value, weight
             ) VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (date, account, symbol, quantity, value, weight),
+            (date.isoformat(), account, symbol, quantity, value, weight),
         )
 
     def insert_symbol_data(
@@ -122,7 +122,7 @@ class PortfolioInsertMixin:
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                date,
+                date.isoformat(),
                 symbol,
                 price,
                 adj_price,

@@ -93,7 +93,7 @@ class PortfolioDatabase(
         cursor = self.get_cursor()
         cursor.execute(
             "DELETE FROM portfolio_summary WHERE date BETWEEN ? AND ?",
-            (start_date, end_date),
+            (start_date.isoformat(), end_date.isoformat()),
         )
         conn = self.get_connection()
         conn.commit()

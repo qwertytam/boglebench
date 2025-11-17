@@ -1,10 +1,7 @@
 """Test SQLite compatibility of database schema."""
 
 import sqlite3
-import tempfile
-from pathlib import Path
 
-import pandas as pd
 import pytest
 
 from boglebench.core.db_schema import ALL_TABLES
@@ -43,6 +40,7 @@ def test_schema_creates_successfully():
 
 def test_holdings_with_attributes_temporal_lookup():
     """Test that holdings_with_attributes view correctly performs temporal attribute lookups."""
+    # pylint: disable=line-too-long
     conn = sqlite3.connect(":memory:")
     cursor = conn.cursor()
 
@@ -117,6 +115,7 @@ def test_holdings_with_attributes_temporal_lookup():
 
 def test_symbol_data_with_attributes_temporal_lookup():
     """Test that symbol_data_with_attributes view correctly performs temporal attribute lookups."""
+    # pylint: disable=line-too-long
     conn = sqlite3.connect(":memory:")
     cursor = conn.cursor()
 
