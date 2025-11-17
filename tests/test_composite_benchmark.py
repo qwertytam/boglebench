@@ -143,20 +143,18 @@ def test_composite_benchmark_calculation(
         analyzer.build_portfolio_history()
         results = analyzer.calculate_performance()
 
+        benchmark_history = analyzer.benchmark_history
+
         # --- Assertions ---
         assert (
-            not analyzer.benchmark_history.empty
+            not benchmark_history.empty
         ), "Benchmark history should be generated"
 
         # Check that the benchmark value reflects the component movements
         # Start of Feb, VTI is high, VXUS is low.
         # Start of Mar, VTI is low, VXUS is high.
-        jan_31_val = analyzer.benchmark_history.loc[
-            analyzer.benchmark_history["date"] == "2023-01-31"
-        ]["adj_close"].iloc[0]
-        feb_28_val = analyzer.benchmark_history.loc[
-            analyzer.benchmark_history["date"] == "2023-02-28"
-        ]["adj_close"].iloc[0]
+        jan_31_val = benchmark_history.at["2023-01-31", "adj_close"]
+        feb_28_val = benchmark_history.at["2023-02-28", "adj_close"]
 
         # In Jan, VTI (60%) went up, VXUS (40%) went down. Net should be up slightly.
         # VTI: 100->129 (+29%), VXUS: 80->51 (-36.25%). (0.6*1.29) + (0.4*0.6375) > 1
