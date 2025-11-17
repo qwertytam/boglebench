@@ -4,10 +4,10 @@ Brinson-Fachler attribution analysis implementation.
 This module implements the Brinson-Fachler attribution methodology to decompose
 portfolio returns into allocation and selection effects. Helps identify whether
 outperformance came from sector allocation decisions or individual security
-selection. Supports both database and DataFrame data sources.
+selection using database as the single source of truth.
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Tuple
 
 import pandas as pd
 
@@ -25,24 +25,26 @@ class BrinsonAttributionCalculator:
 
     def __init__(
         self,
-        benchmark_history: Optional[pd.DataFrame] = None,
-        transactions: Optional[pd.DataFrame] = None,
-        benchmark_components: Optional[List[Dict]] = None,
-        portfolio_db: Optional[PortfolioDatabase] = None,  # NEW
+        benchmark_history: pd.DataFrame,
+        portfolio_db: PortfolioDatabase,
     ):
         """
         Initialize the BrinsonAttributionCalculator.
-
+        
         Args:
-            benchmark_history: DataFrame with benchmark performance data
-            transactions: DataFrame containing transaction data (optional)
-            benchmark_components: List of benchmark components (optional)
-            portfolio_db: PortfolioDatabase for normalized data access (optional)
+            benchmark_history: DataFrame with benchmark performance data (required)
+            portfolio_db: PortfolioDatabase for normalized data access (required)
+            
+        Raises:
+            ValueError: If either parameter is None
         """
+        if benchmark_history is None or benchmark_history.empty:
+            raise ValueError("benchmark_history is required")
+        if portfolio_db is None:
+            raise ValueError("portfolio_db is required")
+            
         self.benchmark_history = benchmark_history
-        self.transactions = transactions
-        self.benchmark_components = benchmark_components or []
-        self.portfolio_db = portfolio_db  # NEW
+        self.portfolio_db = portfolio_db
 
     def calculate(
         self, group_by: str
@@ -56,18 +58,7 @@ class BrinsonAttributionCalculator:
         Returns:
             Tuple of (summary_df, selection_drilldown)
         """
-        # Try database first if available
-        if self.portfolio_db is not None:
-            try:
-                return self._calculate_from_database(group_by)
-            except Exception as e:  # pylint: disable=broad-except
-                logger.warning(
-                    "Database calculation failed: %s",
-                    e,
-                )
-
-        logger.error("No data source available for Brinson attribution")
-        return pd.DataFrame(), {}
+        return self._calculate_from_database(group_by)
 
     def _calculate_from_database(
         self, group_by: str
