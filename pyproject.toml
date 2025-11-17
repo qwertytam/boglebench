@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Portfolio performance analysis and benchmarking in the spirit of John Bogle"
 authors = [{ name = "Tom Marshall", email = "tom.q.marshall@gmail.com>" }]
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 keywords = [
     "portfolio",
     "finance",
@@ -21,7 +21,6 @@ keywords = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Financial and Insurance Industry",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
