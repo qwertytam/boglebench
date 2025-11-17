@@ -35,7 +35,7 @@ class TestAdvancedAttribution:
             config.config["analysis"]["attribution_analysis"] = {
                 "enabled": True,
                 "method": "Brinson",
-                "transaction_groups": ["group_asset_class", "group_sector"],
+                "transaction_groups": ["asset_class", "sector"],
             }
             config.config["benchmark"] = {
                 "name": "Custom 60/40",
@@ -43,14 +43,10 @@ class TestAdvancedAttribution:
                     {
                         "symbol": "VTI",
                         "weight": 0.60,
-                        "group_asset_class": "US Equity",
-                        "group_sector": "Total Market",
                     },
                     {
                         "symbol": "VXUS",
                         "weight": 0.40,
-                        "group_asset_class": "International Equity",
-                        "group_sector": "Total Market",
                     },
                 ],
             }
@@ -182,22 +178,40 @@ class TestAdvancedAttribution:
 
         transactions_file_path.write_text(textwrap.dedent(data.strip()))
 
+    def _write_attributes(self, analyzer: BogleBenchAnalyzer, data: str) -> str:
+        """Helper to write attributes string data to a temp CSV file."""
+        attributes_dir = analyzer.config.get_transactions_file_path().parent
+        attributes_path = attributes_dir / "symbol_attributes.csv"
+        attributes_path.write_text(textwrap.dedent(data.strip()))
+        return str(attributes_path)
+
     def test_brinson_outperformance_scenario(self, scenario_analyzer):
         """Test Case 1.1: Verify Allocation & Selection for outperformance."""
         transactions_data = """
-date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_asset_class,group_sector
-2023-01-03,AAPL,BUY,100,150,15000,Test_Account,US Equity,Technology
+date,symbol,transaction_type,quantity,value_per_share,total_value,account
+2023-01-03,AAPL,BUY,100,150,15000,Test_Account
         """
+        
+        attributes_data = """
+symbol,effective_date,asset_class,sector
+AAPL,2023-01-01,US Equity,Technology
+VTI,2023-01-01,US Equity,Total Market
+VXUS,2023-01-01,International Equity,Total Market
+        """
+        
         analyzer = scenario_analyzer
         self._write_transactions(analyzer, transactions_data)
-        analyzer.load_transactions()  # Load from the file we just wrote
+        attributes_path = self._write_attributes(analyzer, attributes_data)
+        
+        analyzer.load_transactions()
         analyzer.build_portfolio_history()
+        analyzer.load_symbol_attributes(csv_path=attributes_path)
         results = analyzer.calculate_performance()
 
         brinson_summary = results.brinson_summary
         assert brinson_summary is not None
 
-        us_equity_results = brinson_summary["group_asset_class"].loc[
+        us_equity_results = brinson_summary["asset_class"].loc[
             "US Equity"
         ]
         assert us_equity_results["Allocation Effect"] > 0
@@ -206,22 +220,34 @@ date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_
     def test_brinson_selection_drilldown(self, scenario_analyzer):
         """Test Case 1.4: Verify the drill-down report math."""
         transactions_data = """
-date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_asset_class,group_sector
-2023-01-03,AAPL,BUY,50,150,7500,Test_Account,US Equity,Technology
-2023-01-03,MSFT,BUY,50,100,5000,Test_Account,US Equity,Technology
+date,symbol,transaction_type,quantity,value_per_share,total_value,account
+2023-01-03,AAPL,BUY,50,150,7500,Test_Account
+2023-01-03,MSFT,BUY,50,100,5000,Test_Account
 """
+        
+        attributes_data = """
+symbol,effective_date,asset_class,sector
+AAPL,2023-01-01,US Equity,Technology
+MSFT,2023-01-01,US Equity,Technology
+VTI,2023-01-01,US Equity,Total Market
+VXUS,2023-01-01,International Equity,Total Market
+        """
+        
         analyzer = scenario_analyzer
         self._write_transactions(analyzer, transactions_data)
+        attributes_path = self._write_attributes(analyzer, attributes_data)
+        
         analyzer.load_transactions()
         analyzer.build_portfolio_history()
+        analyzer.load_symbol_attributes(csv_path=attributes_path)
         results = analyzer.calculate_performance()
 
         brinson_summary = results.brinson_summary
-        selection_drilldown = results.selection_drilldown["group_asset_class"]
+        selection_drilldown = results.selection_drilldown["asset_class"]
 
         assert "US Equity" in selection_drilldown
         drilldown_df = selection_drilldown["US Equity"]
-        total_selection_effect = brinson_summary["group_asset_class"].loc[
+        total_selection_effect = brinson_summary["asset_class"].loc[
             "US Equity"
         ]["Selection Effect"]
 
@@ -250,15 +276,27 @@ date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_
     def test_overlapping_holdings_round_trip(self, scenario_analyzer):
         """Test Case 4.1: Test performance with an overlapping round-trip trade."""
         transactions_data = """
-date,symbol,transaction_type,quantity,value_per_share,total_value,account,group_asset_class,group_sector
-2023-01-03,MSFT,BUY,10,100,1000,Test_Account,US Equity,Technology
-2023-01-06,AAPL,BUY,20,153.4,3068,Test_Account,US Equity,Technology
-2023-01-10,AAPL,SELL,20,160.1,3202,Test_Account,US Equity,Technology
+date,symbol,transaction_type,quantity,value_per_share,total_value,account
+2023-01-03,MSFT,BUY,10,100,1000,Test_Account
+2023-01-06,AAPL,BUY,20,153.4,3068,Test_Account
+2023-01-10,AAPL,SELL,20,160.1,3202,Test_Account
 """
+        
+        attributes_data = """
+symbol,effective_date,asset_class,sector
+AAPL,2023-01-01,US Equity,Technology
+MSFT,2023-01-01,US Equity,Technology
+VTI,2023-01-01,US Equity,Total Market
+VXUS,2023-01-01,International Equity,Total Market
+        """
+        
         analyzer = scenario_analyzer
         self._write_transactions(analyzer, transactions_data)
+        attributes_path = self._write_attributes(analyzer, attributes_data)
+        
         analyzer.load_transactions()
         analyzer.build_portfolio_history()
+        analyzer.load_symbol_attributes(csv_path=attributes_path)
         history = analyzer.portfolio_history
 
         assert (

@@ -32,14 +32,6 @@ class TestBogleBenchAnalyzer:
                 "value_per_share": [150.50, 240.25, 155.75, 380.00],
                 "total_value": [15050.0, 12012.5, 7787.5, 9500.0],
                 "account": ["Schwab", "Fidelity", "Schwab", "Personal"],
-                "group1": ["Tech", "Tech", "Tech", "Index"],
-                "group2": [
-                    "Large Cap",
-                    "Large Cap",
-                    "Large Cap",
-                    "Broad Market",
-                ],
-                "group3": ["US", "US", "US", "US"],
                 "notes": [
                     "Initial",
                     "Diversify",
@@ -185,9 +177,6 @@ class TestBogleBenchAnalyzer:
         assert analyzer.transactions is not None
         assert "total_value" in result.columns
         assert "account" in result.columns
-        assert "group1" in result.columns
-        assert "group2" in result.columns
-        assert "group3" in result.columns
         assert "notes" in result.columns
         assert result["symbol"].tolist() == [
             "AAPL",
