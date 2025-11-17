@@ -365,7 +365,11 @@ class TestDividendProcessorIntegration:
         output_path = temp_config.get_output_path()
 
         monkeypatch.setattr(
-            ConfigManager, "get_data_path", lambda self, config: temp_data_path
+            ConfigManager,
+            "get_data_path",
+            lambda self, subdir=None: (
+                temp_data_path / subdir if subdir else temp_data_path
+            ),
         )
 
         monkeypatch.setattr(
