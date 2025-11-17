@@ -294,7 +294,11 @@ class TestDividendScenarios:
         output_path = temp_config.get_output_path()
 
         monkeypatch.setattr(
-            ConfigManager, "get_data_path", lambda self, config: temp_data_path
+            ConfigManager,
+            "get_data_path",
+            lambda self, subdir=None: (
+                temp_data_path / subdir if subdir else temp_data_path
+            ),
         )
 
         monkeypatch.setattr(
@@ -335,8 +339,9 @@ class TestDividendScenarios:
 
         # --- Main Workflow ---
         analyzer.load_transactions(transactions_file)
-        portfolio_df = analyzer.build_portfolio_history()
+        analyzer.build_portfolio_history()
         results = analyzer.calculate_performance()
+        portfolio_db = results.portfolio_db
 
         # --- Assertions ---
         assert results is not None
@@ -344,40 +349,66 @@ class TestDividendScenarios:
         assert "total_return" in results.portfolio_metrics["twr"]
         assert "total_return" in results.benchmark_metrics
 
-        final_day = portfolio_df.iloc[-1]
-
         if scenario_name == "cash_dividend":
-            assert final_day["Taxable_TICKA_quantity"] == 100
-            # Cash dividend is a positive cash flow
-            dividend_day_flow = portfolio_df[
-                portfolio_df["date"].dt.date
-                == pd.to_datetime("2023-01-04").date()
-            ]["net_cash_flow"].sum()
-            assert dividend_day_flow == -50.00
+            account = "Taxable"
+            symbol = "TICKA"
+            date = pd.to_datetime("2023-01-04", utc=True)
+            holdings_df = portfolio_db.get_holdings(
+                account=account, symbol=symbol, date=date
+            )
+            assert not holdings_df.empty
+            assert holdings_df["quantity"].iloc[0] == 100
+
+            # Cash dividend is a negative cash flow
+            cash_flow_df = portfolio_db.get_cash_flows(
+                symbols=[symbol], accounts=[account], date=date
+            )
+            assert cash_flow_df["cash_flow"].sum() == -50.00
 
         elif scenario_name == "full_reinvest":
-            assert final_day["Ira_TICKB_quantity"] == 102.5
-            # Reinvestment is also treated as a positive cash flow (dividend
-            # in, buy out)
-            dividend_day_flow = portfolio_df[
-                portfolio_df["date"].dt.date
-                == pd.to_datetime("2023-01-04").date()
-            ]["net_cash_flow"].sum()
-            assert dividend_day_flow == 0.00
+            account = "Ira"
+            symbol = "TICKB"
+            date = pd.to_datetime("2023-01-04", utc=True)
+            holdings_df = portfolio_db.get_holdings(
+                account=account, symbol=symbol, date=date
+            )
+            assert not holdings_df.empty
+            assert holdings_df["quantity"].iloc[0] == 102.5
+
+            cash_flow_df = portfolio_db.get_cash_flows(
+                symbols=[symbol], accounts=[account], date=date
+            )
+            assert cash_flow_df["cash_flow"].sum() == 0.00
 
         elif scenario_name == "partial_reinvest":
-            assert final_day["Taxable_TICKC_quantity"] == 102.5
+            account = "Taxable"
+            symbol = "TICKC"
+            date = pd.to_datetime("2023-01-04", utc=True)
+            holdings_df = portfolio_db.get_holdings(
+                account=account, symbol=symbol, date=date
+            )
+            assert not holdings_df.empty
+            assert holdings_df["quantity"].iloc[0] == 102.5
+
             # Total cash flow is the sum of the cash and reinvested portions
-            dividend_day_flow = portfolio_df[
-                portfolio_df["date"].dt.date
-                == pd.to_datetime("2023-01-04").date()
-            ]["net_cash_flow"].sum()
-            assert dividend_day_flow == -25.00  # 25 cash + 75 reinvest
+            cash_flow_df = portfolio_db.get_cash_flows(
+                symbols=[symbol], accounts=[account], date=date
+            )
+            assert (
+                cash_flow_df["cash_flow"].sum() == -25.00
+            )  # 25 cash + 75 reinvest
 
         elif scenario_name == "partial_sale":
-            assert final_day["Taxable_TICKD_quantity"] == 150
-            dividend_day_flow = portfolio_df[
-                portfolio_df["date"].dt.date
-                == pd.to_datetime("2023-01-05").date()
-            ]["net_cash_flow"].sum()
-            assert dividend_day_flow == -75.00
+            account = "Taxable"
+            symbol = "TICKD"
+            date = pd.to_datetime("2023-01-05", utc=True)
+            holdings_df = portfolio_db.get_holdings(
+                account=account, symbol=symbol, date=date
+            )
+            assert not holdings_df.empty
+            assert holdings_df["quantity"].iloc[0] == 150
+
+            cash_flow_df = portfolio_db.get_cash_flows(
+                symbols=[symbol], accounts=[account], date=date
+            )
+            assert cash_flow_df["cash_flow"].sum() == -75.00
