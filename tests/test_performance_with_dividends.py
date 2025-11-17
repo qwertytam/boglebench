@@ -546,12 +546,16 @@ class TestPerformanceWithDividends:
             )
 
         elif scenario_name == "full_reinvestment":
-            # assert (
-            #     final_day["Taxable_VXUS_quantity"] == 102
-            # )  # 100 initial + 2 reinvested
-            # assert (
-            #     final_day["total_value"] == 102 * 41.0
-            # )  # Final value = final shares * final price
+            final_day = results.portfolio_db.get_holdings(
+                account="Taxable",
+                symbol="VXUS",
+                date=end_date,
+                include_zero=True,
+            ).iloc[0]
+            assert final_day["quantity"] == 102  # 100 initial + 2 reinvested
+            assert (
+                final_day["value"] == 102 * 41.0
+            )  # Final value = final shares * final price
 
             # Check initial and final portfolio values
             purchase_price = 40.00
@@ -624,14 +628,21 @@ class TestPerformanceWithDividends:
             )
 
         elif scenario_name == "partial_reinvestment":
-            # assert (
-            #     final_day["Roth_BND_quantity"] == 101
-            # )  # 100 initial + 1 reinvested
-            # assert (
-            #     final_day["total_value"] == 101 * 75.5
-            # )  # Final value = final shares * final price
+            final_day = results.portfolio_db.get_holdings(
+                account="Roth",
+                symbol="BND",
+                date=end_date,
+                include_zero=True,
+            ).iloc[0]
+            assert final_day["quantity"] == 101  # 100 initial + 1 reinvested
+            assert (
+                final_day["value"] == 101 * 75.5
+            )  # Final value = final shares * final price
 
-            # assert dividend_day["net_cash_flow"] == -50.0
+            dividend_day = results.portfolio_db.get_cash_flows(
+                accounts=["Roth"], start_date=end_date, end_date=end_date
+            ).iloc[0]
+            assert dividend_day["cash_flow"] == -50.0
 
             # Check initial and final portfolio values
             purchase_price = 75.00
