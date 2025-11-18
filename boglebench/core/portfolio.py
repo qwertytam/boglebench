@@ -151,20 +151,18 @@ class BogleBenchAnalyzer:
         return self.transactions
 
     def load_symbol_attributes(
-        self, 
-        csv_path: Optional[str] = None,
-        api_source: Optional[str] = None
+        self, csv_path: Optional[str] = None, api_source: Optional[str] = None
     ) -> None:
         """
         Load symbol attributes into database.
-        
+
         Attributes must be loaded separately from transactions via CSV file or API.
         This should be called after build_portfolio_history() to ensure database exists.
-        
+
         Args:
             csv_path: Path to attributes CSV file (optional)
             api_source: API source for attributes (optional, not yet implemented)
-            
+
         Raises:
             ValueError: If portfolio_db not initialized
         """
@@ -172,12 +170,12 @@ class BogleBenchAnalyzer:
             raise ValueError(
                 "Must build portfolio history first using build_portfolio_history()"
             )
-        
+
         # Use portfolio start date as effective date for attributes
         effective_date = (
             self.start_date if self.start_date else pd.Timestamp.now(tz="UTC")
         )
-        
+
         if csv_path:
             load_symbol_attributes_from_csv(
                 db=self.portfolio_db,
@@ -407,14 +405,23 @@ class BogleBenchAnalyzer:
             if not attributes_df.empty:
                 # Standard attribute columns in database
                 factor_columns = [
-                    col for col in [
-                        "asset_class", "geography", "region", "sector",
-                        "style", "market_cap", "fund_type"
+                    col
+                    for col in [
+                        "asset_class",
+                        "geography",
+                        "region",
+                        "sector",
+                        "style",
+                        "market_cap",
+                        "fund_type",
                     ]
-                    if col in attributes_df.columns and not attributes_df[col].isna().all()
+                    if col in attributes_df.columns
+                    and not attributes_df[col].isna().all()
                 ]
                 for factor in factor_columns:
-                    self.logger.info("Calculating attribution for factor: %s", factor)
+                    self.logger.info(
+                        "Calculating attribution for factor: %s", factor
+                    )
                     factor_attributions[factor] = attrib_calculator.calculate(
                         group_by=factor
                     )
@@ -458,10 +465,15 @@ class BogleBenchAnalyzer:
 
                 # Validate that attributes exist in database
                 valid_attributes = [
-                    "asset_class", "geography", "region", "sector",
-                    "style", "market_cap", "fund_type"
+                    "asset_class",
+                    "geography",
+                    "region",
+                    "sector",
+                    "style",
+                    "market_cap",
+                    "fund_type",
                 ]
-                
+
                 for group in group_by:
                     if group not in valid_attributes:
                         self.logger.error(

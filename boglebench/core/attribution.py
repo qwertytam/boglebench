@@ -26,15 +26,17 @@ class AttributionCalculator:
     ):
         """
         Initialize the AttributionCalculator.
-        
+
         Args:
             portfolio_db: PortfolioDatabase for normalized data access (required)
-            
+
         Raises:
             ValueError: If portfolio_db is None
         """
         if portfolio_db is None:
-            raise ValueError("portfolio_db is required for attribution calculation")
+            raise ValueError(
+                "portfolio_db is required for attribution calculation"
+            )
         self.portfolio_db = portfolio_db
 
     def calculate(self, group_by: str) -> pd.DataFrame:

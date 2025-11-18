@@ -138,7 +138,7 @@ class TestAdvancedAttribution:
         return market_data_dict
 
     @pytest.fixture
-    def scenario_analyzer(self, temp_config, market_data, monkeypatch):
+    def scenario_analyzer(self, temp_config, monkeypatch):
         """Fixture to set up BogleBenchAnalyzer pointed at the temp directory."""
         temp_data_path = Path(temp_config.get("data.base_path"))
 
@@ -178,7 +178,9 @@ class TestAdvancedAttribution:
 
         transactions_file_path.write_text(textwrap.dedent(data.strip()))
 
-    def _write_attributes(self, analyzer: BogleBenchAnalyzer, data: str) -> str:
+    def _write_attributes(
+        self, analyzer: BogleBenchAnalyzer, data: str
+    ) -> str:
         """Helper to write attributes string data to a temp CSV file."""
         attributes_dir = analyzer.config.get_transactions_file_path().parent
         attributes_path = attributes_dir / "symbol_attributes.csv"
@@ -191,18 +193,18 @@ class TestAdvancedAttribution:
 date,symbol,transaction_type,quantity,value_per_share,total_value,account
 2023-01-03,AAPL,BUY,100,150,15000,Test_Account
         """
-        
+
         attributes_data = """
 symbol,effective_date,asset_class,sector
 AAPL,2023-01-01,US Equity,Technology
 VTI,2023-01-01,US Equity,Total Market
 VXUS,2023-01-01,International Equity,Total Market
         """
-        
+
         analyzer = scenario_analyzer
         self._write_transactions(analyzer, transactions_data)
         attributes_path = self._write_attributes(analyzer, attributes_data)
-        
+
         analyzer.load_transactions()
         analyzer.build_portfolio_history()
         analyzer.load_symbol_attributes(csv_path=attributes_path)
@@ -211,9 +213,7 @@ VXUS,2023-01-01,International Equity,Total Market
         brinson_summary = results.brinson_summary
         assert brinson_summary is not None
 
-        us_equity_results = brinson_summary["asset_class"].loc[
-            "US Equity"
-        ]
+        us_equity_results = brinson_summary["asset_class"].loc["US Equity"]
         assert us_equity_results["Allocation Effect"] > 0
         assert us_equity_results["Selection Effect"] > 0
 
@@ -224,7 +224,7 @@ date,symbol,transaction_type,quantity,value_per_share,total_value,account
 2023-01-03,AAPL,BUY,50,150,7500,Test_Account
 2023-01-03,MSFT,BUY,50,100,5000,Test_Account
 """
-        
+
         attributes_data = """
 symbol,effective_date,asset_class,sector
 AAPL,2023-01-01,US Equity,Technology
@@ -232,11 +232,11 @@ MSFT,2023-01-01,US Equity,Technology
 VTI,2023-01-01,US Equity,Total Market
 VXUS,2023-01-01,International Equity,Total Market
         """
-        
+
         analyzer = scenario_analyzer
         self._write_transactions(analyzer, transactions_data)
         attributes_path = self._write_attributes(analyzer, attributes_data)
-        
+
         analyzer.load_transactions()
         analyzer.build_portfolio_history()
         analyzer.load_symbol_attributes(csv_path=attributes_path)
@@ -281,7 +281,7 @@ date,symbol,transaction_type,quantity,value_per_share,total_value,account
 2023-01-06,AAPL,BUY,20,153.4,3068,Test_Account
 2023-01-10,AAPL,SELL,20,160.1,3202,Test_Account
 """
-        
+
         attributes_data = """
 symbol,effective_date,asset_class,sector
 AAPL,2023-01-01,US Equity,Technology
@@ -289,41 +289,41 @@ MSFT,2023-01-01,US Equity,Technology
 VTI,2023-01-01,US Equity,Total Market
 VXUS,2023-01-01,International Equity,Total Market
         """
-        
+
         analyzer = scenario_analyzer
         self._write_transactions(analyzer, transactions_data)
         attributes_path = self._write_attributes(analyzer, attributes_data)
-        
+
         analyzer.load_transactions()
         portfolio_db = analyzer.build_portfolio_history()
         analyzer.load_symbol_attributes(csv_path=attributes_path)
-        
+
         # Get holdings data from database
         holdings_df = portfolio_db.get_holdings()
-        
+
         # Check AAPL quantity on 2023-01-04 (should be 0 before purchase)
         aapl_2023_01_04 = holdings_df[
-            (holdings_df["date"].dt.date == pd.Timestamp("2023-01-04").date()) & 
-            (holdings_df["symbol"] == "AAPL") &
-            (holdings_df["account"] == "Test_Account")
+            (holdings_df["date"].dt.date == pd.Timestamp("2023-01-04").date())
+            & (holdings_df["symbol"] == "AAPL")
+            & (holdings_df["account"] == "Test_Account")
         ]
         if not aapl_2023_01_04.empty:
             assert aapl_2023_01_04.iloc[0]["quantity"] == 0
-            
+
         # Check AAPL quantity on 2023-01-06 (after purchase)
         aapl_2023_01_06 = holdings_df[
-            (holdings_df["date"].dt.date == pd.Timestamp("2023-01-06").date()) & 
-            (holdings_df["symbol"] == "AAPL") &
-            (holdings_df["account"] == "Test_Account")
+            (holdings_df["date"].dt.date == pd.Timestamp("2023-01-06").date())
+            & (holdings_df["symbol"] == "AAPL")
+            & (holdings_df["account"] == "Test_Account")
         ]
         assert not aapl_2023_01_06.empty
         assert aapl_2023_01_06.iloc[0]["quantity"] == 20
-        
+
         # Check AAPL quantity on 2023-01-11 (after sell)
         aapl_2023_01_11 = holdings_df[
-            (holdings_df["date"].dt.date == pd.Timestamp("2023-01-11").date()) & 
-            (holdings_df["symbol"] == "AAPL") &
-            (holdings_df["account"] == "Test_Account")
+            (holdings_df["date"].dt.date == pd.Timestamp("2023-01-11").date())
+            & (holdings_df["symbol"] == "AAPL")
+            & (holdings_df["account"] == "Test_Account")
         ]
         if not aapl_2023_01_11.empty:
             assert aapl_2023_01_11.iloc[0]["quantity"] == 0

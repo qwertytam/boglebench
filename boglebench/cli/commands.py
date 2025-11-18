@@ -13,8 +13,9 @@ import click
 
 from ..core.portfolio import BogleBenchAnalyzer
 from ..utils.config import ConfigManager
-from ..utils.logging_config import get_logger, setup_logging
+from ..utils.logging_config import BogleBenchLogger, get_logger, setup_logging
 from ..utils.workspace import WorkspaceContext
+from ..visualization.charts import BogleBenchCharts
 
 
 @click.command()
@@ -75,15 +76,16 @@ def init_workspace(path: str, force: bool):
         workspace_path / "transactions" / "sample_attributions.csv", force
     )
 
-    click.echo(f"\n✅ BogleBench workspace initialized successfully!")
-    click.echo(f"\nNext steps:")
+    click.echo("\n✅ BogleBench workspace initialized successfully!")
+    click.echo("\nNext steps:")
     click.echo(f"1. Edit your configuration: {config_path}")
     click.echo(
         f"2. Add your transaction data to: {workspace_path}/transactions/"
     )
     click.echo(f"3. Run analysis: boglebench-analyze --config {config_path}")
     click.echo(
-        f"\n💡 Remember Bogle's wisdom: 'Stay the course' and focus on long-term results!"
+        "\n💡 Remember Bogle's wisdom: 'Stay the course' "
+        "and focus on long-term results!"
     )
 
 
@@ -124,8 +126,6 @@ def _create_sample_transactions(file_path: Path, force: bool):
 
     if sample_template.exists():
         # Copy template to destination
-        import shutil
-
         shutil.copy2(sample_template, file_path)
         click.echo(f"Created sample transactions: {file_path}")
     else:
@@ -137,7 +137,7 @@ def _create_sample_transactions(file_path: Path, force: bool):
 2023-01-15,AAPL,BUY,100,150.50,Default
 2023-02-15,SPY,BUY,50,380.00,Default
 """
-        with open(file_path, "w") as f:
+        with open(file_path, "w", encoding="utf-8") as f:
             f.write(minimal_sample)
         click.echo(f"Created minimal sample transactions: {file_path}")
 
@@ -159,24 +159,26 @@ def _create_sample_attributions(file_path: Path, force: bool):
 
     if sample_template.exists():
         # Copy template to destination
-        import shutil
-
         shutil.copy2(sample_template, file_path)
         click.echo(f"Created sample attributions: {file_path}")
     else:
         # Fallback if template not found
-        click.echo(f"WARNING: Sample attributions template not found at {sample_template}")
+        click.echo(
+            f"WARNING: Sample attributions template not found at {sample_template}"
+        )
         click.echo("Creating minimal sample file")
 
         minimal_sample = """symbol,effective_date,asset_class,geography,sector,fund_type
 AAPL,2023-01-01,Equity,US,Technology,Stock
 SPY,2023-01-01,Equity,US,Diversified,ETF
 """
-        with open(file_path, "w") as f:
+        with open(file_path, "w", encoding="utf-8") as f:
             f.write(minimal_sample)
         click.echo(f"Created minimal sample attributions: {file_path}")
 
-    click.echo("Sample includes attributes for symbols used in sample_transactions.csv")
+    click.echo(
+        "Sample includes attributes for symbols used in sample_transactions.csv"
+    )
 
 
 @click.command()
@@ -191,16 +193,14 @@ SPY,2023-01-01,Equity,US,Diversified,ETF
     "--create-charts", is_flag=True, help="Generate performance charts"
 )
 @click.option("--benchmark", help="Override benchmark symbol (e.g., SPY, VTI)")
-def run_analysis(
-    config: str, output_format: str, create_charts: bool, benchmark: str
-):
+def run_analysis(config: str, create_charts: bool, benchmark: str):
     """Run BogleBench portfolio analysis."""
 
     # Set workspace context early
     if config:
         config_path = Path(config).expanduser()
         if config_path.exists():
-            workspace = WorkspaceContext.discover_workspace(config_path.parent)
+            _ = WorkspaceContext.discover_workspace(config_path.parent)
 
     # Now initialize logging (will use correct workspace)
     setup_logging()
@@ -217,7 +217,7 @@ def run_analysis(
         # Override benchmark if specified
         if benchmark:
             analyzer.config.config["settings"]["benchmark_symbol"] = benchmark
-            logger.info(f"📊 Using custom benchmark: {benchmark}")
+            logger.info("📊 Using custom benchmark: %s", benchmark)
 
         logger.debug("Loading transaction data...")
         analyzer.load_transactions()
@@ -229,7 +229,7 @@ def run_analysis(
         results = analyzer.calculate_performance()
 
         # Display results
-        logger.info("\n" + results.summary())
+        logger.info("\n%s", results.summary())
 
         # Export results
         output_dir = analyzer.config.get_output_path()
@@ -238,8 +238,6 @@ def run_analysis(
         # Create charts if requested
         if create_charts:
             logger.info("📊 Creating performance charts...")
-            from ..visualization.charts import BogleBenchCharts
-
             charts = BogleBenchCharts(results)
 
             # Create dashboard
@@ -252,7 +250,7 @@ def run_analysis(
                 account_chart_path = output_dir / "account_comparison.png"
                 charts.create_account_comparison(str(account_chart_path))
 
-        logger.info(f"✅ Analysis complete! Results saved to {output_dir}")
+        logger.info("✅ Analysis complete! Results saved to %s", output_dir)
 
     except ValueError as e:
         logger.error("❌ Error running analysis: %s", e)
@@ -267,8 +265,6 @@ def run_analysis(
 @click.option("--account", help="Show holdings for specific account only")
 def show_holdings(config: str, account: str):
     """Show current portfolio holdings."""
-    from ..core.portfolio import BogleBenchAnalyzer
-
     try:
         analyzer = BogleBenchAnalyzer(config_path=config)
         analyzer.load_transactions()
@@ -301,7 +297,7 @@ def show_holdings(config: str, account: str):
         click.echo("=" * 80)
         click.echo(f"Total Value: ${total_value:,.2f}")
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-except
         click.echo(f"❌ Error: {e}")
 
 
@@ -316,8 +312,7 @@ def validate_transactions(path: str):
     # Initialize logging (will now use correct workspace)
     setup_logging()
     logger = get_logger("cli.validate")
-
-    from ..core.portfolio import BogleBenchAnalyzer
+    logger.info("🔍 Validating transaction file: %s", path)
 
     try:
         click.echo(f"🔍 Validating transaction file: {path}")
@@ -351,7 +346,3 @@ def cleanup_logs(days: int, config: str):
     logger_instance.cleanup_old_logs(days)
 
     click.echo(f"Log cleanup completed - kept logs from last {days} days")
-
-
-if __name__ == "__main__":
-    init_workspace()

@@ -30,11 +30,11 @@ class BrinsonAttributionCalculator:
     ):
         """
         Initialize the BrinsonAttributionCalculator.
-        
+
         Args:
             benchmark_history: DataFrame with benchmark performance data (required)
             portfolio_db: PortfolioDatabase for normalized data access (required)
-            
+
         Raises:
             ValueError: If either parameter is None
         """
@@ -42,7 +42,7 @@ class BrinsonAttributionCalculator:
             raise ValueError("benchmark_history is required")
         if portfolio_db is None:
             raise ValueError("portfolio_db is required")
-            
+
         self.benchmark_history = benchmark_history
         self.portfolio_db = portfolio_db
 
@@ -207,9 +207,11 @@ class BrinsonAttributionCalculator:
             dates = pd.to_datetime(self.benchmark_history["date"], utc=True)
         else:
             # Date is in the index
-            dates = self.benchmark_history.index
-            if not isinstance(dates, pd.DatetimeIndex):
-                dates = pd.to_datetime(dates, utc=True)
+            index_dates = self.benchmark_history.index
+            if not isinstance(index_dates, pd.DatetimeIndex):
+                dates = pd.Series(pd.to_datetime(index_dates, utc=True))
+            else:
+                dates = pd.Series(index_dates)
 
         for date in dates:
             # Get attributes as of this date
@@ -242,13 +244,18 @@ class BrinsonAttributionCalculator:
                 except KeyError:
                     # Try with date() if it's a timestamp
                     try:
-                        matching_idx = [idx for idx in self.benchmark_history.index if idx.date() == date.date()]
+                        matching_idx = [
+                            idx
+                            for idx in self.benchmark_history.index
+                            if idx.date() == date.date()
+                        ]
                         if matching_idx:
                             date_row = self.benchmark_history.loc[matching_idx]
                         else:
                             date_row = pd.DataFrame()
-                    except:
+                    except Exception:  # pylint: disable=broad-except
                         date_row = pd.DataFrame()
+                        logger.warning("No benchmark data for date %s", date)
 
             if date_row.empty:
                 continue
