@@ -60,7 +60,17 @@ class PortfolioHistoryBuilder:
         self.accounts = self.transactions["account"].unique().tolist()
 
         # Initialize database
-        self.db = PortfolioDatabase(db_path=db_path, config=config)
+        if db_path is None:
+            db_path = str(self.config.get_database_path())
+            db_path = db_path if db_path is not None else None
+
+        if db_path is None:
+            self.logger.warning(
+                "No database path provided, using in-memory database"
+            )
+            db_path = ":memory:"
+
+        self.db = PortfolioDatabase(db_path=db_path, config=self.config)
         # Clear existing data for this date range
         self.db.clear_date_range(start_date, end_date)
 
