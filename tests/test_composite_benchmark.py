@@ -93,6 +93,8 @@ analysis:
   end_date: "2023-03-30"
 data:
   base_path: "" # Will be set by the test
+database:
+  db_path: ":memory:"
 benchmark:
   rebalancing: monthly
   components:
