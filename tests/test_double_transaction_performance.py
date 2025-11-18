@@ -25,6 +25,7 @@ class TestMultiTransactionPerformance:
 
             config = ConfigManager()
             config.config["data"]["base_path"] = str(config_dir)
+            config.config["database"]["db_path"] = ":memory:"
 
             config.config["analysis"]["start_date"] = "2023-06-05"
             config.config["analysis"]["end_date"] = "2023-06-16"

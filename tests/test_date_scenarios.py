@@ -126,7 +126,7 @@ class TestDateScenarios:
 
             config = ConfigManager()
             config.config["data"]["base_path"] = str(config_dir)
-
+            config.config["database"]["db_path"] = ":memory:"
             config.config["settings"]["cache_market_data"] = True
             config.config["settings"]["force_refresh_market_data"] = False
 

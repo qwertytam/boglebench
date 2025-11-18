@@ -327,6 +327,7 @@ class TestDividendProcessorIntegration:
 
             config = ConfigManager()
             config.config["data"]["base_path"] = str(config_dir)
+            config.config["database"]["db_path"] = ":memory:"
 
             # Updating default settings
             config.config["settings"]["cache_market_data"] = True

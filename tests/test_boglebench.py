@@ -50,6 +50,7 @@ class TestBogleBenchAnalyzer:
             # Create config
             config = ConfigManager()
             config.config["data"]["base_path"] = str(config_dir)
+            config.config["database"]["db_path"] = ":memory:"
 
             # Create directories
             (config_dir / "transactions").mkdir()

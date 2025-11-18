@@ -29,6 +29,8 @@ class TestAdvancedAttribution:
 
             config = ConfigManager()
             config.config["data"]["base_path"] = str(config_dir)
+            config.config["database"]["db_path"] = ":memory:"
+
             config.config["analysis"]["start_date"] = "2023-01-03"
             config.config["analysis"]["end_date"] = "2023-01-24"
 
