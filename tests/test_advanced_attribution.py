@@ -140,7 +140,7 @@ class TestAdvancedAttribution:
         return market_data_dict
 
     @pytest.fixture
-    def scenario_analyzer(self, temp_config, monkeypatch):
+    def scenario_analyzer(self, temp_config, market_data, monkeypatch):
         """Fixture to set up BogleBenchAnalyzer pointed at the temp directory."""
         temp_data_path = Path(temp_config.get("data.base_path"))
 
@@ -166,6 +166,20 @@ class TestAdvancedAttribution:
             ConfigManager,
             "get_output_path",
             lambda self: temp_data_path / "output",
+        )
+
+        # Mock the market data provider to return test data
+        # pylint: disable=unused-argument
+        def mock_get_market_data(self, symbols, start_date, end_date):
+            return {
+                symbol: market_data[symbol]
+                for symbol in symbols
+                if symbol in market_data
+            }
+
+        monkeypatch.setattr(
+            "boglebench.core.market_data.MarketDataProvider.get_market_data",
+            mock_get_market_data,
         )
 
         analyzer = BogleBenchAnalyzer()
