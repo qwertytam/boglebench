@@ -462,17 +462,21 @@ class BogleBenchAnalyzer:
                     benchmark_history=self.benchmark_history,
                     portfolio_db=self.portfolio_db,
                 )
+
                 group_by = self.config.get(
-                    "analysis.attribution_analysis.transaction_groups",
-                    ["asset_class"],
+                    "analysis.attribution_analysis.attributes_to_analyze",
+                    None,
                 )
                 if isinstance(group_by, Dict):
-                    group_by = group_by.get("value", ["asset_class"])
+                    group_by = group_by.get("value", None)
+
                 if group_by is None or not isinstance(group_by, list):
-                    group_by = ["asset_class"]
-                    self.logger.warning(
-                        "Invalid group_by for Brinson attribution. Using default ['asset_class']."
+                    self.logger.info(
+                        "No attributes specified or invalid type for Brinson attribution. "
+                        "Using default all available attributes."
                     )
+                    group_by = self.portfolio_db.get_attribute_columns_in_use()
+
                 if self.start_date is None or self.end_date is None:
                     raise ValueError(
                         "Start date and end date must both be set"
