@@ -275,8 +275,6 @@ class DividendProcessor:
 
                 for account in holding_accounts:
                     shares = self._get_shares_held_on_date(symbol, div_date, account)
-                    if shares <= 0:
-                        continue
 
                     # Negative because dividends are cash inflows to investor
                     # (outflows from portfolio perspective)
