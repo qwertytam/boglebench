@@ -396,3 +396,86 @@ class SymbolAttributesMixin:
                 )
 
         logger.info("✅ Upserted %d symbol attributes", len(attributes_df))
+
+    def get_attribute_coverage(self) -> pd.DataFrame:
+        """
+        Get statistics on attribute coverage across all symbols.
+
+        Returns:
+            DataFrame with columns:
+            - attribute: Attribute name
+            - count: Number of symbols with this attribute
+            - percentage: Percentage of symbols with this attribute
+            - unique_values: Number of unique values for this attribute
+        """
+        attribute_columns = [
+            "asset_class",
+            "geography",
+            "region",
+            "sector",
+            "style",
+            "market_cap",
+            "fund_type",
+        ]
+
+        df = self.get_symbol_attributes()
+
+        if df.empty:
+            return pd.DataFrame(
+                columns=["attribute", "count", "percentage", "unique_values"]
+            )
+
+        total_symbols = len(df)
+        stats = []
+
+        for col in attribute_columns:
+            if col in df.columns:
+                non_null_count = df[col].notna().sum()
+                unique_count = df[col].nunique()
+                percentage = (
+                    (non_null_count / total_symbols * 100)
+                    if total_symbols > 0
+                    else 0
+                )
+
+                stats.append(
+                    {
+                        "attribute": col,
+                        "count": non_null_count,
+                        "percentage": percentage,
+                        "unique_values": unique_count,
+                    }
+                )
+
+        return pd.DataFrame(stats)
+
+    def get_attribute_columns_in_use(
+        self, full_coverage: bool = False
+    ) -> list[str]:
+        """
+        Get list of attribute columns that have data in the database.
+
+        Args:
+            full_coverage: If True, only return attributes that have values
+                           for all symbols. If False, return attributes with
+                           values for at least one symbol.
+        Returns:
+            List of attribute column names in use.
+        """
+        coverage_df = self.get_attribute_coverage()
+        if coverage_df.empty:
+            return []
+
+        df = self.get_symbol_attributes()
+        total_symbols = len(df["symbol"].unique())
+
+        if full_coverage:
+            in_use = coverage_df[coverage_df["count"] == total_symbols][
+                "attribute"
+            ].tolist()
+        else:
+            in_use = coverage_df[coverage_df["count"] > 0][
+                "attribute"
+            ].tolist()
+
+        return in_use
