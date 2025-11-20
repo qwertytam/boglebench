@@ -14,10 +14,12 @@ __email__ = "tom.q.marshall@gmail.com"
 
 # Import main classes for easy access
 from .core.portfolio import BogleBenchAnalyzer
+from .core.short_position_handler import ShortPositionError
 from .utils.config import ConfigManager
 
 # Define what gets imported with "from boglebench import *"
 __all__ = [
     "BogleBenchAnalyzer",
     "ConfigManager",
+    "ShortPositionError",
 ]

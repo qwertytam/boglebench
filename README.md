@@ -151,6 +151,10 @@ settings:
   risk_free_rate: 0.02
   default_currency: "USD"
 
+validation:
+  # Short position handling - BogleBench does not support short positions
+  short_position_handling: "reject"  # Options: "reject" or "cap"
+
 analysis:
   performance_metrics:
     - total_return
@@ -159,6 +163,26 @@ analysis:
     - sharpe_ratio
     - max_drawdown
     - information_ratio
+```
+
+### Short Position Handling
+
+BogleBench does not support short positions (negative holdings). When a transaction would result in a short position, you can configure how the system responds:
+
+- **`reject`** (default): Raises an error and prevents the transaction from being processed. This ensures data integrity and prevents invalid portfolio states.
+- **`cap`**: Automatically adjusts the transaction quantity to the maximum allowed (equal to current holdings), resulting in zero holdings after the transaction. A warning is logged for each capped transaction.
+
+Example scenarios:
+
+- **Scenario**: You own 100 shares of AAPL and attempt to sell 150 shares
+  - **reject mode**: Raises `ShortPositionError` with details about the invalid transaction
+  - **cap mode**: Adjusts the sale to 100 shares, resulting in zero holdings, and logs a warning
+
+Configure this in your `config.yaml`:
+
+```yaml
+validation:
+  short_position_handling: "reject"  # or "cap"
 ```
 
 ## Philosophy
@@ -287,7 +311,3 @@ IRR (or money-weighted return) is the discount rate that sets the **net present 
 - **TWR**: Breaks into subperiods; removes impact of external flows; preferred for manager evaluation.
 - **IRR**: True money-weighted return; reflects investor experience; best for portfolios with irregular flows or where timing decisions matter.
 - **This package**: Treats internal flows as external, ensuring that dividends and interest are explicitly included in return calculations.
-
-## Known Bugs
-
-- Returns and other metrics will be incorrect for a net short portfolio and account position

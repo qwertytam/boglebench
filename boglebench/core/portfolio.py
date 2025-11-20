@@ -33,6 +33,10 @@ from ..core.metrics import (
 )
 from ..core.portfolio_db import PortfolioDatabase
 from ..core.results import PerformanceResults
+from ..core.short_position_handler import (
+    ShortPositionError,
+    process_transactions_with_short_check,
+)
 from ..core.symbol_attributes_loader import load_symbol_attributes_from_csv
 from ..core.transaction_loader import load_validate_transactions
 from ..utils.config import ConfigManager
@@ -140,12 +144,22 @@ class BogleBenchAnalyzer:
         Raises:
             FileNotFoundError: If transaction file doesn't exist
             ValueError: If required columns are missing or data is invalid
+            ShortPositionError: If short position detected and handling mode is REJECT
         """
         if file_path is None:
             file_path = str(self.config.get_transactions_file_path())
         self.logger.info("📄 Loading transactions from: %s", file_path)
 
         self.transactions = load_validate_transactions(Path(file_path))
+        
+        # Check for short positions and handle according to config
+        short_handling = self.config.get(
+            "validation.short_position_handling", "reject"
+        )
+        self.transactions = process_transactions_with_short_check(
+            self.transactions, handling_mode=short_handling
+        )
+        
         self.logger.info("✅ Loaded %d transactions", len(self.transactions))
 
         return self.transactions
