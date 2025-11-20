@@ -78,6 +78,13 @@ class DividendProcessor:
         ):
             self._apply_corrections(diffs)
 
+        # Handle future dividends based on configuration
+        future_div_mode = self.config.get(
+            "dividend.handle_future_dividends", "ignore"
+        )
+        if future_div_mode == "add_to_all_accounts":
+            self._add_future_dividends()
+
         return self.transactions_df
 
     def _log_validation_messages(self, messages: list[str]):
@@ -170,3 +177,149 @@ class DividendProcessor:
                     self.transactions_df.loc[mask, "total_value"] = (
                         new_total_value
                     )
+
+    def _get_last_transaction_date(self, symbol: Optional[str] = None) -> pd.Timestamp:
+        """
+        Get the last transaction date for a symbol, or overall if symbol not specified.
+        
+        Args:
+            symbol: Optional symbol to filter by. If None, returns last date across all symbols.
+            
+        Returns:
+            Last transaction date as Timestamp
+        """
+        if symbol:
+            symbol_txns = self.transactions_df[self.transactions_df["symbol"] == symbol]
+            if symbol_txns.empty:
+                return self.start_date if self.start_date else pd.Timestamp.min
+            return symbol_txns["date"].max()
+        else:
+            return self.transactions_df["date"].max()
+
+    def _get_accounts_holding_symbol(self, symbol: str, date: pd.Timestamp) -> list:
+        """
+        Get list of accounts that have holdings of a symbol on a given date.
+        
+        Args:
+            symbol: The symbol to check
+            date: The date to check holdings
+            
+        Returns:
+            List of account names with positive holdings
+        """
+        accounts = self.transactions_df["account"].unique()
+        holding_accounts = []
+        
+        for account in accounts:
+            shares = self._get_shares_held_on_date(symbol, date, account)
+            if shares > 0:
+                holding_accounts.append(account)
+        
+        return holding_accounts
+
+    def _add_future_dividends(self):
+        """
+        Add dividend transactions for market dividends that occur after the last
+        transaction date but before end_date. Only adds to accounts holding the symbol.
+        """
+        if not self.end_date:
+            return
+
+        last_txn_date = self._get_last_transaction_date()
+        self.logger.info(
+            "🔍 Checking for dividends after last transaction date (%s) through end date (%s)",
+            last_txn_date.date(),
+            self.end_date.date(),
+        )
+
+        all_symbols = self.transactions_df["symbol"].unique()
+        new_transactions = []
+
+        for symbol in all_symbols:
+            # Get market dividends for this symbol
+            market_data = self.market_data.get(symbol)
+            if market_data is None or market_data.empty:
+                continue
+
+            # Filter for dividends after last transaction but before end_date
+            market_dividends = market_data[
+                (market_data["dividend"].abs() > 0)
+                & (market_data["date"] > last_txn_date)
+                & (market_data["date"] <= self.end_date)
+            ]
+
+            for _, div_row in market_dividends.iterrows():
+                div_date = div_row["date"]
+                div_per_share = div_row["dividend"]
+
+                # Check if user already recorded this dividend
+                existing_div = self.transactions_df[
+                    (self.transactions_df["symbol"] == symbol)
+                    & (self.transactions_df["date"].dt.date == div_date.date())
+                    & (
+                        identify_any_dividend_transactions(
+                            self.transactions_df["transaction_type"]
+                        )
+                    )
+                ]
+
+                if not existing_div.empty:
+                    # User already has this dividend recorded
+                    continue
+
+                # Find accounts holding this symbol at dividend date
+                holding_accounts = self._get_accounts_holding_symbol(symbol, div_date)
+
+                for account in holding_accounts:
+                    shares = self._get_shares_held_on_date(symbol, div_date, account)
+                    if shares <= 0:
+                        continue
+
+                    # Negative because dividends are cash inflows to investor
+                    # (outflows from portfolio perspective)
+                    total_value = -shares * div_per_share
+
+                    new_txn = {
+                        "date": div_date,
+                        "symbol": symbol,
+                        "transaction_type": "DIVIDEND",
+                        "quantity": 0,
+                        "value_per_share": div_per_share,
+                        "total_value": total_value,
+                        "account": account,
+                        "div_type": self.config.get(
+                            "dividend.default_div_type", "CASH"
+                        ),
+                        "div_pay_date": div_date,
+                        "div_record_date": pd.NaT,
+                        "div_ex_date": pd.NaT,
+                        "split_ratio": 0,
+                        "notes": "Auto-added future dividend",
+                    }
+                    new_transactions.append(new_txn)
+                    
+                    self.logger.info(
+                        "➕ Adding future dividend: %s on %s for account %s: $%.2f (%s shares × $%.4f)",
+                        symbol,
+                        div_date.date(),
+                        account,
+                        -total_value,
+                        shares,
+                        div_per_share,
+                    )
+
+        if new_transactions:
+            # Add new transactions to the DataFrame
+            new_df = pd.DataFrame(new_transactions)
+            self.transactions_df = pd.concat(
+                [self.transactions_df, new_df], ignore_index=True
+            )
+            # Re-sort by date
+            self.transactions_df = self.transactions_df.sort_values("date").reset_index(drop=True)
+            self.logger.info(
+                "✅ Added %d future dividend transactions", len(new_transactions)
+            )
+        else:
+            self.logger.info(
+                "ℹ️  No future dividends to add (all already recorded or no holdings)"
+            )

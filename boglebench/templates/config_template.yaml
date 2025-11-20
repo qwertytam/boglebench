@@ -108,6 +108,11 @@ advanced:
     warn_missing_dividends: true # Warn about market dividends not in user data
     default_div_type: "CASH" # Default dividend type
     comparison_error_margin: 0.01 # Acceptable difference for matching
+    # Handle dividends that occur after last transaction but before end_date
+    # Options:
+    #   "ignore" - Skip these dividends (default, safe approach)
+    #   "add_to_all_accounts" - Automatically add dividend transactions to all accounts holding the symbol
+    handle_future_dividends: "ignore"
 
   # Portfolio calculation settings
   portfolio:
