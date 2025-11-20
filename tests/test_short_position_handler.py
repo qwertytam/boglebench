@@ -34,7 +34,7 @@ def simple_transactions():
             ),
             "symbol": ["AAPL", "AAPL", "AAPL"],
             "transaction_type": ["BUY", "BUY", "SELL"],
-            "quantity": [100, 50, 25],
+            "quantity": [100, 50, -25],  # SELL has negative quantity
             "value_per_share": [150.0, 155.0, 165.0],
             "total_value": [15000.0, 7750.0, -4125.0],
             "account": ["Test", "Test", "Test"],
@@ -57,7 +57,7 @@ def short_position_transactions():
             ),
             "symbol": ["AAPL", "AAPL", "AAPL"],
             "transaction_type": ["BUY", "BUY", "SELL"],
-            "quantity": [100, 50, 200],  # Selling more than owned
+            "quantity": [100, 50, -200],  # SELL has negative quantity
             "value_per_share": [150.0, 155.0, 165.0],
             "total_value": [15000.0, 7750.0, -33000.0],
             "account": ["Test", "Test", "Test"],
@@ -81,7 +81,7 @@ def multi_account_transactions():
             ),
             "symbol": ["AAPL", "AAPL", "AAPL", "AAPL"],
             "transaction_type": ["BUY", "BUY", "SELL", "SELL"],
-            "quantity": [100, 50, 60, 40],
+            "quantity": [100, 50, -60, -40],  # SELL has negative quantities
             "value_per_share": [150.0, 150.0, 165.0, 165.0],
             "total_value": [15000.0, 7500.0, -9900.0, -6600.0],
             "account": ["Account1", "Account2", "Account1", "Account2"],
@@ -273,7 +273,7 @@ class TestProcessTransactionsWithShortCheck:
                 ),
                 "symbol": ["AAPL", "AAPL", "AAPL"],
                 "transaction_type": ["SELL", "BUY", "BUY"],
-                "quantity": [25, 100, 50],
+                "quantity": [-25, 100, 50],  # SELL has negative quantity
                 "value_per_share": [165.0, 150.0, 155.0],
                 "total_value": [-4125.0, 15000.0, 7750.0],
                 "account": ["Test", "Test", "Test"],
@@ -299,7 +299,7 @@ class TestProcessTransactionsWithShortCheck:
                 ),
                 "symbol": ["AAPL", "AAPL", "AAPL"],
                 "transaction_type": ["BUY", "DIVIDEND", "SELL"],
-                "quantity": [100, 0, 50],
+                "quantity": [100, 0, -50],  # SELL has negative quantity
                 "value_per_share": [150.0, 0.0, 165.0],
                 "total_value": [15000.0, -50.0, -8250.0],
                 "account": ["Test", "Test", "Test"],
@@ -328,7 +328,7 @@ class TestProcessTransactionsWithShortCheck:
                 ),
                 "symbol": ["AAPL", "MSFT", "AAPL", "MSFT"],
                 "transaction_type": ["BUY", "BUY", "SELL", "SELL"],
-                "quantity": [100, 50, 50, 25],
+                "quantity": [100, 50, -50, -25],  # SELL has negative quantities
                 "value_per_share": [150.0, 240.0, 165.0, 245.0],
                 "total_value": [15000.0, 12000.0, -8250.0, -6125.0],
                 "account": ["Test", "Test", "Test", "Test"],
