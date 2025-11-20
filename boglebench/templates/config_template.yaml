@@ -45,27 +45,21 @@ analysis:
   attribution_analysis:
     enabled: true
     method: "Brinson" # Options: Brinson, Brinson-Fachler
-    transaction_groups: # Columns in transactions CSV to group by
-      - "group_asset_class" # Must start with "group"
-      - "group_sector"
+    attributes_to_analyze: # List of attributes to analyze for attribution; if empty, uses all available attributes
+      - "asset_class"
+      - "sector"
 
 # Benchmark settings
 benchmark:
   rebalance_frequency: "monthly" # Options: daily, weekly, monthly, quarterly, yearly, none
-  name: "Vanguard 60/40" # Descriptive name for reports
+  name: "Blended US/Intl Eqty + Bond 20/40/40" # Descriptive name for reports
   components:
     - symbol: "VTI" # Vanguard Total Stock Market ETF
-      weight: 0.30
-      group_asset_class: "US Equity"
-      group_sector: "Total Market"
-    - symbol: VXUS # Vanguard Total International Stock ETF
+      weight: 0.20
+    - symbol: "VXUS" # Vanguard Total International Stock ETF
       weight: 0.40
-      group_asset_class: "International Equity"
-      group_sector: "Total Market"
     - symbol: "BND" # Vanguard Total Bond Market ETF
       weight: 0.40
-      group_asset_class: "US Bond"
-      group_sector: "Total Market"
 
   # Risk analysis settings
   risk_analysis:
