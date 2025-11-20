@@ -300,7 +300,7 @@ class DividendProcessor:
                     new_transactions.append(new_txn)
                     
                     self.logger.info(
-                        "➕ Adding future dividend: %s on %s for account %s: $%.2f (%s shares × $%.4f)",
+                        "➕ Adding future dividend: %s on %s for account %s: $%.2f (%.2f shares × $%.4f)",
                         symbol,
                         div_date.date(),
                         account,
