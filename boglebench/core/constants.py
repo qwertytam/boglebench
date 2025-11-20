@@ -194,6 +194,24 @@ class DividendTypes(str, Enum):
         return div_type in cls.all_types()
 
 
+class ShortPositionHandling(str, Enum):
+    """Enumeration for short position handling strategies."""
+
+    REJECT = "reject"  # Reject transactions that result in short positions
+    CAP = "cap"  # Cap transactions to available long position
+    IGNORE = "ignore"  # Log warning but allow short positions
+
+    @classmethod
+    def all_modes(cls) -> list[str]:
+        """Return a list of all short position handling modes."""
+        return [item.value for item in cls]
+
+    @classmethod
+    def is_valid(cls, mode: str) -> bool:
+        """Check if a short position handling mode is valid."""
+        return mode in cls.all_modes()
+
+
 class FileExtensions(str, Enum):
     """Enumeration for common file extensions used in BogleBench."""
 

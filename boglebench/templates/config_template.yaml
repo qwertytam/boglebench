@@ -136,6 +136,15 @@ validation:
   warn_on_holidays: true
   warn_on_missing_data: true
 
+  # Short position handling
+  # BogleBench cannot properly handle short positions (negative holdings).
+  # This setting controls how to handle transactions that would result in short positions.
+  # Options:
+  #   "reject" - Reject any transaction that would result in a short position (raises error)
+  #   "cap" - Cap the transaction to the available long position (resulting in zero holdings)
+  #   "ignore" - Log warning but allow short positions (portfolio metrics may be incorrect)
+  short_position_handling: "reject" # Options: reject, cap, ignore
+
 # Database configuration
 database:
   # Path to portfolio history database file
