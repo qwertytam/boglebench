@@ -38,7 +38,7 @@ output/
 # Keep test, sample and template CSVs
 !*_pytest.csv
 !sample_transactions.csv
-!sample_attributions.csv
+!sample_attributes.csv
 
 # Development
 .env
