@@ -4,3 +4,5 @@ MSFT,2023-01-01,Equity,US,North America,Technology,Growth,Large Cap,Stock
 GOOGL,2023-01-01,Equity,US,North America,Technology,Growth,Large Cap,Stock
 SPY,2023-01-01,Equity,US,North America,Diversified,Blend,Large Cap,ETF
 VTI,2023-01-01,Equity,US,North America,Diversified,Blend,Total Market,ETF
+VXUS,2023-01-01,Equity,International,Global,Diversified,Blend,Total Market,ETF
+BND,2023-01-01,Fixed Income,US,North America,Diversified,Blend,Total Market,ETF
