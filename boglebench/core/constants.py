@@ -199,6 +199,7 @@ class ShortPositionHandling(str, Enum):
 
     REJECT = "reject"  # Reject transactions that result in short positions
     CAP = "cap"  # Cap transactions to available long position
+    IGNORE = "ignore"  # Log warning but allow short positions
 
     @classmethod
     def all_modes(cls) -> list[str]:

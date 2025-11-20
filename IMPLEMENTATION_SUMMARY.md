@@ -10,7 +10,7 @@ Add the following to your `config.yaml`:
 
 ```yaml
 validation:
-  short_position_handling: "reject"  # Options: "reject" or "cap"
+  short_position_handling: "reject"  # Options: "reject", "cap", or "ignore"
 ```
 
 ## Modes
@@ -59,12 +59,34 @@ transactions = analyzer.load_transactions()
 - You want to close out positions without exact share counts
 - You're importing data from brokers that may have rounding differences
 
+### IGNORE Mode
+
+When a transaction would result in a short position, the system logs a warning but allows the transaction to proceed:
+
+```python
+analyzer = BogleBenchAnalyzer(config_path="config.yaml")  # config has ignore mode
+transactions = analyzer.load_transactions()
+# ⚠️  Short position detected but allowed (IGNORE mode):
+#    Date: 2023-11-15
+#    Account: Schwab_401k
+#    Symbol: AAPL
+#    Current position: 125.00 shares
+#    Transaction quantity: -200.00 shares
+#    Will result in: -75.00 shares (short position)
+#    Note: Portfolio metrics may be incorrect for short positions
+```
+
+**Use Case**: When you want to continue processing despite short positions. **Use with caution** as:
+- Portfolio metrics and calculations may be incorrect for short positions
+- This is intended for debugging or when you understand the limitations
+- You accept that the results may not be accurate
+
 ## Technical Details
 
 ### Files Changed
 
 1. **boglebench/core/constants.py**
-   - Added `ShortPositionHandling` enum with REJECT and CAP modes
+   - Added `ShortPositionHandling` enum with REJECT, CAP, and IGNORE modes
 
 2. **boglebench/core/short_position_handler.py** (new)
    - `ShortPositionError`: Exception raised when short position detected in REJECT mode
@@ -87,24 +109,26 @@ transactions = analyzer.load_transactions()
 
 ### Testing
 
-**Unit Tests** (14 tests in `test_short_position_handler.py`):
+**Unit Tests** (16 tests in `test_short_position_handler.py`):
 - Handler initialization and validation
 - Detection of short positions
 - REJECT mode error raising
 - CAP mode transaction adjustment
+- IGNORE mode allowing short positions
 - Multi-account independence
 - Edge cases (exact zero, same-day transactions)
 
-**Integration Tests** (4 tests in `test_short_position_integration.py`):
+**Integration Tests** (5 tests in `test_short_position_integration.py`):
 - Full workflow with BogleBenchAnalyzer
 - Normal transactions (no short positions)
 - REJECT mode with real config
 - CAP mode with real config
+- IGNORE mode with real config
 - Default behavior
 
 **Manual Validation** (`test_manual_validation.py`):
 - Uses actual sample transactions with known short position
-- Tests both REJECT and CAP modes end-to-end
+- Tests REJECT, CAP, and IGNORE modes end-to-end
 - Results: ✅ All tests passed
 
 ### Algorithm
@@ -116,6 +140,7 @@ transactions = analyzer.load_transactions()
    - If resulting position < 0 (with small epsilon for floating point):
      - **REJECT mode**: Raise `ShortPositionError`
      - **CAP mode**: Adjust transaction quantity to `-current_position`
+     - **IGNORE mode**: Log warning but allow transaction as-is
 3. Continue with adjusted (or original) transactions
 
 ### Performance Impact
@@ -148,6 +173,14 @@ ShortPositionError: Transaction would result in short position:
 ```
 Transaction adjusted from SELL 200 to SELL 150
 Final position: 0 shares (no short position)
+```
+
+**IGNORE Mode Result:**
+```
+Warning logged: Short position detected but allowed
+Transaction proceeds as-is: SELL 200
+Final position: -50 shares (short position - metrics may be incorrect)
+```
 ```
 
 ## Migration Guide

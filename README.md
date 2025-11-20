@@ -171,18 +171,20 @@ BogleBench does not support short positions (negative holdings). When a transact
 
 - **`reject`** (default): Raises an error and prevents the transaction from being processed. This ensures data integrity and prevents invalid portfolio states.
 - **`cap`**: Automatically adjusts the transaction quantity to the maximum allowed (equal to current holdings), resulting in zero holdings after the transaction. A warning is logged for each capped transaction.
+- **`ignore`**: Logs a warning but allows the short position to occur. Use with caution as portfolio metrics may be incorrect for short positions.
 
 Example scenarios:
 
 - **Scenario**: You own 100 shares of AAPL and attempt to sell 150 shares
   - **reject mode**: Raises `ShortPositionError` with details about the invalid transaction
   - **cap mode**: Adjusts the sale to 100 shares, resulting in zero holdings, and logs a warning
+  - **ignore mode**: Allows the sale of 150 shares, resulting in -50 shares (short position), and logs a warning
 
 Configure this in your `config.yaml`:
 
 ```yaml
 validation:
-  short_position_handling: "reject"  # or "cap"
+  short_position_handling: "reject"  # or "cap" or "ignore"
 ```
 
 ## Philosophy

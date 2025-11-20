@@ -109,6 +109,53 @@ def test_cap_mode():
         traceback.print_exc()
         return False
 
+def test_ignore_mode():
+    """Test IGNORE mode - should allow short position with warning."""
+    print("\n" + "="*70)
+    print("TEST 3: IGNORE mode (should detect and allow short position)")
+    print("="*70)
+    
+    try:
+        from boglebench import BogleBenchAnalyzer
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+            config_path = tmppath / "config.yaml"
+            create_test_config(config_path, "ignore")
+            
+            analyzer = BogleBenchAnalyzer(config_path=str(config_path))
+            transactions = analyzer.load_transactions()
+            
+            # Find the transaction (2023-11-15, AAPL, SELL)
+            aapl_sells = transactions[
+                (transactions['symbol'] == 'AAPL') & 
+                (transactions['transaction_type'] == 'SELL') &
+                (transactions['date'].dt.date == pd.Timestamp('2023-11-15').date())
+            ]
+            
+            if len(aapl_sells) == 0:
+                print("❌ FAILED: Could not find the AAPL SELL transaction")
+                return False
+            
+            actual_qty = aapl_sells.iloc[0]['quantity']
+            
+            # Should remain unchanged at -200
+            if abs(actual_qty - (-200.0)) < 0.01:
+                print("✅ SUCCESS: Short position detected and allowed")
+                print(f"\nOriginal transaction: SELL 200 shares")
+                print(f"Actual transaction: SELL {abs(actual_qty):.0f} shares")
+                print(f"Result: -75 shares (short position allowed with warning)")
+                return True
+            else:
+                print(f"❌ FAILED: Expected quantity -200, got {actual_qty}")
+                return False
+                
+    except Exception as e:
+        print(f"❌ FAILED: Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 if __name__ == "__main__":
     import pandas as pd
     
@@ -124,6 +171,7 @@ if __name__ == "__main__":
     # Run tests
     test1_pass = test_reject_mode()
     test2_pass = test_cap_mode()
+    test3_pass = test_ignore_mode()
     
     # Summary
     print("\n" + "="*70)
@@ -131,8 +179,9 @@ if __name__ == "__main__":
     print("="*70)
     print(f"Test 1 (REJECT mode): {'✅ PASSED' if test1_pass else '❌ FAILED'}")
     print(f"Test 2 (CAP mode):    {'✅ PASSED' if test2_pass else '❌ FAILED'}")
+    print(f"Test 3 (IGNORE mode): {'✅ PASSED' if test3_pass else '❌ FAILED'}")
     
-    if test1_pass and test2_pass:
+    if test1_pass and test2_pass and test3_pass:
         print("\n🎉 All tests passed!")
         sys.exit(0)
     else:

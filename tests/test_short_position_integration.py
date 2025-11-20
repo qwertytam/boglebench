@@ -171,3 +171,24 @@ api:
             # Should default to REJECT mode and raise error
             with pytest.raises(ShortPositionError):
                 analyzer.load_transactions()
+
+    def test_ignore_mode_allows_short_position(self):
+        """Test that IGNORE mode allows short position with warning."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+            config_path = tmppath / "config" / "config.yaml"
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            transactions_path = tmppath / "transactions.csv"
+
+            create_transactions_csv(transactions_path, has_short=True)
+            create_test_config(config_path, "ignore", str(transactions_path))
+
+            analyzer = BogleBenchAnalyzer(config_path=str(config_path))
+            transactions = analyzer.load_transactions()
+
+            # Should load successfully without adjustment
+            assert len(transactions) == 3
+            # Third transaction should remain as-is (short position allowed)
+            assert transactions.iloc[2]["quantity"] == -200.0
+            # Total value should remain unchanged
+            assert transactions.iloc[2]["total_value"] == -33000.0

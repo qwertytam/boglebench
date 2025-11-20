@@ -3,9 +3,10 @@ Short position detection and handling.
 
 This module provides functionality to detect and handle transactions that would
 result in short positions (negative holdings). BogleBench does not support 
-short positions, so this module implements two strategies:
+short positions, so this module implements three strategies:
 1. REJECT: Reject transactions that would result in short positions
 2. CAP: Cap the transaction quantity to the available long position
+3. IGNORE: Log warning but allow short positions to occur
 """
 
 from typing import Dict, Optional, Tuple
@@ -146,6 +147,11 @@ class ShortPositionHandler:
         elif self.handling_mode == ShortPositionHandling.CAP:
             return self._cap_transaction(transaction, current_position)
 
+        elif self.handling_mode == ShortPositionHandling.IGNORE:
+            return self._ignore_short_position(
+                transaction, current_position, resulting_position
+            )
+
         # Should never reach here due to validation in __init__
         raise ValueError(f"Unknown handling mode: {self.handling_mode}")
 
@@ -193,6 +199,42 @@ class ShortPositionHandler:
         )
 
         return adjusted, True
+
+    def _ignore_short_position(
+        self,
+        transaction: pd.Series,
+        current_position: float,
+        resulting_position: float,
+    ) -> Tuple[pd.Series, bool]:
+        """
+        Log a warning but allow the short position to occur.
+
+        Args:
+            transaction: Transaction data
+            current_position: Current holdings before transaction
+            resulting_position: Resulting holdings after transaction
+
+        Returns:
+            Tuple of (original_transaction, was_adjusted=False)
+        """
+        self.logger.warning(
+            "⚠️  Short position detected but allowed (IGNORE mode):\n"
+            "   Date: %s\n"
+            "   Account: %s\n"
+            "   Symbol: %s\n"
+            "   Current position: %.2f shares\n"
+            "   Transaction quantity: %.2f shares\n"
+            "   Will result in: %.2f shares (short position)\n"
+            "   Note: Portfolio metrics may be incorrect for short positions",
+            transaction["date"].date(),
+            transaction["account"],
+            transaction["symbol"],
+            current_position,
+            transaction["quantity"],
+            resulting_position,
+        )
+
+        return transaction, False
 
 
 def process_transactions_with_short_check(

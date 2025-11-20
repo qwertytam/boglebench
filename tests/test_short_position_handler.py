@@ -182,6 +182,32 @@ class TestShortPositionHandler:
         # Total value should be adjusted proportionally
         assert adjusted["total_value"] == -150.0 * 165.0
 
+    def test_ignore_mode_allows_short_position(self, short_position_transactions):
+        """Test that IGNORE mode allows short position with warning."""
+        handler = ShortPositionHandler(ShortPositionHandling.IGNORE)
+        holdings = {}
+
+        # Process first two transactions (BUY)
+        for _, trans in short_position_transactions.iloc[:2].iterrows():
+            adjusted, _ = handler.check_and_adjust_transaction(trans, holdings)
+            account = trans["account"]
+            symbol = trans["symbol"]
+            if account not in holdings:
+                holdings[account] = {}
+            holdings[account][symbol] = (
+                holdings[account].get(symbol, 0.0) + trans["quantity"]
+            )
+
+        # Third transaction should be allowed without adjustment
+        adjusted, was_adjusted = handler.check_and_adjust_transaction(
+            short_position_transactions.iloc[2], holdings
+        )
+
+        assert not was_adjusted
+        # Transaction should remain unchanged
+        assert adjusted["quantity"] == -200.0
+        assert adjusted["total_value"] == short_position_transactions.iloc[2]["total_value"]
+
     def test_cap_mode_exact_zero(self):
         """Test CAP mode when transaction would result in exactly zero."""
         handler = ShortPositionHandler(ShortPositionHandling.CAP)
@@ -263,6 +289,19 @@ class TestProcessTransactionsWithShortCheck:
         assert result.iloc[1]["quantity"] == 50.0
         # Third transaction should be capped to -150
         assert result.iloc[2]["quantity"] == -150.0
+
+    def test_process_with_ignore_mode(self, short_position_transactions):
+        """Test processing with IGNORE mode allows short position."""
+        result = process_transactions_with_short_check(
+            short_position_transactions, ShortPositionHandling.IGNORE
+        )
+
+        assert len(result) == len(short_position_transactions)
+        # All transactions should be unchanged
+        assert result.iloc[0]["quantity"] == 100.0
+        assert result.iloc[1]["quantity"] == 50.0
+        # Third transaction should remain as-is (creating short position)
+        assert result.iloc[2]["quantity"] == -200.0
 
     def test_process_unsorted_transactions(self):
         """Test that transactions are sorted by date before processing."""

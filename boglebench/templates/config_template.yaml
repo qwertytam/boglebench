@@ -142,7 +142,8 @@ validation:
   # Options:
   #   "reject" - Reject any transaction that would result in a short position (raises error)
   #   "cap" - Cap the transaction to the available long position (resulting in zero holdings)
-  short_position_handling: "reject" # Options: reject, cap
+  #   "ignore" - Log warning but allow short positions (portfolio metrics may be incorrect)
+  short_position_handling: "reject" # Options: reject, cap, ignore
 
 # Database configuration
 database:
