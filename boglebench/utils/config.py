@@ -152,6 +152,13 @@ class ConfigManager:
             transactions_file = ""
         return self.get_data_path(transactions_file)
 
+    def get_attributes_file_path(self) -> Path:
+        """Get path to attributes file."""
+        attributes_file = self.get("data.attributes_file")
+        if not isinstance(attributes_file, str):
+            attributes_file = ""
+        return self.get_data_path(attributes_file)
+
     def get_market_data_path(self) -> Path:
         """Get path to market data cache directory."""
         data_market_data_cache = self.get("data.market_data_cache")
@@ -236,7 +243,5 @@ class ConfigManager:
         db_path = self.get("database.db_path")
         if not isinstance(db_path, str):
             db_path = "portfolio_history.db"
-        if db_path:
-            return Path(db_path).expanduser()
-        # Default: put in data directory
-        return self.get_data_path() / "portfolio_history.db"
+
+        return self.get_data_path() / db_path

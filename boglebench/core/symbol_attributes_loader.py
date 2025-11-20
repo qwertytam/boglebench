@@ -6,8 +6,6 @@ from CSV files or external APIs and stores them in the database with temporal tr
 Attributes are completely separate from transaction data and must be loaded independently.
 """
 
-from typing import List
-
 import pandas as pd
 
 from ..core.portfolio_db import PortfolioDatabase

@@ -193,7 +193,9 @@ SPY,2023-01-01,Equity,US,Diversified,ETF
     "--create-charts", is_flag=True, help="Generate performance charts"
 )
 @click.option("--benchmark", help="Override benchmark symbol (e.g., SPY, VTI)")
-def run_analysis(config: str, create_charts: bool, benchmark: str):
+def run_analysis(
+    config: str, output_format: str, create_charts: bool, benchmark: str
+):
     """Run BogleBench portfolio analysis."""
 
     # Set workspace context early
@@ -225,6 +227,9 @@ def run_analysis(config: str, create_charts: bool, benchmark: str):
         logger.debug("Building portfolio history...")
         analyzer.build_portfolio_history()
 
+        logger.debug("Loading symbol attributes...")
+        analyzer.build_symbol_attributes()
+
         logger.debug("Calculating performance metrics...")
         results = analyzer.calculate_performance()
 
@@ -234,6 +239,10 @@ def run_analysis(config: str, create_charts: bool, benchmark: str):
         # Export results
         output_dir = analyzer.config.get_output_path()
         results.export_to_csv(str(output_dir))
+
+        logger.debug(
+            "Exporting analysis report with format: %s", output_format
+        )
 
         # Create charts if requested
         if create_charts:

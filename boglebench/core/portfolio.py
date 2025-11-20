@@ -150,6 +150,21 @@ class BogleBenchAnalyzer:
 
         return self.transactions
 
+    def build_symbol_attributes(self) -> None:
+        """
+        Build symbol attributes into database.
+        """
+        attributes_path = self.config.get_attributes_file_path()
+        if attributes_path:
+            self.load_symbol_attributes(
+                csv_path=str(attributes_path),
+            )
+        else:
+            self.logger.info(
+                "No attribute source specified. "
+                "Attributes are optional but required for attribution analysis."
+            )
+
     def load_symbol_attributes(
         self, csv_path: Optional[str] = None, api_source: Optional[str] = None
     ) -> None:
