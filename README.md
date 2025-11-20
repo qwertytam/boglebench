@@ -75,6 +75,39 @@ When entering dividend transactions (`DIVIDEND` or `DIVIDEND_REINVEST`), you may
 - If `dividend_type` is provided, it will check for mismatches.
 - If you provide `dividend_ex_date` or `dividend_record_date`, they will be included in audit reports and output for your review.
 
+### Handling Future Dividends
+
+BogleBench can automatically handle dividends that occur after your last transaction but before the analysis end date. This is controlled by the `handle_future_dividends` setting in `config.yaml`:
+
+```yaml
+dividend:
+  handle_future_dividends: "ignore"  # or "add_to_all_accounts"
+```
+
+**Options:**
+
+- **`ignore` (default)**: Skips dividends after your last transaction date
+  - Safe, conservative approach
+  - Useful when your transaction history is incomplete
+  - No unexpected transactions are added to your portfolio
+
+- **`add_to_all_accounts`**: Automatically adds dividend transactions to all accounts holding the symbol
+  - Uses last known holdings to calculate dividend amounts
+  - Keeps your analysis current through the end_date
+  - Useful when you trust market data but haven't manually entered recent dividends
+
+**Example:**
+```
+Last transaction:  Dec 15, 2023 (own 100 AAPL shares)
+Market dividend:   Dec 20, 2023 (AAPL pays $0.24/share)
+Analysis end_date: Dec 31, 2023
+
+ignore mode:             Skips the Dec 20 dividend
+add_to_all_accounts:     Adds DIVIDEND transaction for $24.00 (100 × $0.24)
+```
+
+**Note:** The `add_to_all_accounts` mode will never add dividends after your specified `end_date`, and only adds dividends to accounts with positive holdings of the symbol.
+
 **Important:** Dates must be in ISO8601 format `(YYYY-MM-DD)`. Examples of valid dates:
 `2023-01-15`, `2024-12-31`. Invalid formats like `01/15/2023` or `15-01-2023` will
 cause an error.
