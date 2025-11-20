@@ -174,7 +174,7 @@ class DividendValidator:
             user_dividends_has_data = (
                 user_dividends_in_range.empty
                 or user_dividends_in_range["total_value"].abs().sum()
-                < self.dividend_tolerance
+                <= self.dividend_tolerance
             )
             if user_dividends_has_data:
                 msg = (
@@ -189,7 +189,7 @@ class DividendValidator:
                     if (
                         user_dividends_in_range.empty
                         or user_dividends_in_range["total_value"].abs().sum()
-                        < self.dividend_tolerance
+                        <= self.dividend_tolerance
                     ):
                         msg = (
                             f"No user or market dividends for {symbol} "
