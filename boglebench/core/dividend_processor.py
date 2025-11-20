@@ -191,6 +191,8 @@ class DividendProcessor:
         if symbol:
             symbol_txns = self.transactions_df[self.transactions_df["symbol"] == symbol]
             if symbol_txns.empty:
+                # If no transactions for this symbol, return start_date
+                # This is used for filtering, so we want to include all dividends after start
                 return self.start_date if self.start_date else pd.Timestamp.min
             return symbol_txns["date"].max()
         else:
@@ -253,14 +255,15 @@ class DividendProcessor:
                 div_per_share = div_row["dividend"]
 
                 # Check if user already recorded this dividend
+                # Build the filter step by step to avoid boolean indexing issues
+                same_symbol = self.transactions_df["symbol"] == symbol
+                same_date = self.transactions_df["date"].dt.date == div_date.date()
+                is_dividend = identify_any_dividend_transactions(
+                    self.transactions_df["transaction_type"]
+                )
+                
                 existing_div = self.transactions_df[
-                    (self.transactions_df["symbol"] == symbol)
-                    & (self.transactions_df["date"].dt.date == div_date.date())
-                    & (
-                        identify_any_dividend_transactions(
-                            self.transactions_df["transaction_type"]
-                        )
-                    )
+                    same_symbol & same_date & is_dividend
                 ]
 
                 if not existing_div.empty:
