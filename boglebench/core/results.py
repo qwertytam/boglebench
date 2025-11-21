@@ -165,6 +165,55 @@ class PerformanceResults:
                     f"Contribution: {row['Contribution to Portfolio Return']:>+7.2%}"
                 )
 
+        # Brinson Attribution Summary
+        if self.brinson_summary:
+            lines.append("\n🎯 BRINSON-FACHLER ATTRIBUTION ANALYSIS\n")
+
+            for attribute_name, attribution_df in self.brinson_summary.items():
+                if attribution_df is None or attribution_df.empty:
+                    continue
+
+                lines.append(
+                    f"\n  Attribution by {attribute_name.replace('_', ' ').title()}:"
+                )
+                lines.append("  " + "-" * 76)
+                lines.append(
+                    f"  {'Category':<20} {'Allocation':>12} {'Selection':>12} "
+                    f"{'Interaction':>12} {'Total':>12}"
+                )
+                lines.append("  " + "-" * 76)
+
+                for category, row in attribution_df.iterrows():
+                    lines.append(
+                        f"  {str(category):<20} "
+                        f"{row['Allocation Effect']:>11.2%} "
+                        f"{row['Selection Effect']:>11.2%} "
+                        f"{row['Interaction Effect']:>11.2%} "
+                        f"{row['Total Effect']:>11.2%}"
+                    )
+
+                # Add totals if available
+                if len(attribution_df) > 0:
+                    lines.append("  " + "-" * 76)
+                    total_allocation = attribution_df[
+                        "Allocation Effect"
+                    ].sum()
+                    total_selection = attribution_df["Selection Effect"].sum()
+                    total_interaction = attribution_df[
+                        "Interaction Effect"
+                    ].sum()
+                    total_effect = attribution_df["Total Effect"].sum()
+
+                    lines.append(
+                        f"  {'TOTAL':<20} "
+                        f"{total_allocation:>11.2%} "
+                        f"{total_selection:>11.2%} "
+                        f"{total_interaction:>11.2%} "
+                        f"{total_effect:>11.2%}"
+                    )
+
+            lines.append("")  # Extra spacing after Brinson section
+
         lines.append("\n" + "=" * 80)
         return "\n".join(lines)
 
