@@ -97,7 +97,8 @@ dividend:
   - Useful when you trust market data but haven't manually entered recent dividends
 
 **Example:**
-```
+
+```yaml
 Last transaction:  Dec 15, 2023 (own 100 AAPL shares)
 Market dividend:   Dec 20, 2023 (AAPL pays $0.24/share)
 Analysis end_date: Dec 31, 2023
