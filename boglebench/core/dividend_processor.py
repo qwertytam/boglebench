@@ -68,7 +68,12 @@ class DividendProcessor:
             start_date=self.start_date,
             end_date=self.end_date,
         )
-        messages, diffs = validator.validate()
+        future_div_mode = self.config.get(
+            "advanced.dividend.handle_future_dividends", "ignore"
+        )
+        if not isinstance(future_div_mode, str):
+            future_div_mode = "ignore"
+        messages, diffs = validator.validate(future_div_mode=future_div_mode)
 
         self._log_validation_messages(messages)
 

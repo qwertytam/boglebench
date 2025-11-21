@@ -116,7 +116,9 @@ class DividendValidator:
 
         return shares_held
 
-    def validate(self) -> Tuple[List[str], Dict[str, pd.DataFrame]]:
+    def validate(
+        self, future_div_mode: str = "ignore"
+    ) -> Tuple[List[str], Dict[str, pd.DataFrame]]:
         """
         Performs the dividend comparison and returns a list of messages.
 
@@ -213,9 +215,25 @@ class DividendValidator:
                 )
 
             elif self.start_date is not None and self.end_date is not None:
+                last_transaction_date = self.transactions_df[
+                    self.transactions_df["symbol"] == symbol
+                ]["date"].max()
+
+                adj_end_date = self.end_date
+                if future_div_mode == "ignore" and (
+                    self.end_date > last_transaction_date
+                ):
+                    logger.debug(
+                        "Ignoring market dividends for %s after last "
+                        "transaction date %s.",
+                        symbol,
+                        last_transaction_date.date(),
+                    )
+                    adj_end_date = min(self.end_date, last_transaction_date)
+
                 market_symbol_dividends = market_symbol_dividends[
                     (market_symbol_dividends["date"] >= self.start_date)
-                    & (market_symbol_dividends["date"] <= self.end_date)
+                    & (market_symbol_dividends["date"] <= adj_end_date)
                 ]
 
             comparison_df = pd.merge(
@@ -244,7 +262,9 @@ class DividendValidator:
                     # and market rate
                     # For a short position, short holder pays the dividend
                     # For a long position, long holder receives the dividend
-                    expected_total = -shares * value_per_share_market
+                    expected_total = np.round(
+                        -shares * value_per_share_market, 2
+                    )  # Rounded to nearest whole cents
                     if not np.isclose(
                         total_value_user,
                         expected_total,
