@@ -162,12 +162,22 @@ class DividendProcessor:
                     # portfolio perspective
                     new_total_value = -shares * new_div_per_share
 
+                    if isinstance(old_total_value, float):
+                        old_total_value_disp = -1 * old_total_value
+                    else:
+                        old_total_value_disp = None
+
+                    if isinstance(new_total_value, float):
+                        new_total_value_disp = -1 * new_total_value
+                    else:
+                        new_total_value_disp = None
+
                     self.logger.info(
                         "Updating %s dividend on %s: total from $%.2f to $%.2f",
                         symbol,
                         date.date(),
-                        old_total_value,
-                        new_total_value,
+                        old_total_value_disp,
+                        new_total_value_disp,
                     )
                     # This logic assumes one dividend event per day per symbol.
                     # More complex scenarios might need more granular updates.
