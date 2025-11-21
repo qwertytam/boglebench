@@ -21,7 +21,11 @@ import pandas as pd
 from ..core.attribution import AttributionCalculator
 from ..core.brinson_attribution import BrinsonAttributionCalculator
 from ..core.composite_benchmark import CompositeBenchmarkBuilder
-from ..core.constants import DateAndTimeConstants, Defaults
+from ..core.constants import (
+    DateAndTimeConstants,
+    Defaults,
+    ShortPositionHandling,
+)
 from ..core.dates import AnalysisPeriod
 from ..core.dividend_processor import DividendProcessor
 from ..core.history_builder import PortfolioHistoryBuilder
@@ -153,7 +157,9 @@ class BogleBenchAnalyzer:
         short_handling = self.config.get(
             "validation.short_position_handling", "reject"
         )
-        if short_handling not in ["reject", "warn", "ignore"]:
+        if not isinstance(short_handling, str):
+            short_handling = "reject"
+        if not ShortPositionHandling.is_valid(short_handling):
             short_handling = "reject"
         self.transactions = process_transactions_with_short_check(
             self.transactions, handling_mode=short_handling
