@@ -33,10 +33,7 @@ from ..core.metrics import (
 )
 from ..core.portfolio_db import PortfolioDatabase
 from ..core.results import PerformanceResults
-from ..core.short_position_handler import (
-    ShortPositionError,
-    process_transactions_with_short_check,
-)
+from ..core.short_position_handler import process_transactions_with_short_check
 from ..core.symbol_attributes_loader import load_symbol_attributes_from_csv
 from ..core.transaction_loader import load_validate_transactions
 from ..utils.config import ConfigManager
@@ -151,15 +148,17 @@ class BogleBenchAnalyzer:
         self.logger.info("📄 Loading transactions from: %s", file_path)
 
         self.transactions = load_validate_transactions(Path(file_path))
-        
+
         # Check for short positions and handle according to config
         short_handling = self.config.get(
             "validation.short_position_handling", "reject"
         )
+        if short_handling not in ["reject", "warn", "ignore"]:
+            short_handling = "reject"
         self.transactions = process_transactions_with_short_check(
             self.transactions, handling_mode=short_handling
         )
-        
+
         self.logger.info("✅ Loaded %d transactions", len(self.transactions))
 
         return self.transactions
@@ -463,7 +462,9 @@ class BogleBenchAnalyzer:
             and self.benchmark_history is not None
             and not self.benchmark_history.empty
         ):
-            self.logger.info("📊 Running attribution analysis...")
+            self.logger.info(
+                "📊 Running Brinson-Fachler attribution analysis..."
+            )
 
             if (
                 self.config.get(
