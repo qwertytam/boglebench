@@ -188,18 +188,22 @@ class DividendProcessor:
                         new_total_value
                     )
 
-    def _get_last_transaction_date(self, symbol: Optional[str] = None) -> pd.Timestamp:
+    def _get_last_transaction_date(
+        self, symbol: Optional[str] = None
+    ) -> pd.Timestamp:
         """
         Get the last transaction date for a symbol, or overall if symbol not specified.
-        
+
         Args:
             symbol: Optional symbol to filter by. If None, returns last date across all symbols.
-            
+
         Returns:
             Last transaction date as Timestamp
         """
         if symbol:
-            symbol_txns = self.transactions_df[self.transactions_df["symbol"] == symbol]
+            symbol_txns = self.transactions_df[
+                self.transactions_df["symbol"] == symbol
+            ]
             if symbol_txns.empty:
                 # If no transactions for this symbol, return start_date
                 # This is used for filtering, so we want to include all dividends after start
@@ -208,25 +212,27 @@ class DividendProcessor:
         else:
             return self.transactions_df["date"].max()
 
-    def _get_accounts_holding_symbol(self, symbol: str, date: pd.Timestamp) -> list:
+    def _get_accounts_holding_symbol(
+        self, symbol: str, date: pd.Timestamp
+    ) -> list:
         """
         Get list of accounts that have holdings of a symbol on a given date.
-        
+
         Args:
             symbol: The symbol to check
             date: The date to check holdings
-            
+
         Returns:
             List of account names with positive holdings
         """
         accounts = self.transactions_df["account"].unique()
         holding_accounts = []
-        
+
         for account in accounts:
             shares = self._get_shares_held_on_date(symbol, date, account)
             if shares > 0:
                 holding_accounts.append(account)
-        
+
         return holding_accounts
 
     def _add_future_dividends(self):
@@ -267,11 +273,13 @@ class DividendProcessor:
                 # Check if user already recorded this dividend
                 # Build the filter step by step to avoid boolean indexing issues
                 same_symbol = self.transactions_df["symbol"] == symbol
-                same_date = self.transactions_df["date"].dt.date == div_date.date()
+                same_date = (
+                    self.transactions_df["date"].dt.date == div_date.date()
+                )
                 is_dividend = identify_any_dividend_transactions(
                     self.transactions_df["transaction_type"]
                 )
-                
+
                 existing_div = self.transactions_df[
                     same_symbol & same_date & is_dividend
                 ]
@@ -281,10 +289,14 @@ class DividendProcessor:
                     continue
 
                 # Find accounts holding this symbol at dividend date
-                holding_accounts = self._get_accounts_holding_symbol(symbol, div_date)
+                holding_accounts = self._get_accounts_holding_symbol(
+                    symbol, div_date
+                )
 
                 for account in holding_accounts:
-                    shares = self._get_shares_held_on_date(symbol, div_date, account)
+                    shares = self._get_shares_held_on_date(
+                        symbol, div_date, account
+                    )
 
                     # Negative because dividends are cash inflows to investor
                     # (outflows from portfolio perspective)
@@ -308,9 +320,10 @@ class DividendProcessor:
                         "notes": "Auto-added future dividend",
                     }
                     new_transactions.append(new_txn)
-                    
+
                     self.logger.info(
-                        "➕ Adding future dividend: %s on %s for account %s: $%.2f (%.2f shares × $%.4f)",
+                        "➕ Adding future dividend: %s on %s for account %s:"
+                        + " $%.2f (%.2f shares × $%.4f)",
                         symbol,
                         div_date.date(),
                         account,
@@ -326,9 +339,12 @@ class DividendProcessor:
                 [self.transactions_df, new_df], ignore_index=True
             )
             # Re-sort by date
-            self.transactions_df = self.transactions_df.sort_values("date").reset_index(drop=True)
+            self.transactions_df = self.transactions_df.sort_values(
+                "date"
+            ).reset_index(drop=True)
             self.logger.info(
-                "✅ Added %d future dividend transactions", len(new_transactions)
+                "✅ Added %d future dividend transactions",
+                len(new_transactions),
             )
         else:
             self.logger.info(

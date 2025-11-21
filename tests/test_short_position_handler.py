@@ -105,6 +105,7 @@ class TestShortPositionHandler:
         with pytest.raises(ValueError, match="Invalid short position"):
             ShortPositionHandler("invalid_mode")
 
+    # pylint: disable=redefined-outer-name
     def test_no_short_position(self, simple_transactions):
         """Test that normal transactions pass through unchanged."""
         handler = ShortPositionHandler(ShortPositionHandling.REJECT)
@@ -133,7 +134,7 @@ class TestShortPositionHandler:
 
         # Process first two transactions (BUY)
         for _, trans in short_position_transactions.iloc[:2].iterrows():
-            adjusted, _ = handler.check_and_adjust_transaction(trans, holdings)
+            _, _ = handler.check_and_adjust_transaction(trans, holdings)
             account = trans["account"]
             symbol = trans["symbol"]
             if account not in holdings:
@@ -182,7 +183,9 @@ class TestShortPositionHandler:
         # Total value should be adjusted proportionally
         assert adjusted["total_value"] == -150.0 * 165.0
 
-    def test_ignore_mode_allows_short_position(self, short_position_transactions):
+    def test_ignore_mode_allows_short_position(
+        self, short_position_transactions
+    ):
         """Test that IGNORE mode allows short position with warning."""
         handler = ShortPositionHandler(ShortPositionHandling.IGNORE)
         holdings = {}
@@ -206,7 +209,10 @@ class TestShortPositionHandler:
         assert not was_adjusted
         # Transaction should remain unchanged
         assert adjusted["quantity"] == -200.0
-        assert adjusted["total_value"] == short_position_transactions.iloc[2]["total_value"]
+        assert (
+            adjusted["total_value"]
+            == short_position_transactions.iloc[2]["total_value"]
+        )
 
     def test_cap_mode_exact_zero(self):
         """Test CAP mode when transaction would result in exactly zero."""
@@ -240,7 +246,7 @@ class TestShortPositionHandler:
 
         # All transactions should pass - each account stays positive
         for _, trans in multi_account_transactions.iterrows():
-            adjusted, was_adjusted = handler.check_and_adjust_transaction(
+            _, was_adjusted = handler.check_and_adjust_transaction(
                 trans, holdings
             )
             assert not was_adjusted
@@ -261,6 +267,7 @@ class TestShortPositionHandler:
 class TestProcessTransactionsWithShortCheck:
     """Test the process_transactions_with_short_check function."""
 
+    # pylint: disable=redefined-outer-name
     def test_process_normal_transactions(self, simple_transactions):
         """Test processing transactions without short positions."""
         result = process_transactions_with_short_check(
@@ -367,7 +374,12 @@ class TestProcessTransactionsWithShortCheck:
                 ),
                 "symbol": ["AAPL", "MSFT", "AAPL", "MSFT"],
                 "transaction_type": ["BUY", "BUY", "SELL", "SELL"],
-                "quantity": [100, 50, -50, -25],  # SELL has negative quantities
+                "quantity": [
+                    100,
+                    50,
+                    -50,
+                    -25,
+                ],  # SELL has negative quantities
                 "value_per_share": [150.0, 240.0, 165.0, 245.0],
                 "total_value": [15000.0, 12000.0, -8250.0, -6125.0],
                 "account": ["Test", "Test", "Test", "Test"],
@@ -386,9 +398,7 @@ class TestProcessTransactionsWithShortCheck:
         # This tests if we try to sell before buying on the same day
         transactions = pd.DataFrame(
             {
-                "date": pd.to_datetime(
-                    ["2023-01-15", "2023-01-15"], utc=True
-                ),
+                "date": pd.to_datetime(["2023-01-15", "2023-01-15"], utc=True),
                 "symbol": ["AAPL", "AAPL"],
                 "transaction_type": ["SELL", "BUY"],
                 "quantity": [-100, 100],

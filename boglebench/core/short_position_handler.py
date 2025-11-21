@@ -2,14 +2,14 @@
 Short position detection and handling.
 
 This module provides functionality to detect and handle transactions that would
-result in short positions (negative holdings). BogleBench does not support 
+result in short positions (negative holdings). BogleBench does not support
 short positions, so this module implements three strategies:
 1. REJECT: Reject transactions that would result in short positions
 2. CAP: Cap the transaction quantity to the available long position
 3. IGNORE: Log warning but allow short positions to occur
 """
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 
 import pandas as pd
 
@@ -258,7 +258,6 @@ def process_transactions_with_short_check(
         ShortPositionError: If handling_mode is REJECT and short position detected
     """
     handler = ShortPositionHandler(handling_mode)
-    logger = get_logger()
 
     # Ensure transactions are sorted by date
     transactions = transactions.sort_values("date").reset_index(drop=True)
@@ -272,7 +271,7 @@ def process_transactions_with_short_check(
 
     logger.info("🔍 Checking transactions for short positions...")
 
-    for idx, transaction in transactions.iterrows():
+    for _, transaction in transactions.iterrows():
         # Check and potentially adjust this transaction
         adjusted_trans, was_adjusted = handler.check_and_adjust_transaction(
             transaction, holdings
@@ -302,6 +301,8 @@ def process_transactions_with_short_check(
             "✅ Transaction processing complete with adjustments applied"
         )
     else:
-        logger.info("✅ Transaction processing complete - no adjustments needed")
+        logger.info(
+            "✅ Transaction processing complete - no adjustments needed"
+        )
 
     return pd.DataFrame(adjusted_transactions)

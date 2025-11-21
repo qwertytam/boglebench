@@ -84,9 +84,7 @@ class TestShortPositionIntegration:
             transactions_path = tmppath / "transactions.csv"
 
             create_transactions_csv(transactions_path, has_short=False)
-            create_test_config(
-                config_path, "reject", str(transactions_path)
-            )
+            create_test_config(config_path, "reject", str(transactions_path))
 
             analyzer = BogleBenchAnalyzer(config_path=str(config_path))
             transactions = analyzer.load_transactions()
@@ -105,9 +103,7 @@ class TestShortPositionIntegration:
             transactions_path = tmppath / "transactions.csv"
 
             create_transactions_csv(transactions_path, has_short=True)
-            create_test_config(
-                config_path, "reject", str(transactions_path)
-            )
+            create_test_config(config_path, "reject", str(transactions_path))
 
             analyzer = BogleBenchAnalyzer(config_path=str(config_path))
 
@@ -151,7 +147,7 @@ class TestShortPositionIntegration:
             transactions_path = tmppath / "transactions.csv"
 
             create_transactions_csv(transactions_path, has_short=True)
-            
+
             # Create config without short_position_handling setting
             config_content = f"""
 data:
