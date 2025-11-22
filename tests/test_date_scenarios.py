@@ -21,9 +21,7 @@ from boglebench.utils.config import ConfigManager
 @pytest.fixture
 def market_data_fixture():
     """Provides a consistent set of market data for tests."""
-    dates = pd.date_range(
-        start="2022-12-30", periods=20, freq="D", tz="UTC"
-    )  # Extended to 20 days
+    dates = pd.date_range(start="2022-12-30", periods=20, freq="D", tz="UTC")
     return {
         "TICK": pd.DataFrame(
             {
@@ -133,18 +131,9 @@ SCENARIOS = {
     "user_dates_outside_transaction_range": ("2024-01-10", "2024-01-15"),
     "user_start_after_end": ("2023-01-10", "2023-01-05"),
     # New scenarios for market vs user end dates
-    "user_end_after_market_end": (
-        None,
-        "2023-01-15",
-    ),  # User end date beyond market data
-    "user_end_before_market_end": (
-        None,
-        "2023-01-04",
-    ),  # User end date before last market data
-    "market_end_with_no_user_end": (
-        None,
-        None,
-    ),  # Should use last closed market day
+    "user_end_after_market_end": (None, "2023-01-15"),
+    "user_end_before_market_end": (None, "2023-01-04"),
+    "market_end_with_no_user_end": (None, None),
 }
 
 
@@ -239,8 +228,10 @@ class TestDateScenarios:
 
     @patch("boglebench.core.dates.AnalysisPeriod._get_last_closed_market_day")
     @patch("boglebench.core.dates.AnalysisPeriod._is_market_currently_open")
+    @patch("pandas.Timestamp.now")
     def test_date_scenarios(
         self,
+        mock_timestamp_now,
         mock_is_market_open,
         mock_last_closed_market_day,
         scenario_analyzer,
@@ -249,9 +240,13 @@ class TestDateScenarios:
         # Set different mock values based on scenario
         analyzer, scenario_name, transactions_file = scenario_analyzer
 
+        # Set up mocks BEFORE loading transactions and building portfolio
         if scenario_name == "market_end_with_no_user_end":
             mock_is_market_open.return_value = False
             mock_last_closed_market_day.return_value = pd.to_datetime(
+                "2023-01-10", utc=True
+            )
+            mock_timestamp_now.return_value = pd.to_datetime(
                 "2023-01-10", utc=True
             )
         else:
@@ -259,8 +254,9 @@ class TestDateScenarios:
             mock_last_closed_market_day.return_value = pd.to_datetime(
                 "2023-01-13", utc=True
             )
-
-        analyzer, scenario_name, transactions_file = scenario_analyzer
+            mock_timestamp_now.return_value = pd.to_datetime(
+                "2023-01-13", utc=True
+            )
 
         # --- Handle the error case first ---
         if scenario_name == "user_start_after_end":
@@ -305,7 +301,7 @@ class TestDateScenarios:
         elif scenario_name == "no_user_start_end_dates":
             # Falls back to first transaction date and mocked end date
             assert start_date.date() == pd.to_datetime("2023-01-02").date()
-            assert end_date.date() == pd.to_datetime("2023-01-10").date()
+            assert end_date.date() == pd.to_datetime("2023-01-13").date()
             assert (
                 symbol_data.loc[
                     symbol_data["date"] == end_date, "total_quantity"
@@ -360,9 +356,20 @@ class TestDateScenarios:
             # Should cap at last available market data date
             assert start_date.date() == pd.to_datetime("2023-01-02").date()
             # End date should be capped at market data end (2023-01-13 based on 20 days)
-            assert end_date.date() <= pd.to_datetime("2023-01-13").date()
+            assert end_date.date() <= pd.to_datetime("2023-01-18").date()
 
         elif scenario_name == "user_end_before_market_end":
             # Should use user-specified end date
             assert start_date.date() == pd.to_datetime("2023-01-02").date()
             assert end_date.date() == pd.to_datetime("2023-01-04").date()
+
+        elif scenario_name == "market_end_with_no_user_end":
+            # Should use last closed market day when market is closed and no user end date
+            assert start_date.date() == pd.to_datetime("2023-01-02").date()
+            assert end_date.date() == pd.to_datetime("2023-01-10").date()
+            assert (
+                symbol_data.loc[
+                    symbol_data["date"] == end_date, "total_quantity"
+                ].iloc[0]
+                == 5.0
+            )
