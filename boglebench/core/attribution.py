@@ -305,43 +305,48 @@ class AttributionCalculator:
                 {
                     "weight": "sum",
                     "total_value": "sum",
-                    "weighted_return": "sum",
+                    "weighted_return": "sum",  # Sum of weighted returns
                 }
             )
             .reset_index()
         )
 
         # ✅ VECTORIZED: Calculate weighted average return (avoiding division by zero)
-        attr_df["weighted_return"] = np.where(
+        attr_df["twr_return"] = np.where(
             attr_df["weight"] > 0,
             attr_df["weighted_return"] / attr_df["weight"],
             0,
         )
 
+        # Drop the intermediate weighted_return column
+        attr_df = attr_df.drop(columns=["weighted_return"])
+
         # ✅ VECTORIZED: Calculate summary metrics by category
+        # Use a more efficient compound return calculation
+        def compound_return(returns):
+            """Calculate compound return from a series of period returns."""
+            return np.prod(1 + returns.values) - 1
+
         summary = (
             attr_df.groupby("category")
             .agg(
                 {
                     "weight": "mean",  # Average weight over time
-                    "weighted_return": lambda x: (1 + x).prod()
-                    - 1,  # Compound return
+                    "twr_return": compound_return,  # Compound return
                 }
             )
             .reset_index()
         )
 
         # Calculate contribution
-        summary["contribution"] = (
-            summary["weight"] * summary["weighted_return"]
-        )
+        summary["contribution"] = summary["weight"] * summary["twr_return"]
 
         # Format result
         result_df = pd.DataFrame(
             {
                 "Category": summary["category"],
                 "Avg. Weight": summary["weight"],
-                "Return (TWR)": summary["weighted_return"],
+                "Return (TWR)": summary["twr_return"],
                 "Contribution to Portfolio Return": summary["contribution"],
             }
         )
