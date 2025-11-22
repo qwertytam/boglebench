@@ -168,6 +168,7 @@ files = [
 
 [package.dependencies]
 frozenlist = ">=1.1.0"
+typing-extensions = {version = ">=4.2", markers = "python_version < \"3.13\""}
 
 [[package]]
 name = "alpha-vantage"
@@ -201,6 +202,7 @@ files = [
 [package.dependencies]
 idna = ">=2.8"
 sniffio = ">=1.1"
+typing_extensions = {version = ">=4.5", markers = "python_version < \"3.13\""}
 
 [package.extras]
 trio = ["trio (>=0.31.0)"]
@@ -4273,6 +4275,7 @@ files = [
 [package.dependencies]
 attrs = ">=22.2.0"
 rpds-py = ">=0.7.0"
+typing-extensions = {version = ">=4.4.0", markers = "python_version < \"3.13\""}
 
 [[package]]
 name = "requests"
@@ -4853,10 +4856,10 @@ files = [
 name = "typing-extensions"
 version = "4.15.0"
 description = "Backported and Experimental Type Hints for Python 3.9+"
-optional = true
+optional = false
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "extra == \"jupyter\""
+markers = "extra == \"jupyter\" or python_version == \"3.12\""
 files = [
     {file = "typing_extensions-4.15.0-py3-none-any.whl", hash = "sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548"},
     {file = "typing_extensions-4.15.0.tar.gz", hash = "sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466"},
@@ -5151,5 +5154,5 @@ jupyter = ["ipywidgets", "jupyter", "plotly"]
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">= 3.13, < 4.0"
-content-hash = "519ea2f43c7c7dda0960eee37b00811ce4712dd5287cf090273a4d634b1f539c"
+python-versions = ">= 3.12, < 4.0"
+content-hash = "79f1a80f50148c95a51a28c92a2e48b2f09a01baf0e32386e3bfa061aee4d3bb"
