@@ -7,6 +7,7 @@ outperformance came from sector allocation decisions or individual security
 selection using database as the single source of truth.
 """
 
+import threading
 from typing import Dict, Tuple
 
 import numpy as np
@@ -47,6 +48,43 @@ class BrinsonAttributionCalculator:
 
         self.benchmark_history = benchmark_history
         self.portfolio_db = portfolio_db
+
+        # Add caching for database queries (optimization)
+        # Thread-safe caching using lock for parallel execution
+        self._cache_lock = threading.Lock()
+        self._symbol_data_cache = None
+        self._attributes_cache = {}
+
+    def _get_symbol_data(self) -> pd.DataFrame:
+        """Get symbol data with thread-safe caching to avoid repeated database queries."""
+        if self._symbol_data_cache is None:
+            with self._cache_lock:
+                # Double-check pattern to avoid race conditions
+                if self._symbol_data_cache is None:
+                    self._symbol_data_cache = (
+                        self.portfolio_db.get_symbol_data()
+                    )
+                # Return from within lock to avoid race condition
+                return self._symbol_data_cache
+        return self._symbol_data_cache
+
+    def _get_all_attributes(
+        self, include_history: bool = False
+    ) -> pd.DataFrame:
+        """Get attributes with thread-safe caching to avoid repeated database queries."""
+        cache_key = f"history_{include_history}"
+        if cache_key not in self._attributes_cache:
+            with self._cache_lock:
+                # Double-check pattern to avoid race conditions
+                if cache_key not in self._attributes_cache:
+                    self._attributes_cache[cache_key] = (
+                        self.portfolio_db.get_symbol_attributes(
+                            include_history=include_history
+                        )
+                    )
+                # Return from within lock to avoid race condition
+                return self._attributes_cache[cache_key]
+        return self._attributes_cache[cache_key]
 
     @timeit
     def calculate(
@@ -115,14 +153,14 @@ class BrinsonAttributionCalculator:
         if self.portfolio_db is None:
             return pd.DataFrame()
 
-        # Get all symbol data
-        symbol_data = self.portfolio_db.get_symbol_data()
+        # Get all symbol data (using cache)
+        symbol_data = self._get_symbol_data()
 
         if symbol_data.empty:
             return pd.DataFrame()
 
-        # Get ALL attributes once
-        all_attributes = self.portfolio_db.get_symbol_attributes()
+        # Get ALL attributes once (using cache)
+        all_attributes = self._get_all_attributes(include_history=False)
 
         if all_attributes.empty or attribute not in all_attributes.columns:
             logger.warning(
@@ -173,7 +211,7 @@ class BrinsonAttributionCalculator:
     def _get_benchmark_data_with_attributes(
         self, attribute: str
     ) -> pd.DataFrame:
-        """Get benchmark data grouped by attribute (optimized with temporal handling)."""
+        """Get benchmark data grouped by attribute (FULLY VECTORIZED with merge_asof)."""
 
         if self.portfolio_db is None:
             return pd.DataFrame()
@@ -193,13 +231,12 @@ class BrinsonAttributionCalculator:
             logger.warning("No benchmark symbols found in benchmark_history")
             return pd.DataFrame()
 
-        # ✅ Get all attribute history for benchmark symbols at once
-        bench_attrs = self.portfolio_db.get_symbol_attributes(
-            include_history=True
-        )
-        bench_attrs = bench_attrs[
+        # ✅ Get all attribute history for benchmark symbols at once (using cache)
+        bench_attrs = self._get_all_attributes(include_history=True)
+        # Filter and copy to avoid modifying cached data when we set timezone-aware dates below
+        bench_attrs = bench_attrs.loc[
             bench_attrs["symbol"].isin(benchmark_symbols)
-        ]
+        ].copy()
 
         if bench_attrs.empty:
             logger.warning("No attributes found for benchmark symbols")
@@ -225,73 +262,86 @@ class BrinsonAttributionCalculator:
         # Convert benchmark_history to long format for easier processing
         # Get dates from index or column
         if "date" in self.benchmark_history.columns:
-            dates = pd.to_datetime(self.benchmark_history["date"], utc=True)
             bench_df = self.benchmark_history.copy()
+            bench_df["date"] = pd.to_datetime(bench_df["date"], utc=True)
         else:
             # Date is in the index
             bench_df = self.benchmark_history.reset_index()
             bench_df.rename(columns={"index": "date"}, inplace=True)
-            dates = pd.to_datetime(bench_df["date"], utc=True)
-            bench_df["date"] = dates
+            bench_df["date"] = pd.to_datetime(bench_df["date"], utc=True)
 
-        # Group attributes by symbol for efficient lookup
-        attr_by_symbol = {
-            symbol: group for symbol, group in bench_attrs.groupby("symbol")
-        }
+        # ✅ VECTORIZED: Convert wide format to long format using pd.melt
+        # Extract weight and return columns for each symbol
+        results_list = []
 
-        # Build results using optimized lookups with itertuples for performance
-        results = []
-        for row in bench_df.itertuples(index=False):
-            date = row.date
+        for symbol in benchmark_symbols:
+            weight_col = f"{symbol}_weight"
+            return_col = f"{symbol}_twr_return"
 
-            for symbol in benchmark_symbols:
-                weight_col = f"{symbol}_weight"
-                return_col = f"{symbol}_twr_return"
+            # Check if columns exist
+            if (
+                weight_col not in bench_df.columns
+                or return_col not in bench_df.columns
+            ):
+                continue
 
-                # Get values using getattr for named tuple access
-                try:
-                    weight = getattr(row, weight_col)
-                    twr_return = getattr(row, return_col)
-                except AttributeError:
-                    # Column doesn't exist
-                    continue
+            # Create long format dataframe for this symbol
+            symbol_df = bench_df[["date", weight_col, return_col]].copy()
+            symbol_df["symbol"] = symbol
+            symbol_df.rename(
+                columns={weight_col: "weight", return_col: "twr_return"},
+                inplace=True,
+            )
 
-                # Find attribute for this symbol at this date
-                if symbol not in attr_by_symbol:
-                    continue
+            # Filter out rows with NaN values
+            symbol_df = symbol_df.dropna(subset=["weight", "twr_return"])
 
-                symbol_attrs = attr_by_symbol[symbol]
+            if symbol_df.empty:
+                continue
 
-                # Find attributes valid at this date
-                valid = symbol_attrs[
-                    (symbol_attrs["effective_date"] <= date)
-                    & (
-                        (symbol_attrs["end_date"].isna())
-                        | (symbol_attrs["end_date"] >= date)
-                    )
-                ]
+            # ✅ VECTORIZED: Use merge_asof for temporal join with attributes
+            # Get attributes for this symbol
+            symbol_attrs = bench_attrs[bench_attrs["symbol"] == symbol].copy()
 
-                if not valid.empty:
-                    # Get most recent
-                    attr_value = valid.sort_values(
-                        "effective_date", ascending=False
-                    ).iloc[0][attribute]
-                    if pd.notna(attr_value):
-                        results.append(
-                            {
-                                "date": date,
-                                "category": attr_value,
-                                "weight": weight,
-                                "twr_return": twr_return,
-                            }
-                        )
+            if symbol_attrs.empty:
+                continue
 
-        if not results:
+            # Sort both dataframes for merge_asof
+            symbol_df = symbol_df.sort_values("date")
+            symbol_attrs = symbol_attrs.sort_values("effective_date")
+
+            # Use merge_asof to find the most recent attribute for each date
+            merged = pd.merge_asof(
+                symbol_df,
+                symbol_attrs[["effective_date", "end_date", attribute]],
+                left_on="date",
+                right_on="effective_date",
+                direction="backward",
+            )
+
+            # Filter out rows where the attribute has expired (end_date < date)
+            # Keep rows where end_date is NaN or end_date >= date
+            merged = merged[
+                merged["end_date"].isna()
+                | (merged["end_date"] >= merged["date"])
+            ]
+
+            # Drop rows with null attributes
+            merged = merged.dropna(subset=[attribute])
+
+            if not merged.empty:
+                # Keep only needed columns
+                merged = merged[["date", attribute, "weight", "twr_return"]]
+                merged.rename(columns={attribute: "category"}, inplace=True)
+                results_list.append(merged)
+
+        if not results_list:
             return pd.DataFrame()
 
-        df = pd.DataFrame(results)
+        # ✅ VECTORIZED: Concatenate all results at once
+        df = pd.concat(results_list, ignore_index=True)
 
-        # ✅ Aggregate by date and category using vectorized operations
+        # ✅ VECTORIZED: Aggregate by date and category using vectorized operations
         df["weighted_return"] = df["twr_return"] * df["weight"]
 
         grouped = (
@@ -430,11 +480,9 @@ class BrinsonAttributionCalculator:
         # Get unique categories
         categories = portfolio_data["category"].dropna().unique()
 
-        # ✅ GET ALL DATA ONCE instead of per-date/per-category queries
-        portfolio_symbols = self.portfolio_db.get_symbol_data()
-        all_attributes = self.portfolio_db.get_symbol_attributes(
-            include_history=True
-        )
+        # ✅ GET ALL DATA ONCE instead of per-date/per-category queries (using cache)
+        portfolio_symbols = self._get_symbol_data()
+        all_attributes = self._get_all_attributes(include_history=True)
 
         if portfolio_symbols.empty or all_attributes.empty:
             return {}

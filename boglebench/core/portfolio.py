@@ -13,6 +13,7 @@ and long-term focus.
 """
 
 import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, Optional, Union
 
@@ -542,20 +543,63 @@ class BogleBenchAnalyzer:
                     else:
                         valid_group_by.append(group)
 
-                # Calculate Brinson attribution for valid attributes (single loop only)
+                # Calculate Brinson attribution for valid attributes (parallel execution)
                 if valid_group_by:
                     brinson_summary = {}
                     selection_drilldown = {}
-                    for group in valid_group_by:
-                        self.logger.info(" - Grouping by attribute: %s", group)
-                        (
-                            brinson_summary[group],
-                            selection_drilldown[group],
-                        ) = brinson_calculator.calculate(group)
-                        self.logger.info(
-                            "✅ Brinson attribution analysis complete for %s!",
-                            group,
+
+                    # Use ThreadPoolExecutor for parallel calculation
+                    # Default to 4 workers to balance parallelism and resource usage
+                    # Can be configured via analysis.brinson_max_workers config option
+                    default_max_workers = 4
+                    configured_max_workers = self.config.get(
+                        "analysis.brinson_max_workers", default_max_workers
+                    )
+                    if isinstance(configured_max_workers, dict):
+                        configured_max_workers = configured_max_workers.get(
+                            "value", default_max_workers
                         )
+                    max_workers = min(
+                        int(configured_max_workers), len(valid_group_by)
+                    )
+
+                    # Log which attributes we're processing
+                    self.logger.info(
+                        "Processing %d attributes in parallel (max_workers=%d): %s",
+                        len(valid_group_by),
+                        max_workers,
+                        ", ".join(valid_group_by),
+                    )
+
+                    with ThreadPoolExecutor(
+                        max_workers=max_workers
+                    ) as executor:
+                        # Submit all tasks
+                        future_to_group = {
+                            executor.submit(
+                                brinson_calculator.calculate, group
+                            ): group
+                            for group in valid_group_by
+                        }
+
+                        # Collect results as they complete
+                        for future in as_completed(future_to_group):
+                            group = future_to_group[future]
+                            try:
+                                (
+                                    brinson_summary[group],
+                                    selection_drilldown[group],
+                                ) = future.result()
+                                self.logger.info(
+                                    "✅ Brinson attribution analysis complete for %s!",
+                                    group,
+                                )
+                            except Exception as exc:
+                                self.logger.error(
+                                    "Brinson attribution failed for %s: %s",
+                                    group,
+                                    exc,
+                                )
 
         self.performance_results = PerformanceResults(
             transactions=self.transactions,
