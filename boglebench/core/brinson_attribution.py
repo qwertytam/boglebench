@@ -47,6 +47,25 @@ class BrinsonAttributionCalculator:
 
         self.benchmark_history = benchmark_history
         self.portfolio_db = portfolio_db
+        
+        # Add caching for database queries (optimization)
+        self._symbol_data_cache = None
+        self._attributes_cache = {}
+
+    def _get_symbol_data(self) -> pd.DataFrame:
+        """Get symbol data with caching to avoid repeated database queries."""
+        if self._symbol_data_cache is None:
+            self._symbol_data_cache = self.portfolio_db.get_symbol_data()
+        return self._symbol_data_cache
+
+    def _get_all_attributes(self, include_history: bool = False) -> pd.DataFrame:
+        """Get attributes with caching to avoid repeated database queries."""
+        cache_key = f"history_{include_history}"
+        if cache_key not in self._attributes_cache:
+            self._attributes_cache[cache_key] = self.portfolio_db.get_symbol_attributes(
+                include_history=include_history
+            )
+        return self._attributes_cache[cache_key]
 
     @timeit
     def calculate(
@@ -115,14 +134,14 @@ class BrinsonAttributionCalculator:
         if self.portfolio_db is None:
             return pd.DataFrame()
 
-        # Get all symbol data
-        symbol_data = self.portfolio_db.get_symbol_data()
+        # Get all symbol data (using cache)
+        symbol_data = self._get_symbol_data()
 
         if symbol_data.empty:
             return pd.DataFrame()
 
-        # Get ALL attributes once
-        all_attributes = self.portfolio_db.get_symbol_attributes()
+        # Get ALL attributes once (using cache)
+        all_attributes = self._get_all_attributes(include_history=False)
 
         if all_attributes.empty or attribute not in all_attributes.columns:
             logger.warning(
@@ -193,13 +212,11 @@ class BrinsonAttributionCalculator:
             logger.warning("No benchmark symbols found in benchmark_history")
             return pd.DataFrame()
 
-        # ✅ Get all attribute history for benchmark symbols at once
-        bench_attrs = self.portfolio_db.get_symbol_attributes(
-            include_history=True
-        )
+        # ✅ Get all attribute history for benchmark symbols at once (using cache)
+        bench_attrs = self._get_all_attributes(include_history=True)
         bench_attrs = bench_attrs[
             bench_attrs["symbol"].isin(benchmark_symbols)
-        ]
+        ].copy()  # Use copy to avoid SettingWithCopyWarning
 
         if bench_attrs.empty:
             logger.warning("No attributes found for benchmark symbols")
@@ -430,11 +447,9 @@ class BrinsonAttributionCalculator:
         # Get unique categories
         categories = portfolio_data["category"].dropna().unique()
 
-        # ✅ GET ALL DATA ONCE instead of per-date/per-category queries
-        portfolio_symbols = self.portfolio_db.get_symbol_data()
-        all_attributes = self.portfolio_db.get_symbol_attributes(
-            include_history=True
-        )
+        # ✅ GET ALL DATA ONCE instead of per-date/per-category queries (using cache)
+        portfolio_symbols = self._get_symbol_data()
+        all_attributes = self._get_all_attributes(include_history=True)
 
         if portfolio_symbols.empty or all_attributes.empty:
             return {}
