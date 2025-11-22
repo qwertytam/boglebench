@@ -109,7 +109,7 @@ class BrinsonAttributionCalculator:
     def _get_portfolio_data_with_attributes(
         self, attribute: str
     ) -> pd.DataFrame:
-        """Get portfolio data grouped by attribute (optimized)."""
+        """Get portfolio data grouped by attribute (optimized with temporal handling)."""
 
         if self.portfolio_db is None:
             return pd.DataFrame()
@@ -120,8 +120,8 @@ class BrinsonAttributionCalculator:
         if symbol_data.empty:
             return pd.DataFrame()
 
-        # ✅ GET ALL ATTRIBUTES ONCE instead of per-date
-        all_attributes = self.portfolio_db.get_symbol_attributes()
+        # ✅ GET ALL ATTRIBUTE HISTORY ONCE instead of per-date queries
+        all_attributes = self.portfolio_db.get_symbol_attributes(include_history=True)
 
         if all_attributes.empty:
             return pd.DataFrame()
@@ -131,12 +131,46 @@ class BrinsonAttributionCalculator:
             logger.warning("Attribute '%s' not found in symbol attributes", attribute)
             return pd.DataFrame()
 
-        # Merge symbol data with attributes once
-        merged = symbol_data.merge(
-            all_attributes[["symbol", attribute]],
-            on="symbol",
-            how="left",
-        )
+        # Ensure dates are timezone-aware for comparison
+        if 'effective_date' in all_attributes.columns:
+            all_attributes['effective_date'] = pd.to_datetime(all_attributes['effective_date'], utc=True)
+        if 'end_date' in all_attributes.columns:
+            all_attributes['end_date'] = pd.to_datetime(all_attributes['end_date'], utc=True)
+        
+        symbol_data['date'] = pd.to_datetime(symbol_data['date'], utc=True)
+
+        # Merge symbol data with attributes using temporal logic
+        # For each row in symbol_data, find the matching attribute that was effective on that date
+        result_rows = []
+        
+        for _, row in symbol_data.iterrows():
+            date = row['date']
+            symbol = row['symbol']
+            
+            # Find the attribute that was effective on this date
+            symbol_attrs = all_attributes[all_attributes['symbol'] == symbol]
+            
+            # Filter to attributes that were effective on this date
+            valid_attrs = symbol_attrs[
+                (symbol_attrs['effective_date'] <= date) &
+                ((symbol_attrs['end_date'].isna()) | (symbol_attrs['end_date'] >= date))
+            ]
+            
+            if not valid_attrs.empty:
+                # Get the most recent attribute (in case there are multiple matches)
+                attr_row = valid_attrs.sort_values('effective_date', ascending=False).iloc[0]
+                result_rows.append({
+                    'date': date,
+                    'symbol': symbol,
+                    attribute: attr_row[attribute],
+                    'weight': row['weight'],
+                    'twr_return': row['twr_return']
+                })
+        
+        if not result_rows:
+            return pd.DataFrame()
+        
+        merged = pd.DataFrame(result_rows)
 
         # Calculate weighted return
         merged["weighted_return"] = merged["twr_return"] * merged["weight"]
@@ -171,7 +205,7 @@ class BrinsonAttributionCalculator:
     def _get_benchmark_data_with_attributes(
         self, attribute: str
     ) -> pd.DataFrame:
-        """Get benchmark data grouped by attribute (optimized)."""
+        """Get benchmark data grouped by attribute (optimized with temporal handling)."""
 
         if self.portfolio_db is None:
             return pd.DataFrame()
@@ -191,8 +225,8 @@ class BrinsonAttributionCalculator:
             logger.warning("No benchmark symbols found in benchmark_history")
             return pd.DataFrame()
 
-        # ✅ Get attributes for all benchmark symbols at once
-        bench_attrs = self.portfolio_db.get_symbol_attributes()
+        # ✅ Get all attribute history for benchmark symbols at once
+        bench_attrs = self.portfolio_db.get_symbol_attributes(include_history=True)
         bench_attrs = bench_attrs[bench_attrs["symbol"].isin(benchmark_symbols)]
 
         if bench_attrs.empty:
@@ -204,43 +238,59 @@ class BrinsonAttributionCalculator:
             logger.warning("Attribute '%s' not found for benchmark symbols", attribute)
             return pd.DataFrame()
 
-        # Create symbol to category mapping
-        symbol_to_category = bench_attrs.set_index("symbol")[attribute].to_dict()
+        # Ensure dates are timezone-aware for comparison
+        if 'effective_date' in bench_attrs.columns:
+            bench_attrs['effective_date'] = pd.to_datetime(bench_attrs['effective_date'], utc=True)
+        if 'end_date' in bench_attrs.columns:
+            bench_attrs['end_date'] = pd.to_datetime(bench_attrs['end_date'], utc=True)
 
-        # ✅ VECTORIZED: Process all dates at once
-        dates = (
-            self.benchmark_history.index
-            if "date" not in self.benchmark_history.columns
-            else self.benchmark_history["date"]
-        )
+        # Get dates from index or column
+        if "date" in self.benchmark_history.columns:
+            dates = pd.to_datetime(self.benchmark_history["date"], utc=True)
+        else:
+            # Date is in the index
+            dates = pd.DatetimeIndex(self.benchmark_history.index).tz_localize('UTC') if self.benchmark_history.index.tz is None else self.benchmark_history.index
 
         result_list = []
 
-        # Iterate through symbols (few) instead of dates (many)
-        for symbol in benchmark_symbols:
-            weight_col = f"{symbol}_weight"
-            return_col = f"{symbol}_twr_return"
+        # Iterate through dates and symbols to build result with temporal attributes
+        for idx, date in enumerate(dates):
+            # Get the row for this date
+            if "date" in self.benchmark_history.columns:
+                date_row = self.benchmark_history.iloc[idx]
+            else:
+                date_row = self.benchmark_history.iloc[idx]
+            
+            for symbol in benchmark_symbols:
+                weight_col = f"{symbol}_weight"
+                return_col = f"{symbol}_twr_return"
 
-            # Skip if columns don't exist
-            if weight_col not in self.benchmark_history.columns:
-                continue
-            if return_col not in self.benchmark_history.columns:
-                continue
+                # Skip if columns don't exist
+                if weight_col not in date_row.index or return_col not in date_row.index:
+                    continue
 
-            # Get category for this symbol
-            category = symbol_to_category.get(symbol)
-            if pd.isna(category):
-                continue
-
-            # ✅ Extract all data for this symbol at once
-            for idx, row in self.benchmark_history.iterrows():
-                result_list.append({
-                    "date": idx if "date" not in self.benchmark_history.columns else row["date"],
-                    "symbol": symbol,
-                    "category": category,
-                    "weight": row[weight_col],
-                    "twr_return": row[return_col],
-                })
+                # Find the attribute that was effective on this date for this symbol
+                symbol_attrs = bench_attrs[bench_attrs['symbol'] == symbol]
+                
+                # Filter to attributes that were effective on this date
+                valid_attrs = symbol_attrs[
+                    (symbol_attrs['effective_date'] <= date) &
+                    ((symbol_attrs['end_date'].isna()) | (symbol_attrs['end_date'] >= date))
+                ]
+                
+                if not valid_attrs.empty:
+                    # Get the most recent attribute (in case there are multiple matches)
+                    attr_row = valid_attrs.sort_values('effective_date', ascending=False).iloc[0]
+                    category = attr_row[attribute]
+                    
+                    if pd.notna(category):
+                        result_list.append({
+                            "date": date,
+                            "symbol": symbol,
+                            "category": category,
+                            "weight": date_row[weight_col],
+                            "twr_return": date_row[return_col],
+                        })
 
         if not result_list:
             return pd.DataFrame()
