@@ -27,6 +27,7 @@ analysis:
   end_date: null # If null, uses today
   # Optional: Specify a risk-free rate for Sharpe Ratio calculation.
   risk_free_rate: 0.02 # 2% annual risk-free rate
+  brinson_max_workers: 4 # Max parallel workers for Brinson attribution analysis
 
   # Performance metrics to calculate
   performance_metrics:
