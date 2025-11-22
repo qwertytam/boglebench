@@ -110,7 +110,7 @@ class BrinsonAttributionCalculator:
     def _get_portfolio_data_with_attributes(
         self, attribute: str
     ) -> pd.DataFrame:
-        """Get portfolio data grouped by attribute (optimized with temporal handling)."""
+        """Get portfolio data grouped by attribute (FULLY VECTORIZED)."""
 
         if self.portfolio_db is None:
             return pd.DataFrame()
@@ -121,102 +121,49 @@ class BrinsonAttributionCalculator:
         if symbol_data.empty:
             return pd.DataFrame()
 
-        # ✅ GET ALL ATTRIBUTE HISTORY ONCE instead of per-date queries
-        all_attributes = self.portfolio_db.get_symbol_attributes(
-            include_history=True
+        # Get ALL attributes once
+        all_attributes = self.portfolio_db.get_symbol_attributes()
+
+        if all_attributes.empty or attribute not in all_attributes.columns:
+            logger.warning(
+                "Attribute '%s' not found or no attributes available",
+                attribute,
+            )
+            return pd.DataFrame()
+
+        # VECTORIZED: Single merge for all dates
+        merged = symbol_data.merge(
+            all_attributes[["symbol", attribute]],
+            on="symbol",
+            how="left",
         )
 
-        if all_attributes.empty:
+        # Drop rows with null attributes
+        merged = merged.dropna(subset=[attribute])
+
+        if merged.empty:
             return pd.DataFrame()
 
-        # Filter to only the attribute we need
-        if attribute not in all_attributes.columns:
-            logger.warning(
-                "Attribute '%s' not found in symbol attributes", attribute
-            )
-            return pd.DataFrame()
-
-        # Ensure dates are timezone-aware for comparison
-        if "effective_date" in all_attributes.columns:
-            all_attributes["effective_date"] = pd.to_datetime(
-                all_attributes["effective_date"], utc=True
-            )
-        if "end_date" in all_attributes.columns:
-            all_attributes["end_date"] = pd.to_datetime(
-                all_attributes["end_date"], utc=True
-            )
-
-        symbol_data["date"] = pd.to_datetime(symbol_data["date"], utc=True)
-
-        # Create a mapping of (symbol, date) -> attribute value using vectorized operations
-        # Group attributes by symbol for efficient lookup
-        attr_by_symbol = {
-            symbol: group for symbol, group in all_attributes.groupby("symbol")
-        }
-
-        # Build list of results using optimized lookups
-        results = []
-        for symbol, symbol_group in symbol_data.groupby("symbol"):
-            if symbol not in attr_by_symbol:
-                continue
-
-            symbol_attrs = attr_by_symbol[symbol]
-
-            # Use itertuples() instead of iterrows() for better performance
-            for row in symbol_group.itertuples(index=False):
-                date = row.date
-
-                # Find attributes valid at this date
-                valid = symbol_attrs[
-                    (symbol_attrs["effective_date"] <= date)
-                    & (
-                        (symbol_attrs["end_date"].isna())
-                        | (symbol_attrs["end_date"] >= date)
-                    )
-                ]
-
-                if not valid.empty:
-                    # Get most recent
-                    attr_value = valid.sort_values(
-                        "effective_date", ascending=False
-                    ).iloc[0][attribute]
-                    results.append(
-                        {
-                            "date": date,
-                            attribute: attr_value,
-                            "weight": row.weight,
-                            "twr_return": row.twr_return,
-                        }
-                    )
-
-        if not results:
-            return pd.DataFrame()
-
-        merged = pd.DataFrame(results)
-
-        # Calculate weighted return (vectorized)
+        # VECTORIZED: Calculate weighted return for all rows
         merged["weighted_return"] = merged["twr_return"] * merged["weight"]
 
-        # Group by date and attribute category
-        result_df = (
-            merged.groupby(["date", attribute])
-            .agg(
-                {
-                    "weight": "sum",
-                    "weighted_return": "sum",
-                }
-            )
-            .reset_index()
+        # VECTORIZED: Group by date and category in one operation
+        result_df = merged.groupby(["date", attribute], as_index=False).agg(
+            {
+                "weight": "sum",
+                "weighted_return": "sum",
+            }
         )
 
-        # Calculate weighted average return (vectorized, avoiding division by zero)
+        # VECTORIZED: Use numpy for better performance (no apply!)
+        import numpy as np
+
         result_df["twr_return"] = np.where(
-            result_df["weight"] != 0,
+            result_df["weight"] > 0,
             result_df["weighted_return"] / result_df["weight"],
             0,
         )
 
-        # Clean up
         result_df = result_df.drop(columns=["weighted_return"])
         result_df = result_df.rename(columns={attribute: "category"})
 
