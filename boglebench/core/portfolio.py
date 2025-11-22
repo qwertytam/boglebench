@@ -514,28 +514,33 @@ class BogleBenchAnalyzer:
                     "fund_type",
                 ]
 
+                # Validate all attributes first
+                valid_group_by = []
                 for group in group_by:
                     if group not in valid_attributes:
                         self.logger.error(
-                            "Grouping attribute '%s' not valid. Must be one of: %s. "
-                            "Skipping Brinson attribution.",
+                            "Grouping attribute '%s' not valid. Must be one of: %s. Skipping.",
                             group,
                             ", ".join(valid_attributes),
                         )
                     else:
-                        brinson_summary = {}
-                        selection_drilldown = {}
-                        for group in group_by:
-                            self.logger.info(
-                                " - Grouping by attribute: %s", group
-                            )
-                            (
-                                brinson_summary[group],
-                                selection_drilldown[group],
-                            ) = brinson_calculator.calculate(group)
-                            self.logger.info(
-                                "✅ Brinson attribution analysis complete!"
-                            )
+                        valid_group_by.append(group)
+
+                # Calculate Brinson attribution for valid attributes (single loop only)
+                if valid_group_by:
+                    brinson_summary = {}
+                    selection_drilldown = {}
+                    for group in valid_group_by:
+                        self.logger.info(
+                            " - Grouping by attribute: %s", group
+                        )
+                        (
+                            brinson_summary[group],
+                            selection_drilldown[group],
+                        ) = brinson_calculator.calculate(group)
+                        self.logger.info(
+                            "✅ Brinson attribution analysis complete for %s!", group
+                        )
 
         self.performance_results = PerformanceResults(
             transactions=self.transactions,
