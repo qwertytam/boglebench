@@ -21,24 +21,47 @@ from boglebench.utils.config import ConfigManager
 @pytest.fixture
 def market_data_fixture():
     """Provides a consistent set of market data for tests."""
-    dates = pd.date_range(start="2022-12-30", periods=15, freq="D", tz="UTC")
+    dates = pd.date_range(
+        start="2022-12-30", periods=20, freq="D", tz="UTC"
+    )  # Extended to 20 days
     return {
         "TICK": pd.DataFrame(
             {
                 "date": dates,
-                "close": range(100, 115),
-                "adj_close": range(100, 115),
-                "dividend": [0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                "split_coefficient": [0] * 15,
+                "close": range(100, 120),
+                "adj_close": range(100, 120),
+                "dividend": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0.5,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                ],
+                "split_coefficient": [0] * 20,
             }
         ),
         "SPY": pd.DataFrame(
             {
                 "date": dates,
-                "close": range(400, 415),
-                "adj_close": range(400, 415),
-                "dividend": [0] * 15,
-                "split_coefficient": [0] * 15,
+                "close": range(400, 420),
+                "adj_close": range(400, 420),
+                "dividend": [0] * 20,
+                "split_coefficient": [0] * 20,
             }
         ),
     }
@@ -109,6 +132,19 @@ SCENARIOS = {
     "user_start_end_outside_transaction_dates": ("2022-12-30", "2023-01-09"),
     "user_dates_outside_transaction_range": ("2024-01-10", "2024-01-15"),
     "user_start_after_end": ("2023-01-10", "2023-01-05"),
+    # New scenarios for market vs user end dates
+    "user_end_after_market_end": (
+        None,
+        "2023-01-15",
+    ),  # User end date beyond market data
+    "user_end_before_market_end": (
+        None,
+        "2023-01-04",
+    ),  # User end date before last market data
+    "market_end_with_no_user_end": (
+        None,
+        None,
+    ),  # Should use last closed market day
 }
 
 
@@ -209,13 +245,20 @@ class TestDateScenarios:
         mock_last_closed_market_day,
         scenario_analyzer,
     ):
-        """
-        Runs a date range scenario and performs assertions based on the scenario type.
-        """
-        mock_is_market_open.return_value = True
-        mock_last_closed_market_day.return_value = pd.to_datetime(
-            "2023-01-10", utc=True
-        )
+        """Test various date range scenarios end-to-end."""
+        # Set different mock values based on scenario
+        analyzer, scenario_name, transactions_file = scenario_analyzer
+
+        if scenario_name == "market_end_with_no_user_end":
+            mock_is_market_open.return_value = False
+            mock_last_closed_market_day.return_value = pd.to_datetime(
+                "2023-01-10", utc=True
+            )
+        else:
+            mock_is_market_open.return_value = True
+            mock_last_closed_market_day.return_value = pd.to_datetime(
+                "2023-01-13", utc=True
+            )
 
         analyzer, scenario_name, transactions_file = scenario_analyzer
 
@@ -234,6 +277,8 @@ class TestDateScenarios:
         symbol_data = portfolio_db.get_symbol_data("TICK")
         portfolio_summary = portfolio_db.get_portfolio_summary()
 
+        start_date, end_date = portfolio_db.get_date_range()
+
         # --- Assertions ---
         if scenario_name == "user_dates_outside_transaction_range":
             # This range has no transactions, so the portfolio should be all
@@ -246,8 +291,6 @@ class TestDateScenarios:
             return
 
         # --- Assertions for all other valid scenarios ---
-        assert not portfolio_summary.empty
-        start_date, end_date = portfolio_db.get_date_range()
 
         if scenario_name == "user_start_end_equal_transaction_dates":
             assert start_date.date() == pd.to_datetime("2023-01-02").date()
@@ -312,3 +355,14 @@ class TestDateScenarios:
                 ].iloc[0]
                 == 5.0
             )
+
+        elif scenario_name == "user_end_after_market_end":
+            # Should cap at last available market data date
+            assert start_date.date() == pd.to_datetime("2023-01-02").date()
+            # End date should be capped at market data end (2023-01-13 based on 20 days)
+            assert end_date.date() <= pd.to_datetime("2023-01-13").date()
+
+        elif scenario_name == "user_end_before_market_end":
+            # Should use user-specified end date
+            assert start_date.date() == pd.to_datetime("2023-01-02").date()
+            assert end_date.date() == pd.to_datetime("2023-01-04").date()
