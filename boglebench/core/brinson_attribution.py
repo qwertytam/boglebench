@@ -47,7 +47,7 @@ class BrinsonAttributionCalculator:
 
         self.benchmark_history = benchmark_history
         self.portfolio_db = portfolio_db
-        
+
         # Add caching for database queries (optimization)
         self._symbol_data_cache = None
         self._attributes_cache = {}
@@ -58,12 +58,16 @@ class BrinsonAttributionCalculator:
             self._symbol_data_cache = self.portfolio_db.get_symbol_data()
         return self._symbol_data_cache
 
-    def _get_all_attributes(self, include_history: bool = False) -> pd.DataFrame:
+    def _get_all_attributes(
+        self, include_history: bool = False
+    ) -> pd.DataFrame:
         """Get attributes with caching to avoid repeated database queries."""
         cache_key = f"history_{include_history}"
         if cache_key not in self._attributes_cache:
-            self._attributes_cache[cache_key] = self.portfolio_db.get_symbol_attributes(
-                include_history=include_history
+            self._attributes_cache[cache_key] = (
+                self.portfolio_db.get_symbol_attributes(
+                    include_history=include_history
+                )
             )
         return self._attributes_cache[cache_key]
 
@@ -253,58 +257,62 @@ class BrinsonAttributionCalculator:
         # ✅ VECTORIZED: Convert wide format to long format using pd.melt
         # Extract weight and return columns for each symbol
         results_list = []
-        
+
         for symbol in benchmark_symbols:
             weight_col = f"{symbol}_weight"
             return_col = f"{symbol}_twr_return"
-            
+
             # Check if columns exist
-            if weight_col not in bench_df.columns or return_col not in bench_df.columns:
+            if (
+                weight_col not in bench_df.columns
+                or return_col not in bench_df.columns
+            ):
                 continue
-            
+
             # Create long format dataframe for this symbol
             symbol_df = bench_df[["date", weight_col, return_col]].copy()
             symbol_df["symbol"] = symbol
             symbol_df.rename(
                 columns={weight_col: "weight", return_col: "twr_return"},
-                inplace=True
+                inplace=True,
             )
-            
+
             # Filter out rows with NaN values
             symbol_df = symbol_df.dropna(subset=["weight", "twr_return"])
-            
+
             if symbol_df.empty:
                 continue
-                
+
             # ✅ VECTORIZED: Use merge_asof for temporal join with attributes
             # Get attributes for this symbol
             symbol_attrs = bench_attrs[bench_attrs["symbol"] == symbol].copy()
-            
+
             if symbol_attrs.empty:
                 continue
-            
+
             # Sort both dataframes for merge_asof
             symbol_df = symbol_df.sort_values("date")
             symbol_attrs = symbol_attrs.sort_values("effective_date")
-            
+
             # Use merge_asof to find the most recent attribute for each date
             merged = pd.merge_asof(
                 symbol_df,
                 symbol_attrs[["effective_date", "end_date", attribute]],
                 left_on="date",
                 right_on="effective_date",
-                direction="backward"
+                direction="backward",
             )
-            
+
             # Filter out rows where the attribute has expired (end_date < date)
             # Keep rows where end_date is NaN or end_date >= date
             merged = merged[
-                merged["end_date"].isna() | (merged["end_date"] >= merged["date"])
+                merged["end_date"].isna()
+                | (merged["end_date"] >= merged["date"])
             ]
-            
+
             # Drop rows with null attributes
             merged = merged.dropna(subset=[attribute])
-            
+
             if not merged.empty:
                 # Keep only needed columns
                 merged = merged[["date", attribute, "weight", "twr_return"]]

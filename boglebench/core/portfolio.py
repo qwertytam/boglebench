@@ -547,23 +547,29 @@ class BogleBenchAnalyzer:
                 if valid_group_by:
                     brinson_summary = {}
                     selection_drilldown = {}
-                    
+
                     # Use ThreadPoolExecutor for parallel calculation
                     # Cap at 4 workers to avoid overwhelming the system
                     max_workers = min(4, len(valid_group_by))
-                    
-                    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+
+                    with ThreadPoolExecutor(
+                        max_workers=max_workers
+                    ) as executor:
                         # Submit all tasks
                         future_to_group = {
-                            executor.submit(brinson_calculator.calculate, group): group
+                            executor.submit(
+                                brinson_calculator.calculate, group
+                            ): group
                             for group in valid_group_by
                         }
-                        
+
                         # Collect results as they complete
                         for future in as_completed(future_to_group):
                             group = future_to_group[future]
                             try:
-                                self.logger.info(" - Grouping by attribute: %s", group)
+                                self.logger.info(
+                                    " - Grouping by attribute: %s", group
+                                )
                                 (
                                     brinson_summary[group],
                                     selection_drilldown[group],
@@ -574,7 +580,9 @@ class BogleBenchAnalyzer:
                                 )
                             except Exception as exc:
                                 self.logger.error(
-                                    "Brinson attribution failed for %s: %s", group, exc
+                                    "Brinson attribution failed for %s: %s",
+                                    group,
+                                    exc,
                                 )
 
         self.performance_results = PerformanceResults(
