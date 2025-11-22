@@ -3926,29 +3926,6 @@ files = [
 
 [[package]]
 name = "pytest"
-version = "8.4.2"
-description = "pytest: simple powerful testing with Python"
-optional = true
-python-versions = ">=3.9"
-groups = ["main"]
-markers = "extra == \"dev\""
-files = [
-    {file = "pytest-8.4.2-py3-none-any.whl", hash = "sha256:872f880de3fc3a5bdc88a11b39c9710c3497a547cfa9320bc3c5e62fbf272e79"},
-    {file = "pytest-8.4.2.tar.gz", hash = "sha256:86c0d0b93306b961d58d62a4db4879f27fe25513d4b969df351abdddb3c30e01"},
-]
-
-[package.dependencies]
-colorama = {version = ">=0.4", markers = "sys_platform == \"win32\""}
-iniconfig = ">=1"
-packaging = ">=20"
-pluggy = ">=1.5,<2"
-pygments = ">=2.7.2"
-
-[package.extras]
-dev = ["argcomplete", "attrs (>=19.2)", "hypothesis (>=3.56)", "mock", "requests", "setuptools", "xmlschema"]
-
-[[package]]
-name = "pytest"
 version = "9.0.1"
 description = "pytest: simple powerful testing with Python"
 optional = true
@@ -5149,10 +5126,10 @@ multidict = ">=4.0"
 propcache = ">=0.2.1"
 
 [extras]
-dev = ["black", "black", "build", "pandas-stubs", "pre-commit", "pytest", "pytest", "pytest-cov", "ruff", "types-pyyaml"]
+dev = ["black", "black", "build", "pandas-stubs", "pre-commit", "pytest", "pytest-cov", "ruff", "types-pyyaml"]
 jupyter = ["ipywidgets", "jupyter", "plotly"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = ">= 3.12, < 4.0"
-content-hash = "79f1a80f50148c95a51a28c92a2e48b2f09a01baf0e32386e3bfa061aee4d3bb"
+content-hash = "85c9a0af3a7db58660e6fee4e4626872355d233e192e45c3846e05b18b4c929e"

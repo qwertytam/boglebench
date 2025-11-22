@@ -13,6 +13,7 @@ import pandas as pd
 
 from ..core.portfolio_db import PortfolioDatabase
 from ..utils.logging_config import get_logger
+from ..utils.performance import timeit
 
 logger = get_logger()
 
@@ -46,6 +47,7 @@ class BrinsonAttributionCalculator:
         self.benchmark_history = benchmark_history
         self.portfolio_db = portfolio_db
 
+    @timeit
     def calculate(
         self, group_by: str
     ) -> Tuple[pd.DataFrame, Dict[str, pd.DataFrame]]:
@@ -103,10 +105,11 @@ class BrinsonAttributionCalculator:
 
         return summary_df, selection_drilldown
 
+    @timeit
     def _get_portfolio_data_with_attributes(
         self, attribute: str
     ) -> pd.DataFrame:
-        """Get portfolio data grouped by attribute."""
+        """Get portfolio data grouped by attribute (optimized)."""
 
         if self.portfolio_db is None:
             return pd.DataFrame()
@@ -117,69 +120,58 @@ class BrinsonAttributionCalculator:
         if symbol_data.empty:
             return pd.DataFrame()
 
-        # Get attributes for all dates
-        result_data = []
+        # ✅ GET ALL ATTRIBUTES ONCE instead of per-date
+        all_attributes = self.portfolio_db.get_symbol_attributes()
 
-        for date in symbol_data["date"].unique():
-            date_data = symbol_data[symbol_data["date"] == date]
-
-            # Get attributes as of this date
-            attributes_at_date = (
-                self.portfolio_db.get_symbol_attributes_at_date(date)
-            )
-
-            if attributes_at_date.empty:
-                continue
-
-            # Merge with attributes
-            merged = date_data.merge(
-                attributes_at_date[["symbol", attribute]],
-                on="symbol",
-                how="left",
-            )
-
-            # Group by attribute category
-            # Calculate weighted return manually to avoid lambda capturing
-            # loop variable
-            merged["weighted_return"] = merged["twr_return"] * merged["weight"]
-
-            grouped = (
-                merged.groupby([attribute])
-                .agg(
-                    {
-                        "weight": "sum",
-                        "weighted_return": "sum",
-                    }
-                )
-                .reset_index()
-            )
-
-            # Calculate the final weighted average return
-            grouped["twr_return"] = grouped.apply(
-                lambda row: (
-                    row["weighted_return"] / row["weight"]
-                    if row["weight"] > 0
-                    else 0
-                ),
-                axis=1,
-            )
-            grouped = grouped.drop(columns=["weighted_return"])
-
-            grouped["date"] = date
-            result_data.append(grouped)
-
-        if not result_data:
+        if all_attributes.empty:
             return pd.DataFrame()
 
-        result_df = pd.concat(result_data, ignore_index=True)
+        # Filter to only the attribute we need
+        if attribute not in all_attributes.columns:
+            logger.warning("Attribute '%s' not found in symbol attributes", attribute)
+            return pd.DataFrame()
+
+        # Merge symbol data with attributes once
+        merged = symbol_data.merge(
+            all_attributes[["symbol", attribute]],
+            on="symbol",
+            how="left",
+        )
+
+        # Calculate weighted return
+        merged["weighted_return"] = merged["twr_return"] * merged["weight"]
+
+        # Group by date and attribute category
+        result_df = (
+            merged.groupby(["date", attribute])
+            .agg({
+                "weight": "sum",
+                "weighted_return": "sum",
+            })
+            .reset_index()
+        )
+
+        # Calculate weighted average return for each group
+        result_df["twr_return"] = result_df.apply(
+            lambda row: (
+                row["weighted_return"] / row["weight"]
+                if row["weight"] > 0
+                else 0
+            ),
+            axis=1,
+        )
+
+        # Clean up
+        result_df = result_df.drop(columns=["weighted_return"])
         result_df = result_df.rename(columns={attribute: "category"})
 
         return result_df
 
+    @timeit
     def _get_benchmark_data_with_attributes(
         self, attribute: str
     ) -> pd.DataFrame:
-        """Get benchmark data grouped by attribute."""
+        """Get benchmark data grouped by attribute (optimized)."""
 
         if self.portfolio_db is None:
             return pd.DataFrame()
@@ -189,121 +181,97 @@ class BrinsonAttributionCalculator:
             return pd.DataFrame()
 
         # Extract benchmark component symbols from benchmark_history columns
-        benchmark_symbols = []
-        for col in self.benchmark_history.columns:
-            if col.endswith("_twr_return") and not col.startswith("benchmark"):
-                symbol = col.replace("_twr_return", "")
-                benchmark_symbols.append(symbol)
+        benchmark_symbols = [
+            col.replace("_twr_return", "")
+            for col in self.benchmark_history.columns
+            if col.endswith("_twr_return") and not col.startswith("benchmark")
+        ]
 
         if not benchmark_symbols:
             logger.warning("No benchmark symbols found in benchmark_history")
             return pd.DataFrame()
 
-        # Get attributes for benchmark symbols
-        result_data = []
+        # ✅ Get attributes for all benchmark symbols at once
+        bench_attrs = self.portfolio_db.get_symbol_attributes()
+        bench_attrs = bench_attrs[bench_attrs["symbol"].isin(benchmark_symbols)]
 
-        # Get dates from index or column
-        if "date" in self.benchmark_history.columns:
-            dates = pd.to_datetime(self.benchmark_history["date"], utc=True)
-        else:
-            # Date is in the index
-            index_dates = self.benchmark_history.index
-            if not isinstance(index_dates, pd.DatetimeIndex):
-                dates = pd.Series(pd.to_datetime(index_dates, utc=True))
-            else:
-                dates = pd.Series(index_dates)
-
-        for date in dates:
-            # Get attributes as of this date
-            attributes_at_date = (
-                self.portfolio_db.get_symbol_attributes_at_date(
-                    date,
-                )
-            )
-
-            if attributes_at_date.empty:
-                continue
-
-            # Filter to benchmark symbols
-            bench_attrs = attributes_at_date[
-                attributes_at_date["symbol"].isin(benchmark_symbols)
-            ]
-
-            if bench_attrs.empty:
-                continue
-
-            # Get weights and returns from benchmark_history
-            if "date" in self.benchmark_history.columns:
-                date_row = self.benchmark_history[
-                    self.benchmark_history["date"].dt.date == date.date()
-                ]
-            else:
-                # Date is in the index
-                try:
-                    date_row = self.benchmark_history.loc[[date]]
-                except KeyError:
-                    # Try with date() if it's a timestamp
-                    try:
-                        matching_idx = [
-                            idx
-                            for idx in self.benchmark_history.index
-                            if idx.date() == date.date()
-                        ]
-                        if matching_idx:
-                            date_row = self.benchmark_history.loc[matching_idx]
-                        else:
-                            date_row = pd.DataFrame()
-                    except Exception:  # pylint: disable=broad-except
-                        date_row = pd.DataFrame()
-                        logger.warning("No benchmark data for date %s", date)
-
-            if date_row.empty:
-                continue
-
-            date_series = date_row.iloc[0]
-
-            # Aggregate by attribute
-            category_data = []
-            for category in bench_attrs[attribute].dropna().unique():
-                cat_symbols = bench_attrs[bench_attrs[attribute] == category][
-                    "symbol"
-                ].tolist()
-
-                # Sum weights and calculate weighted return
-                total_weight = 0
-                weighted_return = 0
-
-                for symbol in cat_symbols:
-                    weight_col = f"{symbol}_weight"
-                    return_col = f"{symbol}_twr_return"
-
-                    if (
-                        weight_col in date_series.index
-                        and return_col in date_series.index
-                    ):
-                        weight = date_series[weight_col]
-                        ret = date_series[return_col]
-
-                        total_weight += weight
-                        weighted_return += weight * ret
-
-                if total_weight > 0:
-                    category_data.append(
-                        {
-                            "date": date,
-                            "category": category,
-                            "weight": total_weight,
-                            "twr_return": weighted_return / total_weight,
-                        }
-                    )
-
-            if category_data:
-                result_data.extend(category_data)
-
-        if not result_data:
+        if bench_attrs.empty:
+            logger.warning("No attributes found for benchmark symbols")
             return pd.DataFrame()
 
-        return pd.DataFrame(result_data)
+        # Check if attribute exists
+        if attribute not in bench_attrs.columns:
+            logger.warning("Attribute '%s' not found for benchmark symbols", attribute)
+            return pd.DataFrame()
+
+        # Create symbol to category mapping
+        symbol_to_category = bench_attrs.set_index("symbol")[attribute].to_dict()
+
+        # ✅ VECTORIZED: Process all dates at once
+        dates = (
+            self.benchmark_history.index
+            if "date" not in self.benchmark_history.columns
+            else self.benchmark_history["date"]
+        )
+
+        result_list = []
+
+        # Iterate through symbols (few) instead of dates (many)
+        for symbol in benchmark_symbols:
+            weight_col = f"{symbol}_weight"
+            return_col = f"{symbol}_twr_return"
+
+            # Skip if columns don't exist
+            if weight_col not in self.benchmark_history.columns:
+                continue
+            if return_col not in self.benchmark_history.columns:
+                continue
+
+            # Get category for this symbol
+            category = symbol_to_category.get(symbol)
+            if pd.isna(category):
+                continue
+
+            # ✅ Extract all data for this symbol at once
+            for idx, row in self.benchmark_history.iterrows():
+                result_list.append({
+                    "date": idx if "date" not in self.benchmark_history.columns else row["date"],
+                    "symbol": symbol,
+                    "category": category,
+                    "weight": row[weight_col],
+                    "twr_return": row[return_col],
+                })
+
+        if not result_list:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(result_list)
+
+        # ✅ Aggregate by date and category using vectorized operations
+        df["weighted_return"] = df["twr_return"] * df["weight"]
+
+        grouped = (
+            df.groupby(["date", "category"])
+            .agg({
+                "weight": "sum",
+                "weighted_return": "sum",
+            })
+            .reset_index()
+        )
+
+        # Calculate weighted average return
+        grouped["twr_return"] = grouped.apply(
+            lambda row: (
+                row["weighted_return"] / row["weight"]
+                if row["weight"] > 0
+                else 0
+            ),
+            axis=1,
+        )
+
+        grouped = grouped.drop(columns=["weighted_return"])
+
+        return grouped
 
     def _calculate_brinson_components(
         self,
