@@ -156,9 +156,9 @@ class BrinsonAttributionCalculator:
                 
             symbol_attrs = attr_by_symbol[symbol]
             
-            # For each date in this symbol's data, find the correct attribute
-            for _, row in symbol_group.iterrows():
-                date = row['date']
+            # Use itertuples() instead of iterrows() for better performance
+            for row in symbol_group.itertuples(index=False):
+                date = row.date
                 
                 # Find attributes valid at this date
                 valid = symbol_attrs[
@@ -172,8 +172,8 @@ class BrinsonAttributionCalculator:
                     results.append({
                         'date': date,
                         attribute: attr_value,
-                        'weight': row['weight'],
-                        'twr_return': row['twr_return']
+                        'weight': row.weight,
+                        'twr_return': row.twr_return
                     })
         
         if not results:
@@ -271,17 +271,21 @@ class BrinsonAttributionCalculator:
         # Group attributes by symbol for efficient lookup
         attr_by_symbol = {symbol: group for symbol, group in bench_attrs.groupby('symbol')}
 
-        # Build results using optimized lookups
+        # Build results using optimized lookups with itertuples for performance
         results = []
-        for _, row in bench_df.iterrows():
-            date = row['date']
+        for row in bench_df.itertuples(index=False):
+            date = row.date
             
             for symbol in benchmark_symbols:
                 weight_col = f"{symbol}_weight"
                 return_col = f"{symbol}_twr_return"
 
-                # Skip if columns don't exist
-                if weight_col not in row.index or return_col not in row.index:
+                # Get values using getattr for named tuple access
+                try:
+                    weight = getattr(row, weight_col)
+                    twr_return = getattr(row, return_col)
+                except AttributeError:
+                    # Column doesn't exist
                     continue
 
                 # Find attribute for this symbol at this date
@@ -303,8 +307,8 @@ class BrinsonAttributionCalculator:
                         results.append({
                             'date': date,
                             'category': attr_value,
-                            'weight': row[weight_col],
-                            'twr_return': row[return_col]
+                            'weight': weight,
+                            'twr_return': twr_return
                         })
 
         if not results:
