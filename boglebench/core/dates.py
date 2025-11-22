@@ -7,6 +7,7 @@ analysis periods align with market trading days.
 """
 
 from datetime import datetime, timedelta
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -34,6 +35,7 @@ class AnalysisPeriod:
         self.transactions_df = transactions_df
         self.start_date = self._determine_start_date()
         self.end_date = self._determine_end_date()
+        self.market_data_end_date = self._determine_market_data_end_date()
 
         if (
             self.start_date
@@ -63,22 +65,55 @@ class AnalysisPeriod:
 
         return None
 
-    def _determine_end_date(self):
-        """Uses config, or falls back to the last closed market day or now."""
-        end_date_val = self.config.get("analysis.end_date")
-        if end_date_val:
-            logger.info("Using end date from config: %s", end_date_val)
-            return to_tzts_scaler(
-                end_date_val, tz=DateAndTimeConstants.TZ_UTC.value
-            )
+    def _determine_end_date(self) -> Optional[pd.Timestamp]:
+        """
+        Determine the end date for analysis (user-specified or current time).
+
+        This is the date through which we want to analyze the portfolio,
+        even if market data isn't available yet for that date.
+
+        Returns:
+            End date for portfolio analysis
+        """
+        user_end = self.config.get("analysis.end_date", None)
+
+        if user_end:
+            logger.info("Using user-specified end date: %s", user_end)
+            return pd.to_datetime(user_end, utc=True)
 
         if self._is_market_currently_open():
-            return self._get_last_closed_market_day()
+            logger.info("Market is open, using current time as end date.")
+        else:
+            logger.info("Market is closed, using current time as end date.")
 
-        logger.info("Market is closed, using current time as end date.")
-        return to_tzts_scaler(
-            datetime.now(ZoneInfo(DateAndTimeConstants.TZ_UTC.value))
+        return pd.Timestamp.now(tz=DateAndTimeConstants.TZ_UTC.value)
+
+    def _determine_market_data_end_date(self) -> pd.Timestamp:
+        """
+        Determine the end date for fetching market data.
+
+        This is the last date for which market data is actually available,
+        which may be earlier than the analysis end_date if the market is closed.
+
+        Returns:
+            End date for market data queries
+        """
+        # If user specified an end date, use it for market data too
+        user_end = self.config.get("analysis.end_date", None)
+        if user_end:
+            return pd.to_datetime(user_end, utc=True)
+
+        # If market is open, we can get data up to current time
+        if self._is_market_currently_open():
+            return pd.Timestamp.now(tz=DateAndTimeConstants.TZ_UTC.value)
+
+        # Market is closed - use last closed market day for data fetching
+        last_closed = self._get_last_closed_market_day()
+        logger.info(
+            "Market is closed, using last closed market day (%s) for data fetching.",
+            last_closed.date(),
         )
+        return last_closed
 
     def _is_market_currently_open(self) -> bool:
         """Check if the market is currently open."""
