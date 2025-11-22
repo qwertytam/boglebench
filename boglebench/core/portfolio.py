@@ -486,7 +486,7 @@ class BogleBenchAnalyzer:
                     ) as executor:
                         future_to_factor = {
                             executor.submit(
-                                attrib_calculator.calculate, factor
+                                attrib_calculator.calculate, group_by=factor
                             ): factor
                             for factor in factor_columns
                         }

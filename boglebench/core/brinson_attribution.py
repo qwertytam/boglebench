@@ -8,6 +8,7 @@ selection using database as the single source of truth.
 """
 
 import threading
+import time
 from typing import Dict, Tuple
 
 import numpy as np
@@ -60,8 +61,6 @@ class BrinsonAttributionCalculator:
 
     def _precache_data(self):
         """Pre-fetch and cache all data needed for calculations."""
-        import time
-
         logger.debug("🔄 Pre-caching data for Brinson calculations...")
         start = time.time()
 
