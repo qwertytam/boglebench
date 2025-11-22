@@ -549,13 +549,25 @@ class BogleBenchAnalyzer:
                     selection_drilldown = {}
 
                     # Use ThreadPoolExecutor for parallel calculation
-                    # Cap at 4 workers to avoid overwhelming the system
-                    max_workers = min(4, len(valid_group_by))
+                    # Default to 4 workers to balance parallelism and resource usage
+                    # Can be configured via analysis.brinson_max_workers config option
+                    default_max_workers = 4
+                    configured_max_workers = self.config.get(
+                        "analysis.brinson_max_workers", default_max_workers
+                    )
+                    if isinstance(configured_max_workers, dict):
+                        configured_max_workers = configured_max_workers.get(
+                            "value", default_max_workers
+                        )
+                    max_workers = min(
+                        int(configured_max_workers), len(valid_group_by)
+                    )
 
                     # Log which attributes we're processing
                     self.logger.info(
-                        "Processing %d attributes in parallel: %s",
+                        "Processing %d attributes in parallel (max_workers=%d): %s",
                         len(valid_group_by),
+                        max_workers,
                         ", ".join(valid_group_by),
                     )
 

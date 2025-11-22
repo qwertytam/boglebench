@@ -64,6 +64,8 @@ class BrinsonAttributionCalculator:
                     self._symbol_data_cache = (
                         self.portfolio_db.get_symbol_data()
                     )
+                # Return from within lock to avoid race condition
+                return self._symbol_data_cache
         return self._symbol_data_cache
 
     def _get_all_attributes(
@@ -80,6 +82,8 @@ class BrinsonAttributionCalculator:
                             include_history=include_history
                         )
                     )
+                # Return from within lock to avoid race condition
+                return self._attributes_cache[cache_key]
         return self._attributes_cache[cache_key]
 
     @timeit
@@ -229,9 +233,10 @@ class BrinsonAttributionCalculator:
 
         # ✅ Get all attribute history for benchmark symbols at once (using cache)
         bench_attrs = self._get_all_attributes(include_history=True)
-        bench_attrs = bench_attrs[
+        # Filter and copy to avoid modifying cached data when we set timezone-aware dates below
+        bench_attrs = bench_attrs.loc[
             bench_attrs["symbol"].isin(benchmark_symbols)
-        ].copy()  # Use copy to avoid SettingWithCopyWarning
+        ].copy()
 
         if bench_attrs.empty:
             logger.warning("No attributes found for benchmark symbols")
