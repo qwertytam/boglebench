@@ -323,9 +323,19 @@ class AttributionCalculator:
 
         # ✅ VECTORIZED: Calculate summary metrics by category
         # Use a more efficient compound return calculation
-        def compound_return(returns):
-            """Calculate compound return from a series of period returns."""
-            return np.prod(1 + returns.values) - 1
+        def compound_return(returns: pd.Series) -> float:
+            """
+            Calculate compound return from a series of period returns.
+
+            Args:
+                returns: Series of period returns in decimal form (e.g., 0.05 for 5%).
+                        NaN values are treated as 0% returns.
+
+            Returns:
+                Compound return in decimal form.
+            """
+            # Fill NaN with 0 and use numpy for efficient calculation
+            return float(np.prod(1 + returns.fillna(0)) - 1)
 
         summary = (
             attr_df.groupby("category")
