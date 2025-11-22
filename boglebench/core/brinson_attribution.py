@@ -9,6 +9,7 @@ selection using database as the single source of truth.
 
 from typing import Dict, Tuple
 
+import numpy as np
 import pandas as pd
 
 from ..core.portfolio_db import PortfolioDatabase
@@ -193,9 +194,12 @@ class BrinsonAttributionCalculator:
             .reset_index()
         )
 
-        # Calculate weighted average return (vectorized)
-        result_df["twr_return"] = result_df["weighted_return"] / result_df["weight"]
-        result_df["twr_return"] = result_df["twr_return"].fillna(0)
+        # Calculate weighted average return (vectorized, avoiding division by zero)
+        result_df["twr_return"] = np.where(
+            result_df["weight"] != 0,
+            result_df["weighted_return"] / result_df["weight"],
+            0
+        )
 
         # Clean up
         result_df = result_df.drop(columns=["weighted_return"])
@@ -320,9 +324,12 @@ class BrinsonAttributionCalculator:
             .reset_index()
         )
 
-        # Calculate weighted average return (vectorized)
-        grouped["twr_return"] = grouped["weighted_return"] / grouped["weight"]
-        grouped["twr_return"] = grouped["twr_return"].fillna(0)
+        # Calculate weighted average return (vectorized, avoiding division by zero)
+        grouped["twr_return"] = np.where(
+            grouped["weight"] != 0,
+            grouped["weighted_return"] / grouped["weight"],
+            0
+        )
 
         grouped = grouped.drop(columns=["weighted_return"])
 
