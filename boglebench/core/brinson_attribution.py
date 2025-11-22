@@ -55,12 +55,34 @@ class BrinsonAttributionCalculator:
         self._symbol_data_cache = None
         self._attributes_cache = {}
 
+        # Pre-cache all data to avoid delays in parallel execution
+        self._precache_data()
+
+    def _precache_data(self):
+        """Pre-fetch and cache all data needed for calculations."""
+        import time
+
+        logger.debug("🔄 Pre-caching data for Brinson calculations...")
+        start = time.time()
+
+        # Pre-load all data that will be needed
+        self._get_symbol_data()
+        self._get_all_attributes(include_history=False)
+        self._get_all_attributes(include_history=True)
+
+        elapsed = time.time() - start
+        logger.debug("✅ Pre-caching complete in %.2fs", elapsed)
+
     def _get_symbol_data(self) -> pd.DataFrame:
         """Get symbol data with thread-safe caching to avoid repeated database queries."""
+        cache_hit = self._symbol_data_cache is not None
+        logger.debug("Symbol data cache %s", "HIT ✅" if cache_hit else "MISS ❌")
+
         if self._symbol_data_cache is None:
             with self._cache_lock:
                 # Double-check pattern to avoid race conditions
                 if self._symbol_data_cache is None:
+                    logger.debug("Fetching symbol data from database...")
                     self._symbol_data_cache = (
                         self.portfolio_db.get_symbol_data()
                     )
@@ -73,10 +95,18 @@ class BrinsonAttributionCalculator:
     ) -> pd.DataFrame:
         """Get attributes with thread-safe caching to avoid repeated database queries."""
         cache_key = f"history_{include_history}"
+        cache_hit = cache_key in self._attributes_cache
+        logger.debug(
+            "Attributes cache (history=%s) %s",
+            include_history,
+            "HIT ✅" if cache_hit else "MISS ❌",
+        )
+
         if cache_key not in self._attributes_cache:
             with self._cache_lock:
                 # Double-check pattern to avoid race conditions
                 if cache_key not in self._attributes_cache:
+                    logger.debug("Fetching attributes from database...")
                     self._attributes_cache[cache_key] = (
                         self.portfolio_db.get_symbol_attributes(
                             include_history=include_history
