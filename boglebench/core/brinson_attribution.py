@@ -7,6 +7,7 @@ outperformance came from sector allocation decisions or individual security
 selection using database as the single source of truth.
 """
 
+import threading
 from typing import Dict, Tuple
 
 import numpy as np
@@ -49,26 +50,36 @@ class BrinsonAttributionCalculator:
         self.portfolio_db = portfolio_db
 
         # Add caching for database queries (optimization)
+        # Thread-safe caching using lock for parallel execution
+        self._cache_lock = threading.Lock()
         self._symbol_data_cache = None
         self._attributes_cache = {}
 
     def _get_symbol_data(self) -> pd.DataFrame:
-        """Get symbol data with caching to avoid repeated database queries."""
+        """Get symbol data with thread-safe caching to avoid repeated database queries."""
         if self._symbol_data_cache is None:
-            self._symbol_data_cache = self.portfolio_db.get_symbol_data()
+            with self._cache_lock:
+                # Double-check pattern to avoid race conditions
+                if self._symbol_data_cache is None:
+                    self._symbol_data_cache = (
+                        self.portfolio_db.get_symbol_data()
+                    )
         return self._symbol_data_cache
 
     def _get_all_attributes(
         self, include_history: bool = False
     ) -> pd.DataFrame:
-        """Get attributes with caching to avoid repeated database queries."""
+        """Get attributes with thread-safe caching to avoid repeated database queries."""
         cache_key = f"history_{include_history}"
         if cache_key not in self._attributes_cache:
-            self._attributes_cache[cache_key] = (
-                self.portfolio_db.get_symbol_attributes(
-                    include_history=include_history
-                )
-            )
+            with self._cache_lock:
+                # Double-check pattern to avoid race conditions
+                if cache_key not in self._attributes_cache:
+                    self._attributes_cache[cache_key] = (
+                        self.portfolio_db.get_symbol_attributes(
+                            include_history=include_history
+                        )
+                    )
         return self._attributes_cache[cache_key]
 
     @timeit

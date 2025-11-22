@@ -552,6 +552,13 @@ class BogleBenchAnalyzer:
                     # Cap at 4 workers to avoid overwhelming the system
                     max_workers = min(4, len(valid_group_by))
 
+                    # Log which attributes we're processing
+                    self.logger.info(
+                        "Processing %d attributes in parallel: %s",
+                        len(valid_group_by),
+                        ", ".join(valid_group_by),
+                    )
+
                     with ThreadPoolExecutor(
                         max_workers=max_workers
                     ) as executor:
@@ -567,9 +574,6 @@ class BogleBenchAnalyzer:
                         for future in as_completed(future_to_group):
                             group = future_to_group[future]
                             try:
-                                self.logger.info(
-                                    " - Grouping by attribute: %s", group
-                                )
                                 (
                                     brinson_summary[group],
                                     selection_drilldown[group],
