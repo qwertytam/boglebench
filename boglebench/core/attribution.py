@@ -208,7 +208,8 @@ class AttributionCalculator:
         Calculate attribution by symbol attribute (geography, sector, etc.).
 
         Uses temporal symbol attributes to correctly attribute performance
-        even when attributes change over time.
+        even when attributes change over time. This is a vectorized implementation
+        that eliminates per-date database queries for better performance.
         """
         if self.portfolio_db is None:
             return pd.DataFrame()
@@ -219,79 +220,146 @@ class AttributionCalculator:
         if symbol_df.empty:
             return pd.DataFrame()
 
-        # For each date and symbol, get the attribute value that was effective
-        attribution_data = []
+        # ✅ GET ALL ATTRIBUTE HISTORY ONCE instead of per-date queries
+        all_attributes = self.portfolio_db.get_symbol_attributes(
+            include_history=True
+        )
 
-        for date in symbol_df["date"].unique():
-            date_symbols = symbol_df[symbol_df["date"] == date]
-
-            # Get attributes as of this date
-            attributes_at_date = (
-                self.portfolio_db.get_symbol_attributes_at_date(date)
-            )
-
-            if attributes_at_date.empty:
-                continue
-
-            # Merge symbol data with attributes
-            merged = date_symbols.merge(
-                attributes_at_date[["symbol", attribute]],
-                on="symbol",
-                how="left",
-            )
-
-            # Group by attribute category
-            for category in merged[attribute].dropna().unique():
-                category_data = merged[merged[attribute] == category]
-
-                if not category_data.empty:
-                    attribution_data.append(
-                        {
-                            "date": date,
-                            "category": category,
-                            "weight": category_data["weight"].sum(),
-                            "value": category_data["total_value"].sum(),
-                            "weighted_return": (
-                                (
-                                    category_data["twr_return"]
-                                    * category_data["weight"]
-                                ).sum()
-                                / category_data["weight"].sum()
-                                if category_data["weight"].sum() > 0
-                                else 0
-                            ),
-                        }
-                    )
-
-        if not attribution_data:
+        if all_attributes.empty:
             return pd.DataFrame()
 
-        attr_df = pd.DataFrame(attribution_data)
+        # Check if attribute exists
+        if attribute not in all_attributes.columns:
+            logger.warning(
+                "Attribute '%s' not found in symbol attributes", attribute
+            )
+            return pd.DataFrame()
 
-        # Calculate summary metrics by category
-        summary_data = []
-        for category in attr_df["category"].unique():
-            cat_data = attr_df[attr_df["category"] == category]
-
-            # Average weight over time
-            avg_weight = cat_data["weight"].mean()
-
-            # Compound return
-            twr = (1 + cat_data["weighted_return"]).prod() - 1
-
-            # Contribution
-            contribution = avg_weight * twr
-
-            summary_data.append(
-                {
-                    "Category": category,
-                    "Avg. Weight": avg_weight,
-                    "Return (TWR)": twr,
-                    "Contribution to Portfolio Return": contribution,
-                }
+        # Ensure dates are timezone-aware for comparison
+        if "effective_date" in all_attributes.columns:
+            all_attributes["effective_date"] = pd.to_datetime(
+                all_attributes["effective_date"], utc=True
+            )
+        if "end_date" in all_attributes.columns:
+            all_attributes["end_date"] = pd.to_datetime(
+                all_attributes["end_date"], utc=True
             )
 
-        result_df = pd.DataFrame(summary_data)
+        symbol_df["date"] = pd.to_datetime(symbol_df["date"], utc=True)
+
+        # ✅ VECTORIZED: Build attribute mapping using efficient lookups
+        # Group attributes by symbol for efficient lookup
+        attr_by_symbol = {
+            symbol: group for symbol, group in all_attributes.groupby("symbol")
+        }
+
+        # Build results using optimized lookups
+        results = []
+        for symbol, symbol_group in symbol_df.groupby("symbol"):
+            if symbol not in attr_by_symbol:
+                continue
+
+            symbol_attrs = attr_by_symbol[symbol]
+
+            # Use itertuples() for better performance than iterrows()
+            for row in symbol_group.itertuples(index=False):
+                date = row.date
+
+                # Find attributes valid at this date
+                valid = symbol_attrs[
+                    (symbol_attrs["effective_date"] <= date)
+                    & (
+                        (symbol_attrs["end_date"].isna())
+                        | (symbol_attrs["end_date"] >= date)
+                    )
+                ]
+
+                if not valid.empty:
+                    # Get most recent attribute value
+                    attr_value = valid.sort_values(
+                        "effective_date", ascending=False
+                    ).iloc[0][attribute]
+                    if pd.notna(attr_value):
+                        results.append(
+                            {
+                                "date": date,
+                                "category": attr_value,
+                                "weight": row.weight,
+                                "total_value": row.total_value,
+                                "twr_return": row.twr_return,
+                            }
+                        )
+
+        if not results:
+            return pd.DataFrame()
+
+        merged = pd.DataFrame(results)
+
+        # ✅ VECTORIZED: Calculate weighted returns for all rows at once
+        merged["weighted_return"] = merged["twr_return"] * merged["weight"]
+
+        # ✅ VECTORIZED: Group by date and category in one operation
+        attr_df = (
+            merged.groupby(["date", "category"])
+            .agg(
+                {
+                    "weight": "sum",
+                    "total_value": "sum",
+                    "weighted_return": "sum",  # Sum of weighted returns
+                }
+            )
+            .reset_index()
+        )
+
+        # ✅ VECTORIZED: Calculate weighted average return (avoiding division by zero)
+        attr_df["twr_return"] = np.where(
+            attr_df["weight"] > 0,
+            attr_df["weighted_return"] / attr_df["weight"],
+            0,
+        )
+
+        # Drop the intermediate weighted_return column
+        attr_df = attr_df.drop(columns=["weighted_return"])
+
+        # ✅ VECTORIZED: Calculate summary metrics by category
+        # Use a more efficient compound return calculation
+        def compound_return(returns: pd.Series) -> float:
+            """
+            Calculate compound return from a series of period returns.
+
+            Args:
+                returns: Series of period returns in decimal form (e.g., 0.05 for 5%).
+                        NaN values are treated as 0% returns.
+
+            Returns:
+                Compound return in decimal form.
+            """
+            # Fill NaN with 0 and use numpy for efficient calculation
+            return float(np.prod(1 + returns.fillna(0)) - 1)
+
+        summary = (
+            attr_df.groupby("category")
+            .agg(
+                {
+                    "weight": "mean",  # Average weight over time
+                    "twr_return": compound_return,  # Compound return
+                }
+            )
+            .reset_index()
+        )
+
+        # Calculate contribution
+        summary["contribution"] = summary["weight"] * summary["twr_return"]
+
+        # Format result
+        result_df = pd.DataFrame(
+            {
+                "Category": summary["category"],
+                "Avg. Weight": summary["weight"],
+                "Return (TWR)": summary["twr_return"],
+                "Contribution to Portfolio Return": summary["contribution"],
+            }
+        )
 
         # Add benchmark comparison if available
         portfolio_summary = self.portfolio_db.get_portfolio_summary()
