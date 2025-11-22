@@ -192,7 +192,7 @@ class BrinsonAttributionCalculator:
     def _get_benchmark_data_with_attributes(
         self, attribute: str
     ) -> pd.DataFrame:
-        """Get benchmark data grouped by attribute (optimized with temporal handling)."""
+        """Get benchmark data grouped by attribute (FULLY VECTORIZED with merge_asof)."""
 
         if self.portfolio_db is None:
             return pd.DataFrame()
@@ -242,73 +242,82 @@ class BrinsonAttributionCalculator:
         # Convert benchmark_history to long format for easier processing
         # Get dates from index or column
         if "date" in self.benchmark_history.columns:
-            dates = pd.to_datetime(self.benchmark_history["date"], utc=True)
             bench_df = self.benchmark_history.copy()
+            bench_df["date"] = pd.to_datetime(bench_df["date"], utc=True)
         else:
             # Date is in the index
             bench_df = self.benchmark_history.reset_index()
             bench_df.rename(columns={"index": "date"}, inplace=True)
-            dates = pd.to_datetime(bench_df["date"], utc=True)
-            bench_df["date"] = dates
+            bench_df["date"] = pd.to_datetime(bench_df["date"], utc=True)
 
-        # Group attributes by symbol for efficient lookup
-        attr_by_symbol = {
-            symbol: group for symbol, group in bench_attrs.groupby("symbol")
-        }
+        # ✅ VECTORIZED: Convert wide format to long format using pd.melt
+        # Extract weight and return columns for each symbol
+        results_list = []
+        
+        for symbol in benchmark_symbols:
+            weight_col = f"{symbol}_weight"
+            return_col = f"{symbol}_twr_return"
+            
+            # Check if columns exist
+            if weight_col not in bench_df.columns or return_col not in bench_df.columns:
+                continue
+            
+            # Create long format dataframe for this symbol
+            symbol_df = bench_df[["date", weight_col, return_col]].copy()
+            symbol_df["symbol"] = symbol
+            symbol_df.rename(
+                columns={weight_col: "weight", return_col: "twr_return"},
+                inplace=True
+            )
+            
+            # Filter out rows with NaN values
+            symbol_df = symbol_df.dropna(subset=["weight", "twr_return"])
+            
+            if symbol_df.empty:
+                continue
+                
+            # ✅ VECTORIZED: Use merge_asof for temporal join with attributes
+            # Get attributes for this symbol
+            symbol_attrs = bench_attrs[bench_attrs["symbol"] == symbol].copy()
+            
+            if symbol_attrs.empty:
+                continue
+            
+            # Sort both dataframes for merge_asof
+            symbol_df = symbol_df.sort_values("date")
+            symbol_attrs = symbol_attrs.sort_values("effective_date")
+            
+            # Use merge_asof to find the most recent attribute for each date
+            merged = pd.merge_asof(
+                symbol_df,
+                symbol_attrs[["effective_date", "end_date", attribute]],
+                left_on="date",
+                right_on="effective_date",
+                direction="backward"
+            )
+            
+            # Filter out rows where the attribute has expired (end_date < date)
+            # Keep rows where end_date is NaN or end_date >= date
+            merged = merged[
+                merged["end_date"].isna() | (merged["end_date"] >= merged["date"])
+            ]
+            
+            # Drop rows with null attributes
+            merged = merged.dropna(subset=[attribute])
+            
+            if not merged.empty:
+                # Keep only needed columns
+                merged = merged[["date", attribute, "weight", "twr_return"]]
+                merged.rename(columns={attribute: "category"}, inplace=True)
+                results_list.append(merged)
 
-        # Build results using optimized lookups with itertuples for performance
-        results = []
-        for row in bench_df.itertuples(index=False):
-            date = row.date
-
-            for symbol in benchmark_symbols:
-                weight_col = f"{symbol}_weight"
-                return_col = f"{symbol}_twr_return"
-
-                # Get values using getattr for named tuple access
-                try:
-                    weight = getattr(row, weight_col)
-                    twr_return = getattr(row, return_col)
-                except AttributeError:
-                    # Column doesn't exist
-                    continue
-
-                # Find attribute for this symbol at this date
-                if symbol not in attr_by_symbol:
-                    continue
-
-                symbol_attrs = attr_by_symbol[symbol]
-
-                # Find attributes valid at this date
-                valid = symbol_attrs[
-                    (symbol_attrs["effective_date"] <= date)
-                    & (
-                        (symbol_attrs["end_date"].isna())
-                        | (symbol_attrs["end_date"] >= date)
-                    )
-                ]
-
-                if not valid.empty:
-                    # Get most recent
-                    attr_value = valid.sort_values(
-                        "effective_date", ascending=False
-                    ).iloc[0][attribute]
-                    if pd.notna(attr_value):
-                        results.append(
-                            {
-                                "date": date,
-                                "category": attr_value,
-                                "weight": weight,
-                                "twr_return": twr_return,
-                            }
-                        )
-
-        if not results:
+        if not results_list:
             return pd.DataFrame()
 
-        df = pd.DataFrame(results)
+        # ✅ VECTORIZED: Concatenate all results at once
+        df = pd.concat(results_list, ignore_index=True)
 
-        # ✅ Aggregate by date and category using vectorized operations
+        # ✅ VECTORIZED: Aggregate by date and category using vectorized operations
         df["weighted_return"] = df["twr_return"] * df["weight"]
 
         grouped = (
