@@ -5,6 +5,8 @@ This module calculates how different holdings, accounts, or attribute groups
 contributed to overall portfolio performance using database as the single source of truth.
 """
 
+import threading
+
 import numpy as np
 import pandas as pd
 
@@ -38,6 +40,53 @@ class AttributionCalculator:
                 "portfolio_db is required for attribution calculation"
             )
         self.portfolio_db = portfolio_db
+
+        # Add caching for repeated data access
+        self._cache_lock = threading.Lock()
+        self._symbol_data_cache = None
+        self._account_data_cache = None
+        self._attributes_cache = None
+
+        # Pre-cache common data
+        self._precache_data()
+
+    def _precache_data(self):
+        """Pre-fetch data to speed up calculations."""
+        logger.debug("🔄 Pre-caching data for attribution calculations...")
+        self._get_symbol_data()
+        self._get_account_data()
+        self._get_attributes()
+        logger.debug("✅ Attribution pre-caching complete")
+
+    def _get_symbol_data(self) -> pd.DataFrame:
+        """Get symbol data with caching."""
+        if self._symbol_data_cache is None:
+            with self._cache_lock:
+                if self._symbol_data_cache is None:
+                    self._symbol_data_cache = (
+                        self.portfolio_db.get_symbol_data()
+                    )
+        return self._symbol_data_cache
+
+    def _get_account_data(self) -> pd.DataFrame:
+        """Get account data with caching."""
+        if self._account_data_cache is None:
+            with self._cache_lock:
+                if self._account_data_cache is None:
+                    self._account_data_cache = (
+                        self.portfolio_db.get_account_data()
+                    )
+        return self._account_data_cache
+
+    def _get_attributes(self) -> pd.DataFrame:
+        """Get attributes with caching."""
+        if self._attributes_cache is None:
+            with self._cache_lock:
+                if self._attributes_cache is None:
+                    self._attributes_cache = (
+                        self.portfolio_db.get_symbol_attributes()
+                    )
+        return self._attributes_cache
 
     def calculate(self, group_by: str) -> pd.DataFrame:
         """
@@ -96,7 +145,7 @@ class AttributionCalculator:
         if self.portfolio_db is None:
             return pd.DataFrame()
 
-        symbol_df = self.portfolio_db.get_symbol_data()
+        symbol_df = self._get_symbol_data()
 
         if symbol_df.empty:
             return pd.DataFrame()
@@ -157,7 +206,7 @@ class AttributionCalculator:
         if self.portfolio_db is None:
             return pd.DataFrame()
 
-        account_df = self.portfolio_db.get_account_data()
+        account_df = self._get_account_data()
 
         if account_df.empty:
             return pd.DataFrame()
@@ -219,14 +268,14 @@ class AttributionCalculator:
         if self.portfolio_db is None:
             return pd.DataFrame()
 
-        # Get ALL symbol data at once
-        symbol_df = self.portfolio_db.get_symbol_data()
+        # Get ALL symbol data at once (using cache)
+        symbol_df = self._get_symbol_data()
 
         if symbol_df.empty:
             return pd.DataFrame()
 
-        # Get ALL attributes at once (not per-date!)
-        all_attributes = self.portfolio_db.get_symbol_attributes()
+        # Get ALL attributes at once (using cache)
+        all_attributes = self._get_attributes()
 
         if all_attributes.empty:
             return pd.DataFrame()

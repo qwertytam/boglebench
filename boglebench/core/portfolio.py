@@ -469,13 +469,40 @@ class BogleBenchAnalyzer:
                     if col in attributes_df.columns
                     and not attributes_df[col].isna().all()
                 ]
-                for factor in factor_columns:
+
+                # Parallelize factor attribution calculations
+                if factor_columns:
                     self.logger.info(
-                        "Calculating attribution for factor: %s", factor
+                        "📊 Calculating attribution for %d factors in parallel...",
+                        len(factor_columns),
                     )
-                    factor_attributions[factor] = attrib_calculator.calculate(
-                        group_by=factor
-                    )
+
+                    max_workers = min(
+                        len(factor_columns), 4
+                    )  # Cap at 4 threads
+
+                    with ThreadPoolExecutor(
+                        max_workers=max_workers
+                    ) as executor:
+                        future_to_factor = {
+                            executor.submit(
+                                attrib_calculator.calculate, group_by=factor
+                            ): factor
+                            for factor in factor_columns
+                        }
+
+                        for future in as_completed(future_to_factor):
+                            factor = future_to_factor[future]
+                            try:
+                                self.logger.debug(
+                                    "Calculating attribution for: %s", factor
+                                )
+                                factor_attributions[factor] = future.result()
+                                self.logger.debug("✅ Complete for %s", factor)
+                            except Exception as exc:
+                                self.logger.error(
+                                    "Failed for %s: %s", factor, exc
+                                )
 
         # Calculate Brinson-Fachler attribution
         brinson_summary = None
