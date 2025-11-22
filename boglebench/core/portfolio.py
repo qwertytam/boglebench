@@ -79,6 +79,7 @@ class BogleBenchAnalyzer:
         self.performance_results = PerformanceResults()
         self.start_date: Optional[pd.Timestamp] = None
         self.end_date: Optional[pd.Timestamp] = None
+        self.market_data_end_date: Optional[pd.Timestamp] = None
 
         self.config = ConfigManager(config_path)
 
@@ -243,19 +244,34 @@ class BogleBenchAnalyzer:
 
         self.start_date = period.start_date
         self.end_date = period.end_date
+        self.market_data_end_date = period.market_data_end_date
+
+        if self.start_date is None or self.end_date is None:
+            self.logger.error(
+                "❌ Cannot build portfolio history: start_date or end_date is None"
+            )
+            return PortfolioDatabase()
+
         self.logger.info(
             "📅 Analysis period: %s to %s",
             self.start_date,
             self.end_date,
         )
-        self._fetch_market_data(period.start_date, period.end_date)
+
+        if self.market_data_end_date != self.end_date:
+            self.logger.info(
+                "📊 Market data available through: %s",
+                self.market_data_end_date,
+            )
+
+        self._fetch_market_data(period.start_date, period.market_data_end_date)
 
         processor = DividendProcessor(
             self.config,
             self.transactions,
             self.market_data,
             start_date=period.start_date,
-            end_date=period.end_date,
+            end_date=period.market_data_end_date,
         )
         self.transactions = processor.run()
 
@@ -531,15 +547,14 @@ class BogleBenchAnalyzer:
                     brinson_summary = {}
                     selection_drilldown = {}
                     for group in valid_group_by:
-                        self.logger.info(
-                            " - Grouping by attribute: %s", group
-                        )
+                        self.logger.info(" - Grouping by attribute: %s", group)
                         (
                             brinson_summary[group],
                             selection_drilldown[group],
                         ) = brinson_calculator.calculate(group)
                         self.logger.info(
-                            "✅ Brinson attribution analysis complete for %s!", group
+                            "✅ Brinson attribution analysis complete for %s!",
+                            group,
                         )
 
         self.performance_results = PerformanceResults(
