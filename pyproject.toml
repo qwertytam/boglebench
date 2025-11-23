@@ -97,7 +97,7 @@ multi_line_output = 3
 line-length = 79
 
 [dependency-groups]
-dev = ["deptry (>=0.24.0,<0.25.0)"]
+dev = ["deptry (>=0.24.0,<0.25.0)", "pytest (>=9.0.1,<10.0.0)", "pytest-cov (>=7.0.0,<8.0.0)", "black (>=25.11.0,<26.0.0)", "ruff (>=0.14.6,<0.15.0)"]
 
 [tool.deptry]
 # Ignore packages that are used by tools, not imported in code

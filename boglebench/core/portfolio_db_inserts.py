@@ -184,3 +184,147 @@ class PortfolioInsertMixin:
                     holdings=day["holdings"],
                     symbol_data=day["symbol_data"],
                 )
+
+    def bulk_insert_portfolio_summaries(self, summaries: List[Dict]):
+        """
+        Bulk insert portfolio summary records using executemany.
+
+        Args:
+            summaries: List of dicts with portfolio summary data
+        """
+        if not summaries:
+            return
+
+        cursor = cast(DatabaseProtocol, self).get_cursor()
+
+        # Convert to tuples for executemany
+        records = [
+            (
+                s["date"].isoformat(),
+                s["total_value"],
+                s.get("net_cash_flow", 0),
+                s.get("investment_cash_flow", 0),
+                s.get("income_cash_flow", 0),
+                s.get("portfolio_mod_dietz_return"),
+                s.get("portfolio_twr_return"),
+                s.get("market_value_change"),
+            )
+            for s in summaries
+        ]
+
+        cursor.executemany(
+            """
+            INSERT INTO portfolio_summary (
+                date, total_value, net_cash_flow, investment_cash_flow,
+                income_cash_flow, portfolio_mod_dietz_return, 
+                portfolio_twr_return, market_value_change
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            records,
+        )
+
+    def bulk_insert_account_data(self, account_data: List[Dict]):
+        """
+        Bulk insert account data records using executemany.
+
+        Args:
+            account_data: List of dicts with account data
+        """
+        if not account_data:
+            return
+
+        cursor = cast(DatabaseProtocol, self).get_cursor()
+
+        records = [
+            (
+                acc["date"].isoformat(),
+                acc["account"],
+                acc["total_value"],
+                acc.get("cash_flow", 0),
+                acc.get("weight", 0),
+                acc.get("mod_dietz_return"),
+                acc.get("twr_return"),
+            )
+            for acc in account_data
+        ]
+
+        cursor.executemany(
+            """
+            INSERT INTO account_data (
+                date, account, total_value, cash_flow, weight,
+                mod_dietz_return, twr_return
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            records,
+        )
+
+    def bulk_insert_holdings(self, holdings: List[Dict]):
+        """
+        Bulk insert holdings records using executemany.
+
+        Args:
+            holdings: List of dicts with holdings data
+        """
+        if not holdings:
+            return
+
+        cursor = cast(DatabaseProtocol, self).get_cursor()
+
+        records = [
+            (
+                h["date"].isoformat(),
+                h["account"],
+                h["symbol"],
+                h["quantity"],
+                h["value"],
+                h.get("weight", 0),
+            )
+            for h in holdings
+        ]
+
+        cursor.executemany(
+            """
+            INSERT INTO holdings (
+                date, account, symbol, quantity, value, weight
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            records,
+        )
+
+    def bulk_insert_symbol_data(self, symbol_data: List[Dict]):
+        """
+        Bulk insert symbol data records using executemany.
+
+        Args:
+            symbol_data: List of dicts with symbol data
+        """
+        if not symbol_data:
+            return
+
+        cursor = cast(DatabaseProtocol, self).get_cursor()
+
+        records = [
+            (
+                s["date"].isoformat(),
+                s["symbol"],
+                s.get("price"),
+                s.get("adj_price"),
+                s["total_quantity"],
+                s["total_value"],
+                s.get("weight", 0),
+                s.get("cash_flow", 0),
+                s.get("market_return"),
+                s.get("twr_return"),
+            )
+            for s in symbol_data
+        ]
+
+        cursor.executemany(
+            """
+            INSERT INTO symbol_data (
+                date, symbol, price, adj_price, total_quantity, total_value,
+                weight, cash_flow, market_return, twr_return
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            records,
+        )
