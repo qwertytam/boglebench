@@ -274,13 +274,20 @@ class PortfolioHistoryBuilder:
             df_sorted = df.sort_values("date").reset_index(drop=True)
 
             # Convert to numpy arrays for O(log n) searchsorted lookups
-            # Use tz-naive dates to avoid timezone warnings in numpy
-            dates = (
-                pd.to_datetime(df_sorted["date"])
-                .dt.tz_localize(None)
-                .dt.normalize()
-                .values
-            )
+            # Normalize to UTC and remove timezone to avoid numpy warnings
+            date_series = pd.to_datetime(df_sorted["date"])
+            if date_series.dt.tz is not None:
+                # If timezone-aware, convert to UTC first
+                dates = (
+                    date_series.dt.tz_convert("UTC")
+                    .dt.tz_localize(None)
+                    .dt.normalize()
+                    .values
+                )
+            else:
+                # If already tz-naive, just normalize
+                dates = date_series.dt.normalize().values
+
             close_prices = df_sorted["close"].values
             adj_close_prices = (
                 df_sorted["adj_close"].values
@@ -323,8 +330,16 @@ class PortfolioHistoryBuilder:
             return 0.0
 
         # Convert target date to numpy datetime64 for comparison
-        # Use tz-naive datetime64 to avoid timezone warnings
-        target_date = pd.Timestamp(price_date).tz_localize(None).normalize()
+        # Normalize to UTC and remove timezone to match lookup structure
+        target_ts = pd.Timestamp(price_date)
+        if target_ts.tz is not None:
+            # If timezone-aware, convert to UTC first
+            target_date = (
+                target_ts.tz_convert("UTC").tz_localize(None).normalize()
+            )
+        else:
+            # If already tz-naive, just normalize
+            target_date = target_ts.normalize()
         target_np = target_date.to_datetime64()
 
         # Use binary search to find insertion point (O(log n) instead of O(n))
