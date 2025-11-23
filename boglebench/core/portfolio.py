@@ -81,6 +81,7 @@ class BogleBenchAnalyzer:
         self.start_date: Optional[pd.Timestamp] = None
         self.end_date: Optional[pd.Timestamp] = None
         self.market_data_end_date: Optional[pd.Timestamp] = None
+        self.profiling_enabled: bool = False
 
         self.config = ConfigManager(config_path)
 
@@ -276,14 +277,28 @@ class BogleBenchAnalyzer:
         )
         self.transactions = processor.run()
 
-        build = PortfolioHistoryBuilder(
-            config=self.config,
-            transactions=self.transactions,
-            market_data=self.market_data,
-            start_date=period.start_date,
-            end_date=period.end_date,
-        )
-        self.portfolio_db = build.build()
+        # ✅ Add optional profiling for portfolio building
+        if self.profiling_enabled:
+            from ..utils.profiling import Profiler
+            with Profiler("portfolio_building", 
+                         output_file=self.config.get_output_path() / "portfolio_profile.prof"):
+                build = PortfolioHistoryBuilder(
+                    config=self.config,
+                    transactions=self.transactions,
+                    market_data=self.market_data,
+                    start_date=period.start_date,
+                    end_date=period.end_date,
+                )
+                self.portfolio_db = build.build()
+        else:
+            build = PortfolioHistoryBuilder(
+                config=self.config,
+                transactions=self.transactions,
+                market_data=self.market_data,
+                start_date=period.start_date,
+                end_date=period.end_date,
+            )
+            self.portfolio_db = build.build()
 
         return self.portfolio_db
 
@@ -339,6 +354,17 @@ class BogleBenchAnalyzer:
         Returns:
             PerformanceResults object containing all metrics and analysis
         """
+        # ✅ Add optional profiling for performance calculation
+        if self.profiling_enabled:
+            from ..utils.profiling import Profiler
+            with Profiler("performance_calculation", 
+                         output_file=self.config.get_output_path() / "performance_profile.prof"):
+                return self._calculate_performance_impl()
+        else:
+            return self._calculate_performance_impl()
+    
+    def _calculate_performance_impl(self) -> "PerformanceResults":
+        """Internal implementation of performance calculation."""
         # Check if database exists and has data
         if self.portfolio_db is None:
             self.logger.debug(

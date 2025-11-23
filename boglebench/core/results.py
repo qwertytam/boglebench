@@ -6,6 +6,7 @@ and methods for generating summary reports, accessing detailed metrics, and
 exporting data for further analysis or visualization.
 """
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -477,7 +478,7 @@ class PerformanceResults:
         prefix: str = "boglebench",
     ) -> Path:
         """
-        Export results to CSV files.
+        Export results to CSV files in parallel.
 
         Args:
             output_dir: Directory to export files to. If None, uses config.
@@ -497,60 +498,66 @@ class PerformanceResults:
 
         timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
 
-        # Export portfolio history
+        # Define all export tasks
+        export_tasks = []
+
+        # Add database exports if available
         if self.portfolio_db is not None:
-            # Export from database (normalized format)
-            self._export_from_database(output_path, prefix, timestamp)
+            export_tasks.extend([
+                ("portfolio_summary", self._export_portfolio_summary, output_path, prefix, timestamp),
+                ("account_data", self._export_account_data, output_path, prefix, timestamp),
+                ("holdings", self._export_holdings, output_path, prefix, timestamp),
+                ("symbol_data", self._export_symbol_data, output_path, prefix, timestamp),
+                ("symbol_attributes", self._export_symbol_attributes, output_path, prefix, timestamp),
+            ])
 
-        # Export metrics
+        # Add metrics export if available
         if self.portfolio_metrics:
-            metrics_data = []
-            for method, metrics in self.portfolio_metrics.items():
-                for metric, value in metrics.items():
-                    metrics_data.append(
-                        {
-                            "method": method,
-                            "metric": metric,
-                            "value": value,
-                        }
-                    )
-            metrics_df = pd.DataFrame(metrics_data)
-            file_path = output_path / f"{prefix}_metrics_{timestamp}.csv"
-            metrics_df.to_csv(file_path, index=False)
-            self.logger.info("Exported metrics to: %s", file_path)
+            export_tasks.append(
+                ("metrics", self._export_metrics, output_path, prefix, timestamp)
+            )
 
-        # Export attributions
+        # Add attribution exports if available
         if (
             self.holding_attribution is not None
             and not self.holding_attribution.empty
         ):
-            file_path = (
-                output_path / f"{prefix}_holding_attribution_{timestamp}.csv"
+            export_tasks.append(
+                ("holding_attribution", self._export_holding_attribution, output_path, prefix, timestamp)
             )
-            self.holding_attribution.to_csv(file_path)
-            self.logger.info("Exported holding attribution to: %s", file_path)
 
         if (
             self.account_attribution is not None
             and not self.account_attribution.empty
         ):
-            file_path = (
-                output_path / f"{prefix}_account_attribution_{timestamp}.csv"
+            export_tasks.append(
+                ("account_attribution", self._export_account_attribution, output_path, prefix, timestamp)
             )
-            self.account_attribution.to_csv(file_path)
-            self.logger.info("Exported account attribution to: %s", file_path)
+
+        # ✅ Parallel export using ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {
+                executor.submit(func, out_path, pfx, ts): name
+                for name, func, out_path, pfx, ts in export_tasks
+            }
+
+            for future in as_completed(futures):
+                name = futures[future]
+                try:
+                    future.result()
+                except Exception as e:
+                    self.logger.error("Failed to export %s: %s", name, e)
 
         self.logger.info("📁 Results exported to: %s", output_path)
         return output_path
 
-    def _export_from_database(
+    def _export_portfolio_summary(
         self, output_path: Path, prefix: str, timestamp: str
     ) -> None:
-        """Export data from normalized database."""
+        """Export portfolio summary."""
         if self.portfolio_db is None:
             return
 
-        # Export portfolio summary
         portfolio_summary = self.portfolio_db.get_portfolio_summary()
         if not portfolio_summary.empty:
             file_path = (
@@ -559,28 +566,52 @@ class PerformanceResults:
             portfolio_summary.to_csv(file_path, index=False)
             self.logger.info("Exported portfolio summary to: %s", file_path)
 
-        # Export account data
+    def _export_account_data(
+        self, output_path: Path, prefix: str, timestamp: str
+    ) -> None:
+        """Export account data."""
+        if self.portfolio_db is None:
+            return
+
         account_data = self.portfolio_db.get_account_data()
         if not account_data.empty:
             file_path = output_path / f"{prefix}_account_data_{timestamp}.csv"
             account_data.to_csv(file_path, index=False)
             self.logger.info("Exported account data to: %s", file_path)
 
-        # Export holdings
+    def _export_holdings(
+        self, output_path: Path, prefix: str, timestamp: str
+    ) -> None:
+        """Export holdings."""
+        if self.portfolio_db is None:
+            return
+
         holdings = self.portfolio_db.get_holdings()
         if not holdings.empty:
             file_path = output_path / f"{prefix}_holdings_{timestamp}.csv"
             holdings.to_csv(file_path, index=False)
             self.logger.info("Exported holdings to: %s", file_path)
 
-        # Export symbol data
+    def _export_symbol_data(
+        self, output_path: Path, prefix: str, timestamp: str
+    ) -> None:
+        """Export symbol data."""
+        if self.portfolio_db is None:
+            return
+
         symbol_data = self.portfolio_db.get_symbol_data()
         if not symbol_data.empty:
             file_path = output_path / f"{prefix}_symbol_data_{timestamp}.csv"
             symbol_data.to_csv(file_path, index=False)
             self.logger.info("Exported symbol data to: %s", file_path)
 
-        # Export symbol attributes (if any)
+    def _export_symbol_attributes(
+        self, output_path: Path, prefix: str, timestamp: str
+    ) -> None:
+        """Export symbol attributes."""
+        if self.portfolio_db is None:
+            return
+
         symbol_attributes = self.portfolio_db.get_symbol_attributes()
         if not symbol_attributes.empty:
             file_path = (
@@ -588,6 +619,68 @@ class PerformanceResults:
             )
             symbol_attributes.to_csv(file_path, index=False)
             self.logger.info("Exported symbol attributes to: %s", file_path)
+
+    def _export_metrics(
+        self, output_path: Path, prefix: str, timestamp: str
+    ) -> None:
+        """Export metrics."""
+        if not self.portfolio_metrics:
+            return
+
+        metrics_data = []
+        for method, metrics in self.portfolio_metrics.items():
+            for metric, value in metrics.items():
+                metrics_data.append(
+                    {
+                        "method": method,
+                        "metric": metric,
+                        "value": value,
+                    }
+                )
+        metrics_df = pd.DataFrame(metrics_data)
+        file_path = output_path / f"{prefix}_metrics_{timestamp}.csv"
+        metrics_df.to_csv(file_path, index=False)
+        self.logger.info("Exported metrics to: %s", file_path)
+
+    def _export_holding_attribution(
+        self, output_path: Path, prefix: str, timestamp: str
+    ) -> None:
+        """Export holding attribution."""
+        if (
+            self.holding_attribution is None
+            or self.holding_attribution.empty
+        ):
+            return
+
+        file_path = (
+            output_path / f"{prefix}_holding_attribution_{timestamp}.csv"
+        )
+        self.holding_attribution.to_csv(file_path)
+        self.logger.info("Exported holding attribution to: %s", file_path)
+
+    def _export_account_attribution(
+        self, output_path: Path, prefix: str, timestamp: str
+    ) -> None:
+        """Export account attribution."""
+        if (
+            self.account_attribution is None
+            or self.account_attribution.empty
+        ):
+            return
+
+        file_path = (
+            output_path / f"{prefix}_account_attribution_{timestamp}.csv"
+        )
+        self.account_attribution.to_csv(file_path)
+        self.logger.info("Exported account attribution to: %s", file_path)
+
+    def _export_from_database(
+        self, output_path: Path, prefix: str, timestamp: str
+    ) -> None:
+        """Export data from normalized database (deprecated - kept for compatibility)."""
+        # This method is now deprecated but kept for backward compatibility
+        # The export_to_csv method handles parallel exports
+        pass
 
     def print_database_stats(self) -> None:
         """Print database statistics (if using database)."""

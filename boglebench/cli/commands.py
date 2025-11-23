@@ -193,8 +193,14 @@ SPY,2023-01-01,Equity,US,Diversified,ETF
     "--create-charts", is_flag=True, help="Generate performance charts"
 )
 @click.option("--benchmark", help="Override benchmark symbol (e.g., SPY, VTI)")
+@click.option(
+    "--profile",
+    is_flag=True,
+    default=False,
+    help="Enable performance profiling"
+)
 def run_analysis(
-    config: str, output_format: str, create_charts: bool, benchmark: str
+    config: str, output_format: str, create_charts: bool, benchmark: str, profile: bool
 ):
     """Run BogleBench portfolio analysis."""
 
@@ -212,9 +218,15 @@ def run_analysis(
     logger.info(
         "📈 Analyzing your portfolio with Bogle's principles in mind..."
     )
+    
+    if profile:
+        logger.info("🔍 Profiling enabled - performance stats will be saved")
 
     try:
         analyzer = BogleBenchAnalyzer(config_path=config)
+        
+        # Enable profiling if requested
+        analyzer.profiling_enabled = profile
 
         # Override benchmark if specified
         if benchmark:
