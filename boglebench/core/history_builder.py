@@ -103,7 +103,7 @@ class PortfolioHistoryBuilder:
         return self.db
 
     def _build_to_database(self, date_range: pd.DatetimeIndex, holdings: dict):
-        """Build portfolio history and write to database."""
+        """Build portfolio history and write to database using bulk inserts."""
 
         # First pass: collect all daily data
         daily_data_list = []
@@ -115,15 +115,22 @@ class PortfolioHistoryBuilder:
         temp_df = pd.DataFrame(daily_data_list)
         temp_df = self._add_returns_and_metrics(temp_df)
 
-        # Second pass: insert into database with returns
-        self.logger.info("💾 Writing %d days to database...", len(temp_df))
+        # Second pass: collect ALL data for bulk insert
+        self.logger.info(
+            "💾 Preparing to write %d days to database...", len(temp_df)
+        )
 
-        with self.db.transaction():
-            for _, row in temp_df.iterrows():
-                date = row["date"]
+        all_portfolio_summaries = []
+        all_account_data = []
+        all_holdings = []
+        all_symbol_data = []
 
-                # Prepare portfolio summary
-                portfolio_summary = {
+        for _, row in temp_df.iterrows():
+            date = row["date"]
+
+            # Collect portfolio summary
+            all_portfolio_summaries.append(
+                {
                     "date": date,
                     "total_value": row["total_value"],
                     "net_cash_flow": row.get("net_cash_flow", 0),
@@ -137,76 +144,84 @@ class PortfolioHistoryBuilder:
                     ),
                     "market_value_change": row.get("market_value_change"),
                 }
+            )
 
-                # Prepare account data
-                account_data = []
-                for account in self.accounts:
-                    account_data.append(
-                        {
-                            "date": date,
-                            "account": account,
-                            "total_value": row.get(
-                                f"{account}_total_value", 0
-                            ),
-                            "cash_flow": row.get(f"{account}_cash_flow", 0),
-                            "weight": row.get(f"{account}_weight", 0),
-                            "mod_dietz_return": row.get(
-                                f"{account}_mod_dietz_return"
-                            ),
-                            "twr_return": row.get(f"{account}_twr_return"),
-                        }
-                    )
-
-                # Prepare holdings (only non-zero)
-                holdings_list = []
-                for account in self.accounts:
-                    for symbol in self.symbols:
-                        quantity = row.get(f"{account}_{symbol}_quantity", 0)
-                        value = row.get(f"{account}_{symbol}_value", 0)
-                        # Only store non-zero holdings
-                        if quantity != 0 or value != 0:
-                            holdings_list.append(
-                                {
-                                    "date": date,
-                                    "account": account,
-                                    "symbol": symbol,
-                                    "quantity": quantity,
-                                    "value": value,
-                                    "weight": row.get(
-                                        f"{account}_{symbol}_weight", 0
-                                    ),
-                                }
-                            )
-
-                # Prepare symbol data
-                symbol_data = []
-                for symbol in self.symbols:
-                    symbol_data.append(
-                        {
-                            "date": date,
-                            "symbol": symbol,
-                            "price": row.get(f"{symbol}_price"),
-                            "adj_price": row.get(f"{symbol}_adj_price"),
-                            "total_quantity": row.get(
-                                f"{symbol}_total_quantity", 0
-                            ),
-                            "total_value": row.get(f"{symbol}_total_value", 0),
-                            "weight": row.get(f"{symbol}_weight", 0),
-                            "cash_flow": row.get(f"{symbol}_cash_flow", 0),
-                            "market_return": row.get(
-                                f"{symbol}_market_return"
-                            ),
-                            "twr_return": row.get(f"{symbol}_twr_return"),
-                        }
-                    )
-
-                # Insert batch
-                self.db.insert_day_batch(
-                    portfolio_summary=portfolio_summary,
-                    account_data=account_data,
-                    holdings=holdings_list,
-                    symbol_data=symbol_data,
+            # Collect account data
+            for account in self.accounts:
+                all_account_data.append(
+                    {
+                        "date": date,
+                        "account": account,
+                        "total_value": row.get(f"{account}_total_value", 0),
+                        "cash_flow": row.get(f"{account}_cash_flow", 0),
+                        "weight": row.get(f"{account}_weight", 0),
+                        "mod_dietz_return": row.get(
+                            f"{account}_mod_dietz_return"
+                        ),
+                        "twr_return": row.get(f"{account}_twr_return"),
+                    }
                 )
+
+            # Collect holdings (only non-zero)
+            for account in self.accounts:
+                for symbol in self.symbols:
+                    quantity = row.get(f"{account}_{symbol}_quantity", 0)
+                    value = row.get(f"{account}_{symbol}_value", 0)
+                    if quantity != 0 or value != 0:
+                        all_holdings.append(
+                            {
+                                "date": date,
+                                "account": account,
+                                "symbol": symbol,
+                                "quantity": quantity,
+                                "value": value,
+                                "weight": row.get(
+                                    f"{account}_{symbol}_weight", 0
+                                ),
+                            }
+                        )
+
+            # Collect symbol data
+            for symbol in self.symbols:
+                all_symbol_data.append(
+                    {
+                        "date": date,
+                        "symbol": symbol,
+                        "price": row.get(f"{symbol}_price"),
+                        "adj_price": row.get(f"{symbol}_adj_price"),
+                        "total_quantity": row.get(
+                            f"{symbol}_total_quantity", 0
+                        ),
+                        "total_value": row.get(f"{symbol}_total_value", 0),
+                        "weight": row.get(f"{symbol}_weight", 0),
+                        "cash_flow": row.get(f"{symbol}_cash_flow", 0),
+                        "market_return": row.get(f"{symbol}_market_return"),
+                        "twr_return": row.get(f"{symbol}_twr_return"),
+                    }
+                )
+
+        # Bulk insert all data in a single transaction
+        with self.db.transaction():
+            self.logger.debug(
+                "Bulk inserting %d portfolio summaries...",
+                len(all_portfolio_summaries),
+            )
+            self.db.bulk_insert_portfolio_summaries(all_portfolio_summaries)
+
+            self.logger.debug(
+                "Bulk inserting %d account records...", len(all_account_data)
+            )
+            self.db.bulk_insert_account_data(all_account_data)
+
+            self.logger.debug(
+                "Bulk inserting %d holdings...", len(all_holdings)
+            )
+            self.db.bulk_insert_holdings(all_holdings)
+
+            self.logger.debug(
+                "Bulk inserting %d symbol records...", len(all_symbol_data)
+            )
+            self.db.bulk_insert_symbol_data(all_symbol_data)
 
         self.logger.info("✅ Wrote %d days to database", len(temp_df))
 
