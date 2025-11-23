@@ -379,6 +379,73 @@ class PortfolioHistoryBuilder:
 
         return 0.0
 
+    def _compute_cash_flows_vectorized(self, portfolio_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Compute cash flows for all dates using vectorized operations.
+        
+        Much faster than applying _process_daily_transactions to each date.
+        
+        Args:
+            portfolio_df: DataFrame with portfolio history
+            
+        Returns:
+            DataFrame with cash flow columns added
+        """
+        df = portfolio_df.copy()
+        
+        # Filter transactions to date range
+        trans = self.transactions[
+            self.transactions['date'].isin(df['date'])
+        ].copy()
+        
+        if trans.empty:
+            # No transactions - all cash flows are zero
+            df['investment_cash_flow'] = 0.0
+            df['income_cash_flow'] = 0.0
+            df['net_cash_flow'] = 0.0
+            
+            for acc in self.accounts:
+                df[f"{acc}_cash_flow"] = 0.0
+            for symbol in self.symbols:
+                df[f"{symbol}_cash_flow"] = 0.0
+            
+            return df
+        
+        # Classify transactions
+        is_buy_sell = trans['transaction_type'].apply(
+            lambda x: TransactionTypes.is_buy_or_sell(x)
+        )
+        is_dividend = trans['transaction_type'].apply(
+            lambda x: TransactionTypes.is_any_dividend(x)
+        )
+        
+        trans['is_investment'] = is_buy_sell
+        trans['is_income'] = is_dividend
+        
+        # Aggregate investment cash flows by date
+        inv_by_date = trans[trans['is_investment']].groupby('date')['total_value'].sum()
+        df['investment_cash_flow'] = df['date'].map(inv_by_date).fillna(0)
+        
+        # Aggregate income cash flows by date
+        inc_by_date = trans[trans['is_income']].groupby('date')['total_value'].sum()
+        df['income_cash_flow'] = df['date'].map(inc_by_date).fillna(0)
+        
+        df['net_cash_flow'] = df['investment_cash_flow'] + df['income_cash_flow']
+        
+        # Account-level cash flows
+        for acc in self.accounts:
+            acc_trans = trans[trans['account'] == acc]
+            acc_cf = acc_trans.groupby('date')['total_value'].sum()
+            df[f"{acc}_cash_flow"] = df['date'].map(acc_cf).fillna(0)
+        
+        # Symbol-level cash flows
+        for symbol in self.symbols:
+            sym_trans = trans[trans['symbol'] == symbol]
+            sym_cf = sym_trans.groupby('date')['total_value'].sum()
+            df[f"{symbol}_cash_flow"] = df['date'].map(sym_cf).fillna(0)
+        
+        return df
+
     def _process_daily_transactions(self, date: pd.Timestamp):
         """Calculates cash flows for a specific date."""
         day_trans = self.transactions[
@@ -413,21 +480,8 @@ class PortfolioHistoryBuilder:
         """Adds cash flow, returns, and other metrics to the history df."""
         df = portfolio_df.sort_values("date").reset_index(drop=True)
 
-        # Add cash flows
-        cash_flows = df["date"].apply(self._process_daily_transactions)
-        inv_cfs, inc_cfs = zip(*cash_flows)
-        df["investment_cash_flow"] = [cf["total"] for cf in inv_cfs]
-        df["income_cash_flow"] = [cf["total"] for cf in inc_cfs]
-        df["net_cash_flow"] = (
-            df["investment_cash_flow"] + df["income_cash_flow"]
-        )
-
-        # Add account-specific cash flows
-        for acc in self.accounts:
-            df[f"{acc}_cash_flow"] = [
-                inv.get(acc, 0.0) + inc.get(acc, 0.0)
-                for inv, inc in zip(inv_cfs, inc_cfs)
-            ]
+        # Use vectorized cash flow computation
+        df = self._compute_cash_flows_vectorized(df)
 
         # Add Ticker-level returns
         for symbol in self.symbols:
@@ -437,11 +491,6 @@ class PortfolioHistoryBuilder:
             cf_col = f"{symbol}_cash_flow"
 
             symbol_active_days = df[qty_col] != 0
-
-            df[cf_col] = [
-                inv.get(symbol, 0.0) + inc.get(symbol, 0.0)
-                for inv, inc in zip(inv_cfs, inc_cfs)
-            ]
 
             short_position_multiplier = pd.Series(
                 np.where(df[qty_col] <= 0, -1, 1), index=df.index
