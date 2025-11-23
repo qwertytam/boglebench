@@ -534,7 +534,7 @@ class PerformanceResults:
                 ("account_attribution", self._export_account_attribution, output_path, prefix, timestamp)
             )
 
-        # ✅ Parallel export using ThreadPoolExecutor
+        # Parallel export using ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = {
                 executor.submit(func, out_path, pfx, ts): name

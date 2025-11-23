@@ -277,7 +277,7 @@ class BogleBenchAnalyzer:
         )
         self.transactions = processor.run()
 
-        # ✅ Add optional profiling for portfolio building
+        # Add optional profiling for portfolio building
         if self.profiling_enabled:
             from ..utils.profiling import Profiler
             with Profiler("portfolio_building", 
@@ -354,7 +354,7 @@ class BogleBenchAnalyzer:
         Returns:
             PerformanceResults object containing all metrics and analysis
         """
-        # ✅ Add optional profiling for performance calculation
+        # Add optional profiling for performance calculation
         if self.profiling_enabled:
             from ..utils.profiling import Profiler
             with Profiler("performance_calculation", 

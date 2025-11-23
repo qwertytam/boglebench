@@ -480,7 +480,7 @@ class PortfolioHistoryBuilder:
         """Adds cash flow, returns, and other metrics to the history df."""
         df = portfolio_df.sort_values("date").reset_index(drop=True)
 
-        # ✅ Use vectorized cash flow computation
+        # Use vectorized cash flow computation
         df = self._compute_cash_flows_vectorized(df)
 
         # Add Ticker-level returns
