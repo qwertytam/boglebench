@@ -195,14 +195,12 @@ class SymbolAttributesMixin:
             query,
             conn,
             params=cast(DatabaseProtocol, self).normalize_params(params),
+            parse_dates=["effective_date", "end_date"],
         )
-        if not df.empty:
-            df["effective_date"] = pd.to_datetime(
-                df["effective_date"], utc=True
-            )
-            if "end_date" in df.columns:
-                df["end_date"] = pd.to_datetime(df["end_date"], utc=True)
-        return df
+        date_cols = ["effective_date"]
+        if "end_date" in df.columns:
+            date_cols.append("end_date")
+        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, date_cols)
 
     def get_symbol_attributes_at_date(
         self,
@@ -254,14 +252,12 @@ class SymbolAttributesMixin:
             query,
             conn,
             params=cast(DatabaseProtocol, self).normalize_params(params),
+            parse_dates=["effective_date", "end_date"],
         )
-        if not df.empty:
-            df["effective_date"] = pd.to_datetime(
-                df["effective_date"], utc=True
-            )
-            if "end_date" in df.columns:
-                df["end_date"] = pd.to_datetime(df["end_date"], utc=True)
-        return df
+        date_cols = ["effective_date"]
+        if "end_date" in df.columns:
+            date_cols.append("end_date")
+        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, date_cols)
 
     def get_attribute_changes(
         self,
@@ -306,15 +302,12 @@ class SymbolAttributesMixin:
             query,
             conn,
             params=cast(DatabaseProtocol, self).normalize_params(params),
+            parse_dates=["effective_date", "end_date", "updated_at"],
         )
-        if not df.empty:
-            df["effective_date"] = pd.to_datetime(
-                df["effective_date"], utc=True
-            )
-            if "end_date" in df.columns:
-                df["end_date"] = pd.to_datetime(df["end_date"], utc=True)
-            df["updated_at"] = pd.to_datetime(df["updated_at"], utc=True)
-        return df
+        date_cols = ["effective_date", "updated_at"]
+        if "end_date" in df.columns:
+            date_cols.append("end_date")
+        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, date_cols)
 
     def bulk_upsert_symbol_attributes(
         self,
