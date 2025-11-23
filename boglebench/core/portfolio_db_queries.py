@@ -43,10 +43,9 @@ class PortfolioQueryMixin:
             query,
             conn,
             params=cast(DatabaseProtocol, self).normalize_params(params),
+            parse_dates=["date"],
         )
-        if not df.empty:
-            df["date"] = pd.to_datetime(df["date"], utc=True)
-        return df
+        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
 
     def get_account_data(
         self,
@@ -79,10 +78,9 @@ class PortfolioQueryMixin:
             query,
             conn,
             params=cast(DatabaseProtocol, self).normalize_params(params),
+            parse_dates=["date"],
         )
-        if not df.empty:
-            df["date"] = pd.to_datetime(df["date"], utc=True)
-        return df
+        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
 
     def get_holdings(
         self,
@@ -129,10 +127,9 @@ class PortfolioQueryMixin:
             query,
             conn,
             params=cast(DatabaseProtocol, self).normalize_params(params),
+            parse_dates=["date"],
         )
-        if not df.empty:
-            df["date"] = pd.to_datetime(df["date"], utc=True)
-        return df
+        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
 
     def get_symbol_data(
         self,
@@ -171,10 +168,9 @@ class PortfolioQueryMixin:
             query,
             conn,
             params=cast(DatabaseProtocol, self).normalize_params(params),
+            parse_dates=["date"],
         )
-        if not df.empty:
-            df["date"] = pd.to_datetime(df["date"], utc=True)
-        return df
+        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
 
     def get_latest_holdings(
         self,
@@ -203,19 +199,20 @@ class PortfolioQueryMixin:
             query,
             conn,
             params=cast(DatabaseProtocol, self).normalize_params(params),
+            parse_dates=["date"],
         )
-        if not df.empty:
-            df["date"] = pd.to_datetime(df["date"], utc=True)
-        return df
+        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
 
     def get_latest_portfolio(self) -> pd.Series:
         """Get the most recent portfolio summary as a Series."""
         conn = cast(DatabaseProtocol, self).get_connection()
-        df = pd.read_sql_query("SELECT * FROM latest_portfolio", conn)
+        df = pd.read_sql_query(
+            "SELECT * FROM latest_portfolio", conn, parse_dates=["date"]
+        )
         if df.empty:
             return pd.Series(dtype=float)
 
-        df["date"] = pd.to_datetime(df["date"], utc=True)
+        df = cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
         return df.iloc[0]
 
     def get_date_range(
@@ -283,10 +280,9 @@ class PortfolioQueryMixin:
             query,
             conn,
             params=cast(DatabaseProtocol, self).normalize_params(params),
+            parse_dates=["date"],
         )
-        if not df.empty:
-            df["date"] = pd.to_datetime(df["date"], utc=True)
-        return df
+        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
 
     def get_cash_flows(
         self,
@@ -409,9 +405,7 @@ class PortfolioQueryMixin:
             query,
             conn,
             params=cast(DatabaseProtocol, self).normalize_params(params),
+            parse_dates=["date"],
         )
 
-        if not df.empty:
-            df["date"] = pd.to_datetime(df["date"], utc=True)
-
-        return df
+        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])

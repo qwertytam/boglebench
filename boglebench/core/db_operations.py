@@ -53,18 +53,8 @@ class DatabaseOperations:
         # Register adapter - use isoformat()
         sqlite3.register_adapter(pd.Timestamp, lambda ts: ts.isoformat())
 
-        # Register converter - handle ISO format with 'T'
-        def convert_timestamp(val):
-            """Convert timestamp string to pandas Timestamp."""
-            if isinstance(val, bytes):
-                val = val.decode("utf-8")
-            return pd.to_datetime(val, utc=True)
-
-        sqlite3.register_converter("TIMESTAMP", convert_timestamp)
-
         self.conn = sqlite3.connect(
             self.db_path,
-            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
             check_same_thread=False,
         )
 
@@ -152,3 +142,20 @@ class DatabaseOperations:
         if isinstance(params, list):
             return tuple(params)
         return params
+
+    @staticmethod
+    def ensure_datetime_utc(df: pd.DataFrame, date_columns: list[str]) -> pd.DataFrame:
+        """
+        Convert date columns to UTC-aware datetime64 using vectorized operations.
+
+        Args:
+            df: DataFrame with date columns
+            date_columns: List of column names to convert
+
+        Returns:
+            DataFrame with converted date columns
+        """
+        for col in date_columns:
+            if col in df.columns and not df.empty:
+                df[col] = pd.to_datetime(df[col], utc=True)
+        return df

@@ -129,10 +129,9 @@ class PortfolioAllocationMixin:
             query,
             conn,
             params=cast(DatabaseProtocol, self).normalize_params(params),
+            parse_dates=["date"],
         )
-        if not df.empty:
-            df["date"] = pd.to_datetime(df["date"], utc=True)
-        return df
+        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
 
     def get_performance_by_attribute(
         self,
