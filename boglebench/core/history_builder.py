@@ -115,7 +115,7 @@ class PortfolioHistoryBuilder:
         temp_df = pd.DataFrame(daily_data_list)
         temp_df = self._add_returns_and_metrics(temp_df)
 
-        # Second pass: collect ALL data for bulk insert
+        # Second pass: collect data for bulk insert
         self.logger.info(
             "💾 Preparing to write %d days to database...", len(temp_df)
         )

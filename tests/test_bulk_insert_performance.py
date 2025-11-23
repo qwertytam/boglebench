@@ -12,7 +12,14 @@ from boglebench.core.portfolio_db import PortfolioDatabase
 from boglebench.utils.config import ConfigManager
 
 
-def generate_test_data(num_days=100):
+# Performance test configuration
+TEST_DAYS = 100  # Number of days for performance test
+EXPECTED_MIN_IMPROVEMENT_PERCENT = (
+    30  # Minimum expected performance improvement
+)
+
+
+def generate_test_data(num_days=TEST_DAYS):
     """Generate test data for performance comparison."""
     dates = pd.date_range(
         start="2024-01-01", periods=num_days, freq="D", tz="UTC"
@@ -97,10 +104,8 @@ def test_bulk_insert_performance():
     Uses 100 days for reasonable test time. With 717 days (actual use case),
     the improvement is 85.8% (7.03x speedup).
     """
-    num_days = 100  # Use 100 days for reasonable test time
-    
     summaries, account_data, holdings, symbol_data = generate_test_data(
-        num_days
+        TEST_DAYS
     )
 
     # Test 1: Row-by-row insertion (old method)
@@ -150,7 +155,7 @@ def test_bulk_insert_performance():
     print(f"\n{'='*60}")
     print("BULK INSERT PERFORMANCE COMPARISON")
     print(f"{'='*60}")
-    print(f"Test data: {num_days} days")
+    print(f"Test data: {TEST_DAYS} days")
     print(f"  - Portfolio summaries: {len(summaries)}")
     print(f"  - Account records: {len(account_data)}")
     print(f"  - Holdings: {len(holdings)}")
@@ -161,13 +166,14 @@ def test_bulk_insert_performance():
     print(f"Speedup: {old_time/new_time:.2f}x")
     print(f"{'='*60}\n")
 
-    # Verify bulk insert is faster (should be at least 30% faster)
+    # Verify bulk insert is faster (should be at least the expected minimum improvement)
     assert (
         new_time < old_time
     ), f"Bulk insert should be faster: {new_time}s vs {old_time}s"
-    assert (
-        improvement > 30
-    ), f"Expected >30% improvement, got {improvement:.1f}%"
+    assert improvement > EXPECTED_MIN_IMPROVEMENT_PERCENT, (
+        f"Expected >{EXPECTED_MIN_IMPROVEMENT_PERCENT}% improvement, "
+        f"got {improvement:.1f}%"
+    )
 
 
 if __name__ == "__main__":
