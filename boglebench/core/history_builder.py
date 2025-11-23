@@ -343,16 +343,20 @@ class PortfolioHistoryBuilder:
         target_np = target_date.to_datetime64()
 
         # Use binary search to find insertion point (O(log n) instead of O(n))
+        # side="right" finds the position after the last matching element
+        # Subtracting 1 gives us the last date <= target_date for forward fill
         idx = np.searchsorted(data["dates"], target_np, side="right") - 1
 
         # Select price array based on adjusted flag
         prices = data["adj_close"] if adjusted else data["close"]
 
-        # Exact match or forward fill
+        # Exact match or forward fill (most common case)
+        # If idx is valid and date <= target, use this price
         if 0 <= idx < len(prices) and data["dates"][idx] <= target_np:
             return float(prices[idx])
 
         # Backward fill (price_date is before all available data)
+        # Use the first available price if no earlier data exists
         if idx < 0 and len(prices) > 0:
             return float(prices[0])
 
