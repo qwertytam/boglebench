@@ -115,7 +115,14 @@ class PerformanceResults:
         # Benchmark metrics
         if self.benchmark_metrics:
             b = self.benchmark_metrics
-            lines.append("\n📈 BENCHMARK PERFORMANCE\n")
+
+            b_name = ""
+            if self.config is not None:
+                b_name = self.config.config["benchmark"].get("name", "")
+            if not isinstance(b_name, str):
+                b_name = ""
+
+            lines.append(f"\n📈 BENCHMARK PERFORMANCE: {b_name}\n")
             lines.append(f"  Total Return:        {b['total_return']:>+8.2%}")
             lines.append(
                 f"  Annualized Return:   {b['annualized_return']:>+8.2%}"
