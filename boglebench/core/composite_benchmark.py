@@ -68,8 +68,13 @@ class CompositeBenchmarkBuilder:
         if adj_close_df.empty:
             return pd.DataFrame()
 
+        # Create vectorized rebalancing schedule ONCE
+        rebalancing_schedule = self._create_rebalancing_schedule(
+            pd.to_datetime(adj_close_df.index)
+        )
+
         # Simulate the benchmark portfolio
-        initial_investment = 10000.0  # Starting with $10,000
+        initial_investment = 10000.00  # Starting with $10,000.00
         shares = self._calculate_initial_shares(
             adj_close_df, initial_investment
         )
@@ -106,7 +111,7 @@ class CompositeBenchmarkBuilder:
                         "Could not convert date '%s' to Timestamp.", date
                     )
                     continue
-            if self._is_rebalancing_day(date):
+            if rebalancing_schedule.loc[date]:
                 shares = self._rebalance(row, market_value)
 
         # Convert daily values to a DataFrame that mimics market data
@@ -189,3 +194,99 @@ class CompositeBenchmarkBuilder:
             allocated_amount = total_value * weight
             new_shares[symbol] = allocated_amount / prices[symbol]
         return new_shares
+
+    def _create_rebalancing_schedule(
+        self, market_days: pd.DatetimeIndex
+    ) -> pd.Series:
+        """
+        Create a fully vectorized rebalancing schedule for market days.
+
+        Handles non-market rebalancing dates by shifting to the next market day.
+        Uses only vectorized operations - no loops.
+
+        Args:
+            market_days: DatetimeIndex of actual trading days
+
+        Returns:
+            Boolean Series indexed by market_days, True on rebalancing days
+        """
+        if self.rebalancing_freq == "none":
+            return pd.Series(False, index=market_days)
+
+        if self.rebalancing_freq == "daily":
+            return pd.Series(True, index=market_days)
+
+        # Create full calendar range including weekends/holidays
+        full_range = pd.date_range(
+            start=market_days.min(), end=market_days.max(), freq="D"
+        )
+
+        # Vectorized: create boolean mask for intended rebalancing dates
+        if self.rebalancing_freq == "weekly":
+            # pylint: disable=E1101
+            intended_mask = full_range.dayofweek == 0  # Monday
+
+        elif self.rebalancing_freq == "monthly":
+            # First day of each month
+            # MonthBegin(0) normalizes to the start of the current month
+            intended_mask = full_range == (
+                full_range + pd.offsets.MonthBegin(0)
+            )
+
+        elif self.rebalancing_freq == "quarterly":
+            # First day of each quarter (Jan 1, Apr 1, Jul 1, Oct 1)
+            # Check if date is in the first month of quarter AND is the first day
+            intended_mask = (
+                # pylint: disable=E1101
+                full_range.month.isin([1, 4, 7, 10])
+            ) & (  # Quarter start months
+                # pylint: disable=E1101
+                full_range.day
+                == 1
+            )  # First day of month
+
+        elif self.rebalancing_freq == "yearly":
+            # First day of each year (Jan 1)
+            # pylint: disable=E1101
+            intended_mask = (full_range.month == 1) & (full_range.day == 1)
+
+        else:
+            return pd.Series(False, index=market_days)
+
+        # Extract intended dates (vectorized indexing)
+        intended_dates = full_range[intended_mask]
+
+        # Vectorized: find next market day for ALL intended dates at once
+        # searchsorted returns array of indices where each intended date should be inserted
+        # side='left' ensures we get the next market day on or after the intended date
+        next_market_indices = market_days.searchsorted(
+            intended_dates, side="left"
+        )
+
+        # Filter out out-of-bounds indices (vectorized boolean indexing)
+        valid_indices = next_market_indices[
+            next_market_indices < len(market_days)
+        ]
+
+        # Remove duplicates (vectorized)
+        unique_indices = pd.unique(valid_indices)
+
+        # Create result (vectorized boolean array creation)
+        should_rebalance = pd.Series(False, index=market_days)
+        should_rebalance.iloc[unique_indices] = True
+
+        return should_rebalance
+
+    def get_rebalancing_schedule(
+        self, market_days: pd.DatetimeIndex
+    ) -> pd.Series:
+        """
+        Public method to get the rebalancing schedule.
+
+        Args:
+            market_days: DatetimeIndex of actual trading days
+
+        Returns:
+            Boolean Series indexed by market_days, True on rebalancing days
+        """
+        return self._create_rebalancing_schedule(market_days)
