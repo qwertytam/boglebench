@@ -37,7 +37,7 @@ def init_workspace(path: str, force: bool):
     # Create directory structure
     directories = [
         "config",
-        "transactions",
+        "input",
         "market_data",
         "output",
         "output/reports",
@@ -68,20 +68,18 @@ def init_workspace(path: str, force: bool):
 
     # Create sample transactions file
     _create_sample_transactions(
-        workspace_path / "transactions" / "sample_transactions.csv", force
+        workspace_path / "input" / "sample_transactions.csv", force
     )
 
     # Create sample attributions file
     _create_sample_attributions(
-        workspace_path / "transactions" / "sample_attributions.csv", force
+        workspace_path / "input" / "sample_attributions.csv", force
     )
 
     click.echo("\n✅ BogleBench workspace initialized successfully!")
     click.echo("\nNext steps:")
     click.echo(f"1. Edit your configuration: {config_path}")
-    click.echo(
-        f"2. Add your transaction data to: {workspace_path}/transactions/"
-    )
+    click.echo(f"2. Add your transaction data to: {workspace_path}/input/")
     click.echo(f"3. Run analysis: boglebench-analyze --config {config_path}")
     click.echo(
         "\n💡 Remember Bogle's wisdom: 'Stay the course' "

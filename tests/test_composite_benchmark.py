@@ -129,7 +129,7 @@ def test_composite_benchmark_calculation(
 
         # Save mock data to files
         temp_data_path = config.get_data_path()
-        transactions_path = temp_data_path / "transactions"
+        transactions_path = temp_data_path / "input"
         transactions_path.mkdir(parents=True, exist_ok=True)
         transactions_file_path = transactions_path / "transactions.csv"
         transactions_fixture.to_csv(transactions_file_path, index=False)

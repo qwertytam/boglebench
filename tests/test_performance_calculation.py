@@ -136,7 +136,7 @@ class TestPerformanceCalculation:
         """Create temporary configuration for testing."""
         with tempfile.TemporaryDirectory() as temp_dir:
             config_dir = Path(temp_dir)
-            (config_dir / "transactions").mkdir(exist_ok=True)
+            (config_dir / "input").mkdir(exist_ok=True)
             (config_dir / "market_data").mkdir(exist_ok=True)
             (config_dir / "output").mkdir(exist_ok=True)
 
@@ -192,7 +192,7 @@ class TestPerformanceCalculation:
         transactions_source = test_data_dir / transactions_file_name
 
         temp_data_path = temp_config.get_data_path()
-        transactions_path = temp_data_path / "transactions"
+        transactions_path = temp_data_path / "input"
         transactions_file_path = transactions_path / transactions_file_name
         shutil.copyfile(transactions_source, transactions_file_path)
 

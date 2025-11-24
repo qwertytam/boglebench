@@ -145,7 +145,7 @@ class TestDateScenarios:
         """Create a temporary configuration directory for testing."""
         with tempfile.TemporaryDirectory() as temp_dir:
             config_dir = Path(temp_dir)
-            (config_dir / "transactions").mkdir()
+            (config_dir / "input").mkdir()
             (config_dir / "market_data").mkdir()
             (config_dir / "output").mkdir()
 
@@ -178,9 +178,7 @@ class TestDateScenarios:
 
         # Save transactions to a temporary file
         temp_data_path = temp_config.get_data_path()
-        transactions_file_path = (
-            temp_data_path / "transactions" / "transactions.csv"
-        )
+        transactions_file_path = temp_data_path / "input" / "transactions.csv"
         transactions_fixture.to_csv(transactions_file_path, index=False)
 
         market_data_path = temp_config.get_market_data_path()

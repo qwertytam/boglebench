@@ -26,15 +26,13 @@ class TestCachingOptimization:
         """Create a temporary configuration and directory structure."""
         with tempfile.TemporaryDirectory() as temp_dir:
             config_dir = Path(temp_dir)
-            (config_dir / "transactions").mkdir()
+            (config_dir / "input").mkdir()
             (config_dir / "market_data").mkdir()
             (config_dir / "output").mkdir()
 
             config = ConfigManager()
             config.config["data"]["base_path"] = str(config_dir)
-            config.config["data"][
-                "attributes_file"
-            ] = "transactions/attributes.csv"
+            config.config["data"]["attributes_file"] = "input/attributes.csv"
             config.config["database"]["db_path"] = ":memory:"
 
             config.config["analysis"]["start_date"] = "2023-01-03"
@@ -94,7 +92,7 @@ class TestCachingOptimization:
 
         path = (
             Path(temp_config.config["data"]["base_path"])
-            / "transactions"
+            / "input"
             / "transactions.csv"
         )
         path.write_text(transactions)
@@ -113,7 +111,7 @@ class TestCachingOptimization:
 
         path = (
             Path(temp_config.config["data"]["base_path"])
-            / "transactions"
+            / "input"
             / "attributes.csv"
         )
         path.write_text(attributes)

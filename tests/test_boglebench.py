@@ -53,7 +53,7 @@ class TestBogleBenchAnalyzer:
             config.config["database"]["db_path"] = ":memory:"
 
             # Create directories
-            (config_dir / "transactions").mkdir()
+            (config_dir / "input").mkdir()
             (config_dir / "market_data").mkdir()
             (config_dir / "output").mkdir()
 
@@ -78,7 +78,7 @@ class TestBogleBenchAnalyzer:
     def test_load_transactions_success(self, temp_config, sample_transactions):
         """Test successful transaction loading."""
         # Create temporary CSV file
-        csv_path = temp_config.get_data_path("transactions/test.csv")
+        csv_path = temp_config.get_data_path("input/test.csv")
         sample_transactions.to_csv(csv_path, index=False)
 
         analyzer = BogleBenchAnalyzer()

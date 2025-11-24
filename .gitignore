@@ -30,7 +30,7 @@ data/
 boglebench_data/
 portfolio_data/
 market_data/
-transactions/
+input/
 output/
 *.parquet
 *.db

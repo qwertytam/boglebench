@@ -34,14 +34,14 @@ This creates the following structure:
 ```text
 ~/my_boglebench_data/
 ├── config/config.yaml          # Configuration file
-├── transactions/               # Your transaction data
+├── input/               # Your transaction data
 ├── market_data/               # Cached market data
 └── output/                    # Analysis results
 ```
 
 ### 2. Add Your Transaction Data
 
-Add your transaction CSV file to `~/my_boglebench_data/transactions/`. Required columns:
+Add your transaction CSV file to `~/my_boglebench_data/input/`. Required columns:
 
 ### Required columns
 
@@ -178,7 +178,7 @@ Edit `config/config.yaml` to customize:
 ```yaml
 data:
   base_path: "~/my_boglebench_data"
-  transactions_file: "transactions/my_transactions.csv"
+  transactions_file: "input/my_transactions.csv"
 
 settings:
   benchmark_symbol: "SPY"

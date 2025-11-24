@@ -427,7 +427,7 @@ def test_end_to_end_with_non_market_rebalancing(
 
         # Save transactions
         temp_data_path = config.get_data_path()
-        transactions_path = temp_data_path / "transactions"
+        transactions_path = temp_data_path / "input"
         transactions_path.mkdir(parents=True, exist_ok=True)
         transactions_file = transactions_path / "transactions.csv"
         transactions.to_csv(transactions_file, index=False)
