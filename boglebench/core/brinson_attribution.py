@@ -53,8 +53,8 @@ class BrinsonAttributionCalculator:
         # Add caching for database queries (optimization)
         # Thread-safe caching using lock for parallel execution
         self._cache_lock = threading.Lock()
-        self._symbol_data_cache = None
-        self._attributes_cache = {}
+        self._symbol_data_cache: pd.DataFrame | None = None
+        self._attributes_cache: Dict[str, pd.DataFrame] = {}
 
         # Pre-cache all data to avoid delays in parallel execution
         self._precache_data()
@@ -75,7 +75,9 @@ class BrinsonAttributionCalculator:
     def _get_symbol_data(self) -> pd.DataFrame:
         """Get symbol data with thread-safe caching to avoid repeated database queries."""
         cache_hit = self._symbol_data_cache is not None
-        logger.debug("Symbol data cache %s", "HIT ✅" if cache_hit else "MISS ❌")
+        logger.debug(
+            "Symbol data cache %s", "HIT ✅" if cache_hit else "MISS ❌"
+        )
 
         if self._symbol_data_cache is None:
             with self._cache_lock:
@@ -86,6 +88,8 @@ class BrinsonAttributionCalculator:
                         self.portfolio_db.get_symbol_data()
                     )
                 # Return from within lock to avoid race condition
+                if self._symbol_data_cache is None:
+                    return pd.DataFrame()
                 return self._symbol_data_cache
         return self._symbol_data_cache
 
@@ -223,8 +227,6 @@ class BrinsonAttributionCalculator:
         )
 
         # VECTORIZED: Use numpy for better performance (no apply!)
-        import numpy as np
-
         result_df["twr_return"] = np.where(
             result_df["weight"] > 0,
             result_df["weighted_return"] / result_df["weight"],

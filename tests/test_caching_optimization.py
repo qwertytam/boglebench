@@ -1,12 +1,14 @@
+# pylint: disable=protected-access
+
 """
 Test suite for verifying caching optimizations work correctly.
 """
 
 import tempfile
 import textwrap
+import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -117,6 +119,7 @@ class TestCachingOptimization:
         path.write_text(attributes)
         return path
 
+    # pylint: disable=unused-argument
     def test_attribution_calculator_caching(
         self, temp_config, market_data, transactions_csv, attributes_csv
     ):
@@ -129,6 +132,7 @@ class TestCachingOptimization:
         analyzer.build_symbol_attributes()
 
         # Create attribution calculator
+        assert analyzer.portfolio_db is not None
         attrib_calc = AttributionCalculator(
             portfolio_db=analyzer.portfolio_db,
         )
@@ -161,6 +165,7 @@ class TestCachingOptimization:
         analyzer.build_symbol_attributes()
 
         # Create Brinson calculator
+        assert analyzer.portfolio_db is not None
         brinson_calc = BrinsonAttributionCalculator(
             benchmark_history=analyzer.benchmark_history,
             portfolio_db=analyzer.portfolio_db,
@@ -190,7 +195,6 @@ class TestCachingOptimization:
         self, temp_config, market_data, transactions_csv, attributes_csv
     ):
         """Test that caching actually improves performance on repeated calls."""
-        import time
 
         # Create analyzer and build portfolio
         analyzer = BogleBenchAnalyzer(config_path=None)
@@ -200,6 +204,7 @@ class TestCachingOptimization:
         analyzer.build_symbol_attributes()
 
         # Create attribution calculator
+        assert analyzer.portfolio_db is not None
         attrib_calc = AttributionCalculator(
             portfolio_db=analyzer.portfolio_db,
         )

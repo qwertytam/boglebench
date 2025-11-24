@@ -45,7 +45,7 @@ class PortfolioQueryMixin:
             params=cast(DatabaseProtocol, self).normalize_params(params),
             parse_dates=["date"],
         )
-        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
+        return df
 
     def get_account_data(
         self,
@@ -80,7 +80,7 @@ class PortfolioQueryMixin:
             params=cast(DatabaseProtocol, self).normalize_params(params),
             parse_dates=["date"],
         )
-        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
+        return df
 
     def get_holdings(
         self,
@@ -129,7 +129,7 @@ class PortfolioQueryMixin:
             params=cast(DatabaseProtocol, self).normalize_params(params),
             parse_dates=["date"],
         )
-        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
+        return df
 
     def get_symbol_data(
         self,
@@ -170,7 +170,7 @@ class PortfolioQueryMixin:
             params=cast(DatabaseProtocol, self).normalize_params(params),
             parse_dates=["date"],
         )
-        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
+        return df
 
     def get_latest_holdings(
         self,
@@ -201,7 +201,7 @@ class PortfolioQueryMixin:
             params=cast(DatabaseProtocol, self).normalize_params(params),
             parse_dates=["date"],
         )
-        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
+        return df
 
     def get_latest_portfolio(self) -> pd.Series:
         """Get the most recent portfolio summary as a Series."""
@@ -212,7 +212,6 @@ class PortfolioQueryMixin:
         if df.empty:
             return pd.Series(dtype=float)
 
-        df = cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
         return df.iloc[0]
 
     def get_date_range(
@@ -276,13 +275,14 @@ class PortfolioQueryMixin:
         query += " ORDER BY date, account, symbol"
 
         conn = cast(DatabaseProtocol, self).get_connection()
+        conn = cast(DatabaseProtocol, self).get_connection()
         df = pd.read_sql_query(
             query,
             conn,
             params=cast(DatabaseProtocol, self).normalize_params(params),
             parse_dates=["date"],
         )
-        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
+        return df
 
     def get_cash_flows(
         self,
@@ -408,4 +408,4 @@ class PortfolioQueryMixin:
             parse_dates=["date"],
         )
 
-        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
+        return df

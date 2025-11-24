@@ -503,18 +503,56 @@ class PerformanceResults:
 
         # Add database exports if available
         if self.portfolio_db is not None:
-            export_tasks.extend([
-                ("portfolio_summary", self._export_portfolio_summary, output_path, prefix, timestamp),
-                ("account_data", self._export_account_data, output_path, prefix, timestamp),
-                ("holdings", self._export_holdings, output_path, prefix, timestamp),
-                ("symbol_data", self._export_symbol_data, output_path, prefix, timestamp),
-                ("symbol_attributes", self._export_symbol_attributes, output_path, prefix, timestamp),
-            ])
+            export_tasks.extend(
+                [
+                    (
+                        "portfolio_summary",
+                        self._export_portfolio_summary,
+                        output_path,
+                        prefix,
+                        timestamp,
+                    ),
+                    (
+                        "account_data",
+                        self._export_account_data,
+                        output_path,
+                        prefix,
+                        timestamp,
+                    ),
+                    (
+                        "holdings",
+                        self._export_holdings,
+                        output_path,
+                        prefix,
+                        timestamp,
+                    ),
+                    (
+                        "symbol_data",
+                        self._export_symbol_data,
+                        output_path,
+                        prefix,
+                        timestamp,
+                    ),
+                    (
+                        "symbol_attributes",
+                        self._export_symbol_attributes,
+                        output_path,
+                        prefix,
+                        timestamp,
+                    ),
+                ]
+            )
 
         # Add metrics export if available
         if self.portfolio_metrics:
             export_tasks.append(
-                ("metrics", self._export_metrics, output_path, prefix, timestamp)
+                (
+                    "metrics",
+                    self._export_metrics,
+                    output_path,
+                    prefix,
+                    timestamp,
+                )
             )
 
         # Add attribution exports if available
@@ -523,7 +561,13 @@ class PerformanceResults:
             and not self.holding_attribution.empty
         ):
             export_tasks.append(
-                ("holding_attribution", self._export_holding_attribution, output_path, prefix, timestamp)
+                (
+                    "holding_attribution",
+                    self._export_holding_attribution,
+                    output_path,
+                    prefix,
+                    timestamp,
+                )
             )
 
         if (
@@ -531,7 +575,13 @@ class PerformanceResults:
             and not self.account_attribution.empty
         ):
             export_tasks.append(
-                ("account_attribution", self._export_account_attribution, output_path, prefix, timestamp)
+                (
+                    "account_attribution",
+                    self._export_account_attribution,
+                    output_path,
+                    prefix,
+                    timestamp,
+                )
             )
 
         # Parallel export using ThreadPoolExecutor
@@ -545,7 +595,7 @@ class PerformanceResults:
                 name = futures[future]
                 try:
                     future.result()
-                except Exception as e:
+                except Exception as e:  # pylint: disable=broad-except
                     self.logger.error("Failed to export %s: %s", name, e)
 
         self.logger.info("📁 Results exported to: %s", output_path)
@@ -646,10 +696,7 @@ class PerformanceResults:
         self, output_path: Path, prefix: str, timestamp: str
     ) -> None:
         """Export holding attribution."""
-        if (
-            self.holding_attribution is None
-            or self.holding_attribution.empty
-        ):
+        if self.holding_attribution is None or self.holding_attribution.empty:
             return
 
         file_path = (
@@ -662,10 +709,7 @@ class PerformanceResults:
         self, output_path: Path, prefix: str, timestamp: str
     ) -> None:
         """Export account attribution."""
-        if (
-            self.account_attribution is None
-            or self.account_attribution.empty
-        ):
+        if self.account_attribution is None or self.account_attribution.empty:
             return
 
         file_path = (
@@ -673,14 +717,6 @@ class PerformanceResults:
         )
         self.account_attribution.to_csv(file_path)
         self.logger.info("Exported account attribution to: %s", file_path)
-
-    def _export_from_database(
-        self, output_path: Path, prefix: str, timestamp: str
-    ) -> None:
-        """Export data from normalized database (deprecated - kept for compatibility)."""
-        # This method is now deprecated but kept for backward compatibility
-        # The export_to_csv method handles parallel exports
-        pass
 
     def print_database_stats(self) -> None:
         """Print database statistics (if using database)."""

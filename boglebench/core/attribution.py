@@ -43,9 +43,10 @@ class AttributionCalculator:
 
         # Add caching for repeated data access
         self._cache_lock = threading.Lock()
-        self._symbol_data_cache = None
-        self._account_data_cache = None
-        self._attributes_cache = None
+
+        self._symbol_data_cache: pd.DataFrame | None = None
+        self._account_data_cache: pd.DataFrame | None = None
+        self._attributes_cache: pd.DataFrame | None = None
 
         # Pre-cache common data
         self._precache_data()
@@ -66,6 +67,10 @@ class AttributionCalculator:
                     self._symbol_data_cache = (
                         self.portfolio_db.get_symbol_data()
                     )
+
+        if self._symbol_data_cache is None:
+            return pd.DataFrame()
+
         return self._symbol_data_cache
 
     def _get_account_data(self) -> pd.DataFrame:
@@ -76,6 +81,9 @@ class AttributionCalculator:
                     self._account_data_cache = (
                         self.portfolio_db.get_account_data()
                     )
+        if self._account_data_cache is None:
+            return pd.DataFrame()
+
         return self._account_data_cache
 
     def _get_attributes(self) -> pd.DataFrame:
@@ -86,6 +94,10 @@ class AttributionCalculator:
                     self._attributes_cache = (
                         self.portfolio_db.get_symbol_attributes()
                     )
+
+        if self._attributes_cache is None:
+            return pd.DataFrame()
+
         return self._attributes_cache
 
     def calculate(self, group_by: str) -> pd.DataFrame:

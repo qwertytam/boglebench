@@ -1,3 +1,5 @@
+# pylint: disable=protected-access
+
 """
 Performance test for vectorized price lookup optimization.
 
@@ -6,11 +8,12 @@ and binary search (searchsorted) instead of repeated DataFrame filtering.
 """
 
 import time
+
 import pandas as pd
 import pytest
 
-from boglebench.core.history_builder import PortfolioHistoryBuilder
 from boglebench.core.constants import TransactionTypes
+from boglebench.core.history_builder import PortfolioHistoryBuilder
 from boglebench.utils.config import ConfigManager
 
 
@@ -23,6 +26,7 @@ def generate_large_market_data(num_days=1000, num_symbols=10):
         symbol = f"STOCK{i}"
         # Create realistic price data with some variation
         base_price = 100 + i * 10
+        # pylint: disable=no-member
         prices = base_price + (i + 1) * (dates.day % 10)
 
         market_data[symbol] = pd.DataFrame(
@@ -76,11 +80,12 @@ def config():
             "annual_risk_free_rate": 0.03,
         }
     }
-    config = ConfigManager()
+    config = ConfigManager()  # pylint: disable=redefined-outer-name
     config.config = config_dict
     return config
 
 
+# pylint: disable=redefined-outer-name
 def test_price_lookup_performance(config):
     """
     Test performance of vectorized price lookup vs original method.

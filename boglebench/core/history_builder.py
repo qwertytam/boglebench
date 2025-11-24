@@ -531,10 +531,10 @@ class PortfolioHistoryBuilder:
 
         # Classify transactions
         is_buy_sell = trans["transaction_type"].apply(
-            lambda x: TransactionTypes.is_buy_or_sell(x)
+            TransactionTypes.is_buy_or_sell
         )
         is_dividend = trans["transaction_type"].apply(
-            lambda x: TransactionTypes.is_any_dividend(x)
+            TransactionTypes.is_any_dividend
         )
 
         trans["is_investment"] = is_buy_sell

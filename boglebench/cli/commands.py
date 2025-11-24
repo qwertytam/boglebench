@@ -197,10 +197,14 @@ SPY,2023-01-01,Equity,US,Diversified,ETF
     "--profile",
     is_flag=True,
     default=False,
-    help="Enable performance profiling"
+    help="Enable performance profiling",
 )
 def run_analysis(
-    config: str, output_format: str, create_charts: bool, benchmark: str, profile: bool
+    config: str,
+    output_format: str,
+    create_charts: bool,
+    benchmark: str,
+    profile: bool,
 ):
     """Run BogleBench portfolio analysis."""
 
@@ -218,13 +222,13 @@ def run_analysis(
     logger.info(
         "📈 Analyzing your portfolio with Bogle's principles in mind..."
     )
-    
+
     if profile:
         logger.info("🔍 Profiling enabled - performance stats will be saved")
 
     try:
         analyzer = BogleBenchAnalyzer(config_path=config)
-        
+
         # Enable profiling if requested
         analyzer.profiling_enabled = profile
 

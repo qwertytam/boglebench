@@ -43,6 +43,7 @@ from ..core.symbol_attributes_loader import load_symbol_attributes_from_csv
 from ..core.transaction_loader import load_validate_transactions
 from ..utils.config import ConfigManager
 from ..utils.logging_config import get_logger, setup_logging
+from ..utils.profiling import Profiler
 from ..utils.workspace import WorkspaceContext
 
 
@@ -279,9 +280,11 @@ class BogleBenchAnalyzer:
 
         # Add optional profiling for portfolio building
         if self.profiling_enabled:
-            from ..utils.profiling import Profiler
-            with Profiler("portfolio_building", 
-                         output_file=self.config.get_output_path() / "portfolio_profile.prof"):
+            with Profiler(
+                "portfolio_building",
+                output_file=self.config.get_output_path()
+                / "portfolio_profile.prof",
+            ):
                 build = PortfolioHistoryBuilder(
                     config=self.config,
                     transactions=self.transactions,
@@ -356,13 +359,15 @@ class BogleBenchAnalyzer:
         """
         # Add optional profiling for performance calculation
         if self.profiling_enabled:
-            from ..utils.profiling import Profiler
-            with Profiler("performance_calculation", 
-                         output_file=self.config.get_output_path() / "performance_profile.prof"):
+            with Profiler(
+                "performance_calculation",
+                output_file=self.config.get_output_path()
+                / "performance_profile.prof",
+            ):
                 return self._calculate_performance_impl()
         else:
             return self._calculate_performance_impl()
-    
+
     def _calculate_performance_impl(self) -> "PerformanceResults":
         """Internal implementation of performance calculation."""
         # Check if database exists and has data
@@ -525,14 +530,14 @@ class BogleBenchAnalyzer:
                                 )
                                 factor_attributions[factor] = future.result()
                                 self.logger.debug("✅ Complete for %s", factor)
-                            except Exception as exc:
+                            except Exception as exc:  # pylint: disable=W0718
                                 self.logger.error(
                                     "Failed for %s: %s", factor, exc
                                 )
 
         # Calculate Brinson-Fachler attribution
-        brinson_summary = None
-        selection_drilldown = None
+        brinson_summary: Dict[str, pd.DataFrame] = {}
+        selection_drilldown: Dict[str, Dict] = {}
         if (
             self.config.get("analysis.attribution_analysis.enabled", False)
             and self.benchmark_history is not None
@@ -598,9 +603,6 @@ class BogleBenchAnalyzer:
 
                 # Calculate Brinson attribution for valid attributes (parallel execution)
                 if valid_group_by:
-                    brinson_summary = {}
-                    selection_drilldown = {}
-
                     # Use ThreadPoolExecutor for parallel calculation
                     # Default to 4 workers to balance parallelism and resource usage
                     # Can be configured via analysis.brinson_max_workers config option
@@ -612,6 +614,9 @@ class BogleBenchAnalyzer:
                         configured_max_workers = configured_max_workers.get(
                             "value", default_max_workers
                         )
+                    if not isinstance(configured_max_workers, int):
+                        configured_max_workers = default_max_workers
+
                     max_workers = min(
                         int(configured_max_workers), len(valid_group_by)
                     )
@@ -639,15 +644,21 @@ class BogleBenchAnalyzer:
                         for future in as_completed(future_to_group):
                             group = future_to_group[future]
                             try:
-                                (
-                                    brinson_summary[group],
-                                    selection_drilldown[group],
-                                ) = future.result()
+                                result = future.result()
+                                summary_df, drilldown_dict = result
+                                if isinstance(summary_df, pd.DataFrame):
+                                    brinson_summary[str(group)] = summary_df
+                                # Wrap drilldown in nested dict structure
+                                selection_drilldown[str(group)] = (
+                                    drilldown_dict
+                                    if isinstance(drilldown_dict, dict)
+                                    else {group: drilldown_dict}
+                                )
                                 self.logger.info(
                                     "✅ Brinson attribution analysis complete for %s!",
                                     group,
                                 )
-                            except Exception as exc:
+                            except Exception as exc:  # pylint: disable=W0718
                                 self.logger.error(
                                     "Brinson attribution failed for %s: %s",
                                     group,

@@ -200,7 +200,7 @@ class SymbolAttributesMixin:
         date_cols = ["effective_date"]
         if "end_date" in df.columns:
             date_cols.append("end_date")
-        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, date_cols)
+        return df
 
     def get_symbol_attributes_at_date(
         self,
@@ -257,7 +257,7 @@ class SymbolAttributesMixin:
         date_cols = ["effective_date"]
         if "end_date" in df.columns:
             date_cols.append("end_date")
-        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, date_cols)
+        return df
 
     def get_attribute_changes(
         self,
@@ -307,7 +307,7 @@ class SymbolAttributesMixin:
         date_cols = ["effective_date", "updated_at"]
         if "end_date" in df.columns:
             date_cols.append("end_date")
-        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, date_cols)
+        return df
 
     def bulk_upsert_symbol_attributes(
         self,

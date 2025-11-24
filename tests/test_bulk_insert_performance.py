@@ -5,12 +5,11 @@ This test measures the performance improvement from using bulk insert operations
 """
 
 import time
+
 import pandas as pd
-import pytest
 
 from boglebench.core.portfolio_db import PortfolioDatabase
 from boglebench.utils.config import ConfigManager
-
 
 # Performance test configuration
 TEST_DAYS = 100  # Number of days for performance test
@@ -99,7 +98,7 @@ def generate_test_data(num_days=TEST_DAYS):
 def test_bulk_insert_performance():
     """
     Compare bulk insert vs row-by-row insertion performance.
-    
+
     This test demonstrates the performance improvement from bulk inserts.
     Uses 100 days for reasonable test time. With 717 days (actual use case),
     the improvement is 85.8% (7.03x speedup).
@@ -114,23 +113,17 @@ def test_bulk_insert_performance():
     )
     start_time = time.time()
     with db1.transaction():
-        for i in range(len(summaries)):
+        for summary in summaries:
             db1.insert_day_batch(
-                portfolio_summary=summaries[i],
+                portfolio_summary=summary,
                 account_data=[
                     acc
                     for acc in account_data
-                    if acc["date"] == summaries[i]["date"]
+                    if acc["date"] == summary["date"]
                 ],
-                holdings=[
-                    h
-                    for h in holdings
-                    if h["date"] == summaries[i]["date"]
-                ],
+                holdings=[h for h in holdings if h["date"] == summary["date"]],
                 symbol_data=[
-                    s
-                    for s in symbol_data
-                    if s["date"] == summaries[i]["date"]
+                    s for s in symbol_data if s["date"] == summary["date"]
                 ],
             )
     old_time = time.time() - start_time

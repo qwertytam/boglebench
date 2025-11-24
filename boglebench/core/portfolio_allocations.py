@@ -131,7 +131,7 @@ class PortfolioAllocationMixin:
             params=cast(DatabaseProtocol, self).normalize_params(params),
             parse_dates=["date"],
         )
-        return cast(DatabaseProtocol, self).ensure_datetime_utc(df, ["date"])
+        return df
 
     def get_performance_by_attribute(
         self,
