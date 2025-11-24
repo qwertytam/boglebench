@@ -92,28 +92,19 @@ class AnalysisPeriod:
         """
         Determine the end date for fetching market data.
 
-        This is the last date for which market data is actually available,
+        This is the last date for which market close data is actually available,
         which may be earlier than the analysis end_date if the market is closed.
+
+        If the market is open, it will return the date the market last closed.
 
         Returns:
             End date for market data queries
         """
-        # If user specified an end date, use it for market data too
-        user_end = self.config.get("analysis.end_date", None)
-        if user_end:
-            return pd.to_datetime(user_end, utc=True)
-
-        # If market is open, we can get data up to current time
-        if self._is_market_currently_open():
-            return pd.Timestamp.now(tz=DateAndTimeConstants.TZ_UTC.value)
-
-        # Market is closed - use last closed market day for data fetching
         last_closed = self._get_last_closed_market_day()
-        logger.info(
-            "Market is closed, using last closed market day (%s) for data fetching.",
-            last_closed.date(),
-        )
-        return last_closed
+        user_end = self.config.get("analysis.end_date", last_closed)
+        if user_end is None:
+            user_end = last_closed
+        return min(last_closed, pd.to_datetime(user_end, utc=True))
 
     def _is_market_currently_open(self) -> bool:
         """Check if the market is currently open."""
